@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document describes the migration of the IgH EtherCAT Master to support both kernel-based and userspace operation using a **shared codebase** approach. The key innovation is a Platform Abstraction Layer (PAL) that allows 90%+ of the code to be shared between kernel and userspace builds.
+This document describes the migration of the IgH EtherCAT Master to support both kernel-based and userspace operation using a **shared codebase** approach. The key innovation is a Platform Abstraction Layer (PAL) that allows the same source files to compile for both kernel and userspace.
 
 ### Key Benefits
 
@@ -57,19 +57,19 @@ This document describes the migration of the IgH EtherCAT Master to support both
 ┌──────────────────────────────────────────────┼──────────────────────────┐
 │                           KERNEL             │                          │
 │                                              ▼                          │
-│  ┌───────────────────────────────────────────────────────────────────┐  │
-│  │                     ec_master.ko                                  │  │
-│  │  - EtherCAT state machines                                        │  │
-│  │  - CoE, FoE, SoE, EoE protocols                                   │  │
-│  │  - DC synchronization                                             │  │
-│  │  - Domain/Process data management                                 │  │
-│  └───────────────────────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │                     ec_master.ko                                 │   │
+│  │  - EtherCAT state machines                                       │   │
+│  │  - CoE, FoE, SoE, EoE protocols                                  │   │ 
+│  │  - DC synchronization                                            │   │
+│  │  - Domain/Process data management                                │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
 │                                    │                                    │
 │                                    ▼                                    │
-│  ┌────────────────┬────────────────┬────────────────┬────────────────┐  │
-│  │ ec_e1000e.ko   │  ec_igb.ko     │ ec_generic.ko  │  ec_ccat.ko    │  │
-│  │ (patched)      │  (patched)     │ (SOCK_RAW)     │  (native)      │  │
-│  └───────┬────────┴───────┬────────┴───────┬────────┴───────┬────────┘  │
+│  ┌────────────────┬────────────────┬────────────────┬───────────────┐   │
+│  │ ec_e1000e.ko   │  ec_igb.ko     │ ec_generic.ko  │  ec_ccat.ko   │   │
+│  │ (patched)      │  (patched)     │ (SOCK_RAW)     │  (native)     │   │
+│  └───────┬────────┴───────┬────────┴───────┬────────┴───────┬───────┘   │
 │          │                │                │                │           │
 │          ▼                ▼                ▼                ▼           │
 │        e1000e           igb           AF_PACKET          CCAT HW        │
@@ -84,20 +84,19 @@ This document describes the migration of the IgH EtherCAT Master to support both
 │                                                                         │
 │  ┌─────────────────┐     ┌──────────────────────────────────────────┐   │
 │  │  Your RT App    │────▶│            libethercat.so                │   │
-│  │  (links lib)    │     │                                          │   │
-│  └─────────────────┘     │  ┌────────────────────────────────────┐  │   │
-│                          │  │   EtherCAT Master Core (shared)    │  │   │
-│  ┌─────────────────┐     │  │   Same master/*.c as kernel!       │  │   │
-│  │ ethercat_master │────▶│  │  - State machines (FSM)            │  │   │
-│  │ (demonstrator)  │     │  │  - CoE, FoE, SoE protocols         │  │   │
-│  └─────────────────┘     │  │  - DC synchronization              │  │   │
-│          │               │  │  - Domain management               │  │   │
-│    Unix socket           │  └────────────────────────────────────┘  │   │
-│          │               │                    │                     │   │
-│          ▼               │                    ▼                     │   │
-│  ┌─────────────────┐     │  ┌────────────────────────────────────┐  │   │
-│  │ ethercat (CLI)  │────▶│  │      Transport Abstraction         │  │   │
-│  │ (unchanged)     │     │  │  (userspace-only component)        │  │   │
+│  │  (links lib,    │     │                                          │   │
+│  │   runs master)  │     │  ┌────────────────────────────────────┐  │   │
+│  └─────────────────┘     │  │   EtherCAT Master Core (shared)    │  │   │
+│          │               │  │   Same master/*.c as kernel!       │  │   │
+│    ┌─────┘               │  │  - State machines (FSM)            │  │   │
+│    │                     │  │  - CoE, FoE, SoE, EoE protocols    │  │   │
+│    │ Unix socket         │  │  - DC synchronization              │  │   │
+│    │ (control only)      │  │  - Domain management               │  │   │
+│    │                     │  └────────────────────────────────────┘  │   │
+│    ▼                     │                    │                     │   │
+│  ┌─────────────────┐     │                    ▼                     │   │
+│  │ ethercat (CLI)  │────▶│  ┌────────────────────────────────────┐  │   │
+│  │ (query/config)  │     │  │   Device Abstraction (PAL)         │  │   │
 │  └─────────────────┘     │  │  ┌──────────┬──────────┬────────┐  │  │   │
 │                          │  │  │ SOCK_RAW │  AF_XDP  │  CCAT  │  │  │   │
 │                          │  │  │ (simple) │  (fast)  │ (HW)   │  │  │   │
@@ -137,22 +136,130 @@ This document describes the migration of the IgH EtherCAT Master to support both
 
 ---
 
+## Application Integration Model
+
+### Userspace Application Model
+
+In userspace mode, the **RT application runs the master directly** (in-process):
+
+```c
+#include <ecrt.h>
+#include <ecrt_user.h>  /* Userspace-specific extensions */
+
+int main(void)
+{
+    ec_master_t *master;
+    ec_domain_t *domain;
+    
+    /* 1. Initialize master (replaces module loading) */
+    if (ecrt_master_init(0, EC_PAL_DEVICE_RAW, "eth0") < 0) {
+        return -1;
+    }
+    
+    /* 2. Standard ecrt API - same as kernel! */
+    master = ecrt_request_master(0);
+    domain = ecrt_master_create_domain(master);
+    /* ... configure slaves, PDOs, etc. ... */
+    ecrt_master_activate(master);
+    
+    /* 3. Cyclic operation (RT loop) */
+    while (running) {
+        ecrt_master_receive(master);
+        ecrt_domain_process(domain);
+        
+        /* ... your application logic ... */
+        
+        ecrt_domain_queue(domain);
+        ecrt_master_send(master);
+        
+        /* Wait for next cycle */
+        wait_period();
+    }
+    
+    /* 4. Cleanup (replaces module unloading) */
+    ecrt_release_master(master);
+    ecrt_master_cleanup(0);
+    
+    return 0;
+}
+```
+
+### CLI Tool Integration
+
+The `ethercat` CLI tool communicates with the running master via **Unix socket**:
+
+```
+┌─────────────────┐     Unix Socket      ┌─────────────────────┐
+│ ethercat CLI    │◀────────────────────▶│  RT App + Master    │
+│ (query/config)  │    /tmp/ec_master0   │  (libethercat.so)   │
+└─────────────────┘                      └─────────────────────┘
+```
+
+The socket server runs in a separate thread within the master, handling CLI requests for:
+- Slave information (`ethercat slaves`)
+- SDO access (`ethercat upload/download`)
+- Master state (`ethercat master`)
+- Debug output (`ethercat debug`)
+
+### Userspace-Specific API Extensions
+
+```c
+/* userspace/include/ecrt_user.h */
+
+/**
+ * Initialize a master instance (replaces kernel module loading)
+ * @param master_index Master index (0, 1, ...)
+ * @param device_type Built-in device type to use
+ * @param interface Network interface name (e.g., "eth0")
+ * @return 0 on success, < 0 on error
+ */
+int ecrt_master_init(unsigned int master_index,
+                     ec_pal_device_type_t device_type,
+                     const char *interface);
+
+/**
+ * Initialize a master with custom device implementation
+ * @param master_index Master index
+ * @param device_ops Custom device operations
+ * @param interface Network interface name
+ * @return 0 on success, < 0 on error
+ */
+int ecrt_master_init_custom(unsigned int master_index,
+                            const ec_pal_device_ops_t *device_ops,
+                            const char *interface);
+
+/**
+ * Cleanup a master instance (replaces kernel module unloading)
+ * @param master_index Master index
+ */
+void ecrt_master_cleanup(unsigned int master_index);
+
+/**
+ * Run idle processing (call periodically when not in OPERATION)
+ * Equivalent to kernel's ec_master_idle_thread work
+ * @param master_index Master index
+ */
+void ecrt_master_idle(unsigned int master_index);
+```
+
+---
+
 ## Shared Codebase Architecture
 
 The key innovation is a **Platform Abstraction Layer (PAL)** that allows the same source files to compile for both kernel and userspace:
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                 Shared Core (master/*.c - 90%+)                 │
-│  FSMs, Protocol, CoE/FoE/SoE, DC, PDO mapping, datagrams, etc.  │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                 Shared Core (master/*.c - 90%+)                         │
+│  FSMs, Protocol, CoE/FoE/SoE/EoE, DC, PDO mapping, datagrams, etc.      │
+└─────────────────────────────────────────────────────────────────────────┘
                               │
                               ▼
-┌─────────────────────────────────────────────────────────────────┐
-│              Platform Abstraction Layer (master/pal.h)          │
-│  ec_pal_malloc(), ec_pal_free(), ec_pal_spinlock_*(),           │
-│  ec_pal_time_now(), ec_pal_sleep_ns(), ec_pal_log()             │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│              Platform Abstraction Layer (master/pal.h)                  │
+│  ec_pal_malloc(), ec_pal_free(), ec_pal_spinlock_*(),                   │
+│  ec_pal_time_now(), ec_pal_sleep_ns(), ec_pal_log()                     │
+└─────────────────────────────────────────────────────────────────────────┘
                               │
          ┌────────────────────┴────────────────────┐
          ▼                                         ▼
@@ -170,10 +277,113 @@ The key innovation is a **Platform Abstraction Layer (PAL)** that allows the sam
 └─────────────────────┘                 └─────────────────────┘
 ```
 
+### Device Abstraction Layer
+
+The kernel uses `ec_device_t` with direct calls to `ec_device_*` functions. For userspace, we need a callback-based approach to support multiple transport implementations:
+
+```c
+/* master/pal_device.h */
+
+/**
+ * Built-in device/transport types
+ */
+typedef enum {
+    EC_PAL_DEVICE_RAW = 0,   /**< AF_PACKET raw socket - always available */
+    EC_PAL_DEVICE_XDP,       /**< AF_XDP - if compiled with --enable-xdp */
+    EC_PAL_DEVICE_CCAT,      /**< CCAT userspace - if compiled with --enable-ccat-user */
+} ec_pal_device_type_t;
+
+/**
+ * Device operations interface
+ * - Kernel: wraps existing ec_device_* functions
+ * - Userspace: implemented by transport backends
+ */
+typedef struct ec_pal_device_ops {
+    const char *name;
+    int (*init)(void *dev_priv, ec_master_t *master);
+    void (*clear)(void *dev_priv);
+    int (*open)(void *dev_priv, const char *interface);
+    void (*close)(void *dev_priv);
+    uint8_t *(*tx_data)(void *dev_priv);
+    void (*send)(void *dev_priv, size_t size);
+    void (*poll)(void *dev_priv);
+    int (*get_link)(void *dev_priv);
+    void (*get_mac)(void *dev_priv, uint8_t mac[6]);
+    void (*clear_stats)(void *dev_priv);
+    void (*update_stats)(void *dev_priv);
+} ec_pal_device_ops_t;
+
+#ifdef __KERNEL__
+
+/* Kernel: static wrapper around existing ec_device functions */
+extern const ec_pal_device_ops_t ec_pal_device_ops_kernel;
+
+/* Kernel always uses the built-in implementation */
+#define ec_pal_device_init(master)  ec_device_init(&(master)->devices[EC_DEVICE_MAIN], master)
+
+#else /* Userspace */
+
+/**
+ * Register a built-in transport by type
+ * @param master Master instance
+ * @param type Transport type (must be compiled in)
+ * @param interface Network interface name (e.g., "eth0")
+ * @return 0 on success, -1 if type not available
+ */
+int ec_pal_device_register(ec_master_t *master,
+                           ec_pal_device_type_t type,
+                           const char *interface);
+
+/**
+ * Register a custom/external transport
+ * @param master Master instance
+ * @param ops User-provided operations struct
+ * @param interface Network interface name
+ * @return 0 on success
+ */
+int ec_pal_device_register_custom(ec_master_t *master,
+                                  const ec_pal_device_ops_t *ops,
+                                  const char *interface);
+
+/**
+ * Check if built-in transport type is available (compiled in)
+ * @param type Transport type to check
+ * @return 1 if available, 0 otherwise
+ */
+int ec_pal_device_type_available(ec_pal_device_type_t type);
+
+#endif /* __KERNEL__ */
+```
+
+### Usage Examples
+
+```c
+/* Simple: use built-in raw socket */
+ec_pal_device_register(master, EC_PAL_DEVICE_RAW, "eth0");
+
+/* Performance: use XDP if available, fallback to raw */
+if (ec_pal_device_type_available(EC_PAL_DEVICE_XDP)) {
+    ec_pal_device_register(master, EC_PAL_DEVICE_XDP, "eth0");
+} else {
+    ec_pal_device_register(master, EC_PAL_DEVICE_RAW, "eth0");
+}
+
+/* Custom: user's own transport implementation */
+static const ec_pal_device_ops_t my_custom_ops = {
+    .name = "my_transport",
+    .init = my_init,
+    .open = my_open,
+    .send = my_send,
+    .poll = my_poll,
+    /* ... */
+};
+ec_pal_device_register_custom(master, &my_custom_ops, "eth0");
+```
+
 ### Benefits of Shared Codebase
 
 - **Single source of truth**: Bug fixes and features apply to both builds
-- **No new build dependencies**: Uses existing autotools infrastructure  
+- **No new build dependencies**: Uses existing autotools infrastructure
 - **Lower maintenance burden**: No code divergence between kernel/userspace
 - **Easier upstream acceptance**: Minimal diff, existing patterns
 - **Gradual migration**: Can migrate file-by-file while keeping kernel working
@@ -188,21 +398,26 @@ ethercat/
 ├── configure.ac              # Modified: add --enable-userspace
 ├── Makefile.am               # Modified: add userspace subdirectory
 ├── master/
-│   ├── Kbuild                # Unchanged: kernel build
+│   ├── Kbuild.in             # Modified: add pal_kernel.o
 │   ├── Makefile.am           # Modified: add userspace library rules
 │   ├── pal.h                 # NEW: Platform Abstraction Layer interface
-│   ├── pal_kernel.c          # NEW: Kernel PAL implementation (trivial)
+│   ├── pal_device.h          # NEW: Device abstraction interface
+│   ├── pal_kernel.c          # NEW: Kernel PAL implementation
 │   ├── pal_user.c            # NEW: Userspace PAL implementation
 │   ├── master.c              # Modified: add PAL calls
 │   ├── slave.c               # Modified: add PAL calls
 │   ├── domain.c              # Modified: add PAL calls
 │   ├── datagram.c            # Modified: add PAL calls
-│   ├── fsm_master.c          # Modified: add PAL calls
-│   └── ...                   # Other existing files
+│   ├── device.c              # Kernel-only (not shared)
+│   ├── cdev.c                # Kernel-only (not shared)
+│   ├── module.c              # Kernel-only (not shared)
+│   ├── ioctl.c               # Kernel-only (not shared)
+│   └── ...                   # Other existing files (shared)
 ├── userspace/                # NEW: Userspace-specific code
 │   ├── Makefile.am
+│   ├── ecrt_user.c           # NEW: Userspace API implementation
+│   ├── control_socket.c      # NEW: Unix socket for CLI
 │   ├── transport/
-│   │   ├── ec_transport.h    # Transport abstraction interface
 │   │   ├── transport.c       # Transport registry and lifecycle
 │   │   ├── transport_raw.c   # AF_PACKET (SOCK_RAW) implementation
 │   │   └── transport_xdp.c   # AF_XDP implementation (optional)
@@ -221,6 +436,35 @@ ethercat/
     └── ecrt.h                # Unchanged: public API
 ```
 
+### Files NOT Shared (Kernel-Only)
+
+These files contain kernel-specific code that cannot be abstracted:
+
+| File | Reason |
+|------|--------|
+| `device.c` | Uses `sk_buff`, `net_device`, kernel networking stack |
+| `cdev.c` | Character device implementation |
+| `module.c` | Kernel module init/exit, sysfs |
+| `ioctl.c` | Kernel ioctl handling |
+| `debug.c` | Kernel debug network interface |
+| `rtdm*.c` | RTDM (Xenomai/RTAI) specific |
+
+### Files Shared (With PAL Modifications)
+
+These files will use PAL macros and compile for both kernel and userspace:
+
+| File | PAL Usage |
+|------|-----------|
+| `master.c` | Memory, locks, time, logging |
+| `slave.c` | Memory, lists, logging |
+| `domain.c` | Memory, locks |
+| `datagram.c` | Memory, time |
+| `fsm_*.c` | Time, logging |
+| `mailbox.c` | Memory |
+| `coe_emerg_ring.c` | Memory, locks |
+| `pdo*.c`, `sdo*.c` | Memory, lists |
+| `ethernet.c` (EoE) | Memory, uses TUN/TAP in userspace |
+
 ---
 
 ## Build System
@@ -232,7 +476,7 @@ ethercat/
 ./configure
 make modules
 
-# Userspace library only  
+# Userspace library only
 ./configure --enable-userspace --disable-kernel
 make
 
@@ -270,66 +514,122 @@ if test "x$enable_userspace" = "xyes"; then
     dnl Check for pthread
     AC_CHECK_LIB([pthread], [pthread_create], [],
         AC_MSG_ERROR([pthread required for userspace build]))
-    
+
     dnl Check for libbpf (optional, for XDP transport)
     AC_ARG_ENABLE([xdp],
         AS_HELP_STRING([--enable-xdp], [Build AF_XDP transport (requires libbpf)]),
         [enable_xdp=$enableval],
         [enable_xdp=no])
-    
-    if test "x\$enable_xdp" = "xyes"; then
-        PKG_CHECK_MODULES([LIBBPF], [libbpf >= 0.8], [have_libbpf=yes], 
+
+    if test "x$enable_xdp" = "xyes"; then
+        PKG_CHECK_MODULES([LIBBPF], [libbpf >= 0.8], [have_libbpf=yes],
             AC_MSG_ERROR([libbpf >= 0.8 required for XDP transport]))
     fi
     AM_CONDITIONAL([HAVE_LIBBPF], [test "x$enable_xdp" = "xyes"])
-    
+
     dnl Add userspace subdirectory
     AC_CONFIG_FILES([userspace/Makefile])
     AC_CONFIG_FILES([tests/Makefile])
 fi
 ```
 
+### master/Kbuild.in Additions
+
+```makefile
+# Add PAL kernel implementation to kernel module
+ec_master-objs := \
+	cdev.o \
+	coe_emerg_ring.o \
+	datagram.o \
+	datagram_pair.o \
+	device.o \
+	domain.o \
+	flag.o \
+	fmmu_config.o \
+	foe_request.o \
+	fsm_change.o \
+	fsm_coe.o \
+	fsm_foe.o \
+	fsm_master.o \
+	fsm_pdo.o \
+	fsm_pdo_entry.o \
+	fsm_sii.o \
+	fsm_slave.o \
+	fsm_slave_config.o \
+	fsm_slave_scan.o \
+	fsm_soe.o \
+	ioctl.o \
+	mailbox.o \
+	master.o \
+	module.o \
+	pal_kernel.o \
+	pdo.o \
+	pdo_entry.o \
+	pdo_list.o \
+	reg_request.o \
+	sdo.o \
+	sdo_entry.o \
+	sdo_request.o \
+	slave.o \
+	slave_config.o \
+	soe_errors.o \
+	soe_request.o \
+	sync.o \
+	sync_config.o \
+	voe_handler.o
+```
+
 ### master/Makefile.am Additions
 
 ```makefile
 # Existing kernel module handling via Kbuild stays unchanged
-EXTRA_DIST = Kbuild \$(wildcard *.h)
+EXTRA_DIST = Kbuild.in $(wildcard *.h)
 
 if BUILD_USERSPACE
 # Userspace convenience library (linked into final libethercat.so)
 noinst_LTLIBRARIES = libecmaster.la
 
+# Shared source files (compiled for userspace)
 libecmaster_la_SOURCES = \
-    master.c \
-    slave.c \
-    domain.c \
+    coe_emerg_ring.c \
     datagram.c \
     datagram_pair.c \
-    mailbox.c \
-    coe_emerg_ring.c \
-    sync.c \
-    sync_config.c \
+    domain.c \
+    flag.c \
     fmmu_config.c \
-    pdo.c \
-    pdo_entry.c \
-    pdo_list.c \
-    sdo.c \
-    sdo_entry.c \
-    sdo_request.c \
-    reg_request.c \
-    voe_handler.c \
-    fsm_master.c \
-    fsm_slave.c \
-    fsm_slave_config.c \
-    fsm_slave_scan.c \
+    foe_request.c \
+    fsm_change.c \
     fsm_coe.c \
     fsm_foe.c \
-    fsm_soe.c \
+    fsm_master.c \
     fsm_pdo.c \
     fsm_pdo_entry.c \
     fsm_sii.c \
-    fsm_change.c \
+    fsm_slave.c \
+    fsm_slave_config.c \
+    fsm_slave_scan.c \
+    fsm_soe.c \
+    mailbox.c \
+    master.c \
+    pdo.c \
+    pdo_entry.c \
+    pdo_list.c \
+    reg_request.c \
+    sdo.c \
+    sdo_entry.c \
+    sdo_request.c \
+    slave.c \
+    slave_config.c \
+    soe_errors.c \
+    soe_request.c \
+    sync.c \
+    sync_config.c \
+    voe_handler.c \
     pal_user.c
+
+if ENABLE_EOE
+libecmaster_la_SOURCES += eoe_request.c ethernet.c fsm_eoe.c
+endif
 
 libecmaster_la_CFLAGS = \
     -DECRT_USERSPACE \
@@ -348,11 +648,14 @@ if BUILD_USERSPACE
 lib_LTLIBRARIES = libethercat.la
 
 libethercat_la_SOURCES = \
+    ecrt_user.c \
+    control_socket.c \
     transport/transport.c \
     transport/transport_raw.c
 
 libethercat_la_CFLAGS = \
     -I$(top_srcdir)/include \
+    -I$(srcdir)/include \
     -I$(srcdir)/transport \
     $(PTHREAD_CFLAGS)
 
@@ -369,9 +672,11 @@ libethercat_la_CFLAGS += $(LIBBPF_CFLAGS) -DHAVE_XDP
 libethercat_la_LIBADD += $(LIBBPF_LIBS)
 endif
 
-# Install transport header
+# Install headers
 userspacetransportincludedir = $(includedir)/ethercat
-userspacetransportinclude_HEADERS = transport/ec_transport.h
+userspacetransportinclude_HEADERS = \
+    include/ecrt_user.h \
+    transport/ec_transport.h
 
 endif
 ```
@@ -628,11 +933,21 @@ typedef atomic_int ec_pal_atomic_t;
 #endif
 
 /****************************************************************************
- * List (keep existing list.h - it's already portable)
+ * List Macros
+ *
+ * The existing list.h macros (INIT_LIST_HEAD, list_add, list_del, etc.)
+ * are pure C macros and work in both kernel and userspace.
+ *
+ * NOTE: Verify that container_of works correctly in userspace.
+ * If issues arise, include a portable list.h implementation.
  ****************************************************************************/
 
-/* The existing list.h macros (INIT_LIST_HEAD, list_add, list_del, etc.)
- * are pure C macros and work in both kernel and userspace unchanged. */
+#ifdef __KERNEL__
+#include <linux/list.h>
+#else
+/* Include portable list implementation or verify kernel list.h works */
+#include "list.h"  /* Portable userspace version if needed */
+#endif
 
 #endif /* EC_PAL_H */
 ```
@@ -661,165 +976,106 @@ ec_pal_spin_lock(&lock);
 
 ---
 
-## Transport Abstraction Layer
-
-The transport layer is **userspace-only** (kernel uses existing `ec_device` infrastructure).
-
-### userspace/transport/ec_transport.h
-
-```c
-/**
- * @file ec_transport.h
- * @brief Transport abstraction for userspace EtherCAT
- *
- * This interface abstracts the underlying network I/O mechanism.
- * Implementations include:
- * - SOCK_RAW (AF_PACKET) - Simple, works everywhere
- * - AF_XDP - High performance, requires libbpf
- * - CCAT - Beckhoff hardware acceleration
- */
-
-#ifndef EC_TRANSPORT_H
-#define EC_TRANSPORT_H
-
-#include <stdint.h>
-#include <stddef.h>
-
-#define ETH_ALEN 6
-#define ETH_P_ETHERCAT 0x88A4
-
-typedef struct ec_transport ec_transport_t;
-
-typedef struct ec_transport_ops {
-    const char *name;
-    int (*init)(ec_transport_t *transport);
-    void (*cleanup)(ec_transport_t *transport);
-    int (*open)(ec_transport_t *transport, const char *interface);
-    void (*close)(ec_transport_t *transport);
-    int (*send)(ec_transport_t *transport, const void *data, size_t len);
-    int (*receive)(ec_transport_t *transport, void *buf, size_t maxlen, int timeout_us);
-    int (*get_link)(ec_transport_t *transport);
-    int (*get_mac)(ec_transport_t *transport, uint8_t mac[ETH_ALEN]);
-    int (*get_mtu)(ec_transport_t *transport);
-} ec_transport_ops_t;
-
-struct ec_transport {
-    const ec_transport_ops_t *ops;
-    void *priv;
-    char interface[16];
-    uint8_t mac[ETH_ALEN];
-    int mtu;
-    struct {
-        uint64_t tx_packets;
-        uint64_t tx_bytes;
-        uint64_t tx_errors;
-        uint64_t rx_packets;
-        uint64_t rx_bytes;
-        uint64_t rx_errors;
-    } stats;
-};
-
-/* Transport registry */
-extern const ec_transport_ops_t ec_transport_raw;
-#ifdef HAVE_XDP
-extern const ec_transport_ops_t ec_transport_xdp;
-#endif
-
-/* Helper functions */
-ec_transport_t *ec_transport_create(const ec_transport_ops_t *ops);
-void ec_transport_destroy(ec_transport_t *transport);
-const ec_transport_ops_t *ec_transport_get_by_name(const char *name);
-int ec_transport_list(const char **names, int max);
-
-#endif /* EC_TRANSPORT_H */
-```
-
----
-
 ## Implementation Phases
 
-### Phase 1: PAL Foundation (2 weeks)
+### Phase 1: PAL Foundation (2-3 weeks)
 
-| Task | Description | Duration | Status |
-|------|-------------|----------|--------|
-| 1.1 | Create `master/pal.h` interface | 2 days | ⏳ Pending |
-| 1.2 | Create `master/pal_kernel.c` (trivial - just includes) | 1 day | ⏳ Pending |
-| 1.3 | Create `master/pal_user.c` | 2 days | ⏳ Pending |
-| 1.4 | Update `configure.ac` with `--enable-userspace` | 1 day | ⏳ Pending |
-| 1.5 | Update `master/Makefile.am` with userspace rules | 1 day | ⏳ Pending |
-| 1.6 | Create `userspace/` directory and `Makefile.am` | 1 day | ⏳ Pending |
-| 1.7 | Verify kernel build unchanged (`make modules`) | 1 day | ⏳ Pending |
-| 1.8 | Create basic test infrastructure (`tests/`) | 2 days | ⏳ Pending |
+| Task | Description | Est. |
+|------|-------------|------|
+| 1.1 | Create `master/pal.h` interface | 2d |
+| 1.2 | Create `master/pal_device.h` interface | 1d |
+| 1.3 | Create `master/pal_kernel.c` (wraps existing APIs) | 2d |
+| 1.4 | Create `master/pal_user.c` | 3d |
+| 1.5 | Update `configure.ac` with `--enable-userspace` | 1d |
+| 1.6 | Update `master/Makefile.am` with userspace rules | 1d |
+| 1.7 | Update `master/Kbuild.in` to include `pal_kernel.o` | 0.5d |
+| 1.8 | Create `userspace/` directory structure | 1d |
+| 1.9 | Verify kernel build unchanged (`make modules`) | 1d |
+| 1.10 | Create basic test infrastructure (`tests/`) | 2d |
 
 **Milestone:** `./configure --enable-userspace && make` builds (empty library skeleton)
 
-### Phase 2: Transport Layer (2 weeks)
+**Kernel Verification Checklist:**
+- [ ] `make modules` compiles without warnings
+- [ ] `insmod ec_master.ko` loads successfully
+- [ ] Existing kernel-mode applications work unchanged
 
-| Task | Description | Duration | Status |
-|------|-------------|----------|--------|
-| 2.1 | Create `userspace/transport/ec_transport.h` | 1 day | ⏳ Pending |
-| 2.2 | Implement `transport.c` (registry, lifecycle) | 1 day | ⏳ Pending |
-| 2.3 | Implement `transport_raw.c` (AF_PACKET) | 3 days | ⏳ Pending |
-| 2.4 | Optional: `transport_xdp.c` skeleton | 2 days | ⏳ Pending |
-| 2.5 | Transport unit tests | 2 days | ⏳ Pending |
-| 2.6 | Integration test (send/receive EtherCAT frames) | 2 days | ⏳ Pending |
+### Phase 2: Transport Layer (2-3 weeks)
+
+| Task | Description | Est. |
+|------|-------------|------|
+| 2.1 | Create `userspace/transport/ec_transport.h` | 1d |
+| 2.2 | Implement `transport.c` (registry, lifecycle) | 1d |
+| 2.3 | Implement `transport_raw.c` (AF_PACKET) | 3d |
+| 2.4 | Optional: `transport_xdp.c` skeleton | 2d |
+| 2.5 | Transport unit tests | 2d |
+| 2.6 | Integration test (send/receive EtherCAT frames) | 2d |
 
 **Milestone:** Can send/receive raw EtherCAT frames in userspace
 
-### Phase 3: Core Migration (4 weeks)
+### Phase 3: Core Migration (4-5 weeks)
 
 Incrementally refactor `master/*.c` to use PAL macros:
 
-| Task | Description | Duration | Status |
-|------|-------------|----------|--------|
-| 3.1 | `datagram.c` - add PAL calls | 2 days | ⏳ Pending |
-| 3.2 | `domain.c` - add PAL calls | 2 days | ⏳ Pending |
-| 3.3 | `slave.c` - add PAL calls | 3 days | ⏳ Pending |
-| 3.4 | `master.c` - add PAL calls | 4 days | ⏳ Pending |
-| 3.5 | FSM files (`fsm_*.c`) - add PAL calls | 5 days | ⏳ Pending |
-| 3.6 | Remaining files | 4 days | ⏳ Pending |
+| Task | Description | Est. |
+|------|-------------|------|
+| 3.1 | `datagram.c` - add PAL calls | 2d |
+| 3.2 | `domain.c` - add PAL calls | 2d |
+| 3.3 | `slave.c` - add PAL calls | 3d |
+| 3.4 | `master.c` - add PAL calls | 4d |
+| 3.5 | FSM files (`fsm_*.c`) - add PAL calls | 5d |
+| 3.6 | Remaining shared files | 4d |
 
-**For each file:**
+**For each file migration:**
 1. Add `#include "pal.h"`
 2. Replace kernel APIs with `ec_pal_*` macros
-3. Verify `make modules` still works (kernel build)
-4. Verify `make` (userspace) compiles
-5. Add/run unit tests
+3. **Verify kernel module compiles**: `make modules`
+4. **Verify kernel module loads**: `insmod ec_master.ko`
+5. **Run kernel functional test** (if available)
+6. Verify userspace compiles: `make` (with --enable-userspace)
+7. Add/run userspace unit tests
 
 **Milestone:** `libethercat.so` contains full master core
 
-### Phase 4: Control Interface (2 weeks)
+### Phase 4: Userspace API & Control Interface (2-3 weeks)
 
-| Task | Description | Duration | Status |
-|------|-------------|----------|--------|
-| 4.1 | Design control socket protocol | 1 day | ⏳ Pending |
-| 4.2 | Implement socket server | 2 days | ⏳ Pending |
-| 4.3 | Modify `ethercat` CLI for socket support | 2 days | ⏳ Pending |
-| 4.4 | Create `ethercat_master` demonstrator | 1 day | ⏳ Pending |
-| 4.5 | Test CLI commands via socket | 2 days | ⏳ Pending |
+| Task | Description | Est. |
+|------|-------------|------|
+| 4.1 | Implement `userspace/ecrt_user.c` | 3d |
+| 4.2 | Design Unix socket protocol for CLI | 1d |
+| 4.3 | Implement `userspace/control_socket.c` | 3d |
+| 4.4 | Modify `ethercat` CLI for socket support | 2d |
+| 4.5 | Create basic example application | 1d |
+| 4.6 | Test CLI commands via socket | 2d |
 
 **Milestone:** `ethercat` CLI works with userspace master
 
-### Phase 5: Advanced Features (3 weeks)
+### Phase 5: Advanced Features (3-4 weeks)
 
-| Task | Description | Duration | Status |
-|------|-------------|----------|--------|
-| 5.1 | Port Distributed Clocks | 3 days | ⏳ Pending |
-| 5.2 | Implement DC with `SO_TIMESTAMPING` | 2 days | ⏳ Pending |
-| 5.3 | Port EoE using TUN/TAP | 2 days | ⏳ Pending |
-| 5.4 | Port FoE, SoE, VoE | 3 days | ⏳ Pending |
-| 5.5 | Integration testing | 3 days | ⏳ Pending |
+| Task | Description | Est. |
+|------|-------------|------|
+| 5.1 | Port Distributed Clocks | 3d |
+| 5.2 | Implement DC with `SO_TIMESTAMPING` | 2d |
+| 5.3 | Port EoE using TUN/TAP | 3d |
+| 5.4 | Port FoE, SoE, VoE | 3d |
+| 5.5 | Integration testing | 3d |
+
+**EoE Implementation Notes:**
+- Kernel uses `net_device` for EoE virtual interface
+- Userspace will use TUN/TAP device (`/dev/net/tun`)
+- Core EoE protocol logic in `ethernet.c` is shared
+- Only the network interface creation differs
 
 **Milestone:** Feature parity with kernel version
 
-### Phase 6: XDP Transport & Polish (2 weeks)
+### Phase 6: XDP Transport & Polish (2-3 weeks)
 
-| Task | Description | Duration | Status |
-|------|-------------|----------|--------|
-| 6.1 | Implement AF_XDP transport | 4 days | ⏳ Pending |
-| 6.2 | Performance testing & optimization | 3 days | ⏳ Pending |
-| 6.3 | Documentation | 2 days | ⏳ Pending |
-| 6.4 | Final testing & release prep | 2 days | ⏳ Pending |
+| Task | Description | Est. |
+|------|-------------|------|
+| 6.1 | Implement AF_XDP transport | 4d |
+| 6.2 | Performance testing & optimization | 3d |
+| 6.3 | Documentation | 2d |
+| 6.4 | Final testing & release prep | 2d |
 
 **Milestone:** Production-ready release
 
@@ -838,6 +1094,19 @@ tests/
 │   ├── test_list.c         # List operations (shared code)
 │   └── test_fsm.c          # State machine logic
 ```
+
+### Kernel Regression Tests
+
+**After every PAL modification, verify:**
+
+| Test | Command | Expected |
+|------|---------|----------|
+| Kernel compile | `make modules` | No errors or warnings |
+| Module load | `insmod ec_master.ko` | Success, no kernel errors |
+| Module unload | `rmmod ec_master` | Clean unload |
+| Bus scan | Existing test app | Slaves detected |
+| PDO exchange | Existing test app | Data exchange works |
+| DC sync | Existing test app | Synchronization achieved |
 
 ### Integration Tests
 
@@ -868,9 +1137,10 @@ make check
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
-| Breaking kernel build | Medium | High | Test both builds after every change |
-| PAL overhead affects performance | Low | Medium | PAL is mostly macros, near-zero overhead |
+| Breaking kernel build | Medium | High | Test both builds after every change; kernel regression tests |
+| PAL overhead affects performance | Medium | Medium | PAL is mostly macros; profile hot paths; consider VDSO for time |
 | Timing differences in userspace | Medium | Medium | Extensive timing tests, configurable timeouts |
+| list.h portability issues | Low | Low | Verify `container_of` works; include portable version if needed |
 | Upstream rejection | Low | High | Minimal diff, use existing patterns, optional feature |
 
 ---
@@ -898,4 +1168,4 @@ The shared codebase approach with PAL enables userspace EtherCAT operation while
 4. **Providing an easy migration path** - one file at a time
 5. **Maximizing upstream acceptance** - minimal, incremental changes
 
-Estimated effort: **14-16 weeks** for one experienced developer.
+Estimated effort: **~15-20 weeks** for one experienced developer.
