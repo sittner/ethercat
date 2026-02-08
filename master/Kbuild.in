@@ -53,6 +53,7 @@ ec_master-objs := \
 	mailbox.o \
 	master.o \
 	module.o \
+	pal_kernel.o \
 	pdo.o \
 	pdo_entry.o \
 	pdo_list.o \
