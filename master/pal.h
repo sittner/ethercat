@@ -48,7 +48,7 @@
 #include <linux/delay.h>
 #include <linux/jiffies.h>
 #include <linux/time.h>
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 
 /* Memory allocation */
 #define ec_pal_malloc(size)         kmalloc(size, GFP_KERNEL)
@@ -96,10 +96,10 @@
 #define ec_pal_atomic_t             atomic_t
 #define ec_pal_atomic_read(v)       atomic_read(v)
 #define ec_pal_atomic_set(v, i)     atomic_set(v, i)
-#define ec_pal_atomic_inc(v)        atomic_inc(v)
-#define ec_pal_atomic_dec(v)        atomic_dec(v)
-#define ec_pal_atomic_add(i, v)     atomic_add(i, v)
-#define ec_pal_atomic_sub(i, v)     atomic_sub(i, v)
+#define ec_pal_atomic_inc(v)        do { atomic_inc(v); } while (0)
+#define ec_pal_atomic_dec(v)        do { atomic_dec(v); } while (0)
+#define ec_pal_atomic_add(i, v)     do { atomic_add(i, v); } while (0)
+#define ec_pal_atomic_sub(i, v)     do { atomic_sub(i, v); } while (0)
 #define ec_pal_atomic_inc_return(v) atomic_inc_return(v)
 #define ec_pal_atomic_dec_return(v) atomic_dec_return(v)
 #define ec_pal_atomic_dec_and_test(v) atomic_dec_and_test(v)
@@ -169,10 +169,10 @@ typedef struct {
 
 #define ec_pal_atomic_read(v)       ((v)->counter)
 #define ec_pal_atomic_set(v, i)     ((v)->counter = (i))
-#define ec_pal_atomic_inc(v)        __sync_add_and_fetch(&(v)->counter, 1)
-#define ec_pal_atomic_dec(v)        __sync_sub_and_fetch(&(v)->counter, 1)
-#define ec_pal_atomic_add(i, v)     __sync_add_and_fetch(&(v)->counter, i)
-#define ec_pal_atomic_sub(i, v)     __sync_sub_and_fetch(&(v)->counter, i)
+#define ec_pal_atomic_inc(v)        do { (void)__sync_add_and_fetch(&(v)->counter, 1); } while (0)
+#define ec_pal_atomic_dec(v)        do { (void)__sync_sub_and_fetch(&(v)->counter, 1); } while (0)
+#define ec_pal_atomic_add(i, v)     do { (void)__sync_add_and_fetch(&(v)->counter, i); } while (0)
+#define ec_pal_atomic_sub(i, v)     do { (void)__sync_sub_and_fetch(&(v)->counter, i); } while (0)
 #define ec_pal_atomic_inc_return(v) __sync_add_and_fetch(&(v)->counter, 1)
 #define ec_pal_atomic_dec_return(v) __sync_sub_and_fetch(&(v)->counter, 1)
 #define ec_pal_atomic_dec_and_test(v) (__sync_sub_and_fetch(&(v)->counter, 1) == 0)
