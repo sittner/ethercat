@@ -142,9 +142,9 @@ void ec_master_init_static(void)
         (cycles_t) EC_SDO_INJECTION_TIMEOUT /* us */ * (cpu_khz / 1000);
 #else
     // one jiffy may always elapse between time measurement
-    timeout_jiffies = max(EC_IO_TIMEOUT * HZ / 1000000, 1);
+    timeout_jiffies = max(EC_IO_TIMEOUT * ec_pal_hz() / 1000000, 1);
     ext_injection_timeout_jiffies =
-        max(EC_SDO_INJECTION_TIMEOUT * HZ / 1000000, 1);
+        max(EC_SDO_INJECTION_TIMEOUT * ec_pal_hz() / 1000000, 1);
 #endif
 }
 
@@ -234,7 +234,7 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     }
 
     // send interval in IDLE phase
-    ec_master_set_send_interval(master, 1000000 / HZ);
+    ec_master_set_send_interval(master, 1000000 / ec_pal_hz());
 
     master->fsm_slave = NULL;
     INIT_LIST_HEAD(&master->fsm_exec_list);
@@ -449,7 +449,7 @@ void ec_master_clear_eoe_handlers(
     list_for_each_entry_safe(eoe, next, &master->eoe_handlers, list) {
         list_del(&eoe->list);
         ec_eoe_clear(eoe);
-        kfree(eoe);
+        ec_pal_free(eoe);
     }
 }
 #endif
@@ -468,7 +468,7 @@ void ec_master_clear_slave_configs(ec_master_t *master)
     list_for_each_entry_safe(sc, next, &master->configs, list) {
         list_del(&sc->list);
         ec_slave_config_clear(sc);
-        kfree(sc);
+        ec_pal_free(sc);
     }
 }
 
@@ -507,7 +507,7 @@ void ec_master_clear_slaves(ec_master_t *master)
     }
 
     if (master->slaves) {
-        kfree(master->slaves);
+        ec_pal_free(master->slaves);
         master->slaves = NULL;
     }
 
@@ -525,7 +525,7 @@ void ec_master_clear_domains(ec_master_t *master)
     list_for_each_entry_safe(domain, next, &master->domains, list) {
         list_del(&domain->list);
         ec_domain_clear(domain);
-        kfree(domain);
+        ec_pal_free(domain);
     }
 }
 
@@ -631,7 +631,7 @@ void ec_master_thread_stop(
     }
 
     // wait for FSM datagram
-    sleep_jiffies = max(HZ / 100, 1); // 10 ms, at least 1 jiffy
+    sleep_jiffies = max(ec_pal_hz() / 100, 1); // 10 ms, at least 1 jiffy
     schedule_timeout(sleep_jiffies);
 }
 
@@ -856,7 +856,7 @@ void ec_master_inject_external_datagrams(
             if (cycles_now - datagram->cycles_sent
                     > ext_injection_timeout_cycles)
 #else
-            if (jiffies - datagram->jiffies_sent
+            if (ec_pal_jiffies() - datagram->jiffies_sent
                     > ext_injection_timeout_jiffies)
 #endif
             {
@@ -873,7 +873,7 @@ void ec_master_inject_external_datagrams(
                     / cpu_khz;
 #else
                 time_us = (unsigned int)
-                    ((jiffies - datagram->jiffies_sent) * 1000000 / HZ);
+                    ((ec_pal_jiffies() - datagram->jiffies_sent) * 1000000 / ec_pal_hz());
 #endif
                 EC_MASTER_ERR(master, "Timeout %u us: Injecting"
                         " external datagram %s size=%zu,"
@@ -1092,7 +1092,7 @@ void ec_master_send_datagrams(
 #ifdef EC_HAVE_CYCLES
         cycles_sent = get_cycles();
 #endif
-        jiffies_sent = jiffies;
+        jiffies_sent = ec_pal_jiffies();
 
         // set datagram states and sending timestamps
         list_for_each_entry_safe(datagram, next, &sent_datagrams, sent) {
@@ -1266,8 +1266,8 @@ void ec_master_receive_datagrams(
  */
 void ec_master_output_stats(ec_master_t *master /**< EtherCAT master */)
 {
-    if (unlikely(jiffies - master->stats.output_jiffies >= HZ)) {
-        master->stats.output_jiffies = jiffies;
+    if (unlikely(ec_pal_jiffies() - master->stats.output_jiffies >= ec_pal_hz())) {
+        master->stats.output_jiffies = ec_pal_jiffies();
 
         if (master->stats.timeouts) {
             EC_MASTER_WARN(master, "%u datagram%s TIMED OUT!\n",
@@ -1336,7 +1336,7 @@ void ec_master_update_device_stats(
     unsigned int i, dev_idx;
 
     // frame statistics
-    if (likely(jiffies - s->jiffies < HZ)) {
+    if (likely(ec_pal_jiffies() - s->jiffies < ec_pal_hz())) {
         return;
     }
 
@@ -1371,7 +1371,7 @@ void ec_master_update_device_stats(
         ec_device_update_stats(&master->devices[dev_idx]);
     }
 
-    s->jiffies = jiffies;
+    s->jiffies = ec_pal_jiffies();
 }
 
 /****************************************************************************/
@@ -1529,7 +1529,7 @@ static int ec_master_idle_thread(void *priv_data)
 #endif
 
     // send interval in IDLE phase
-    ec_master_set_send_interval(master, 1000000 / HZ);
+    ec_master_set_send_interval(master, 1000000 / ec_pal_hz());
 
     EC_MASTER_DBG(master, 1, "Idle thread running with send interval = %u us,"
             " max data size=%zu\n", master->send_interval,
@@ -2251,7 +2251,7 @@ ec_domain_t *ecrt_master_create_domain_err(
             master);
 
     if (!(domain =
-                (ec_domain_t *) kmalloc(sizeof(ec_domain_t), GFP_KERNEL))) {
+                (ec_domain_t *) ec_pal_malloc(sizeof(ec_domain_t)))) {
         EC_MASTER_ERR(master, "Error allocating domain memory!\n");
         return ERR_PTR(-ENOMEM);
     }
@@ -2516,7 +2516,7 @@ int ecrt_master_receive(ec_master_t *master)
 #else
                 time_us = (unsigned int)
                     ((master->devices[EC_DEVICE_MAIN].jiffies_poll -
-                            datagram->jiffies_sent) * 1000000 / HZ);
+                            datagram->jiffies_sent) * 1000000 / ec_pal_hz());
 #endif
                 EC_MASTER_DBG(master, 0, "TIMED OUT datagram %p,"
                         " index %02X waited %u us.\n",
@@ -2584,8 +2584,7 @@ ec_slave_config_t *ecrt_master_slave_config_err(ec_master_t *master,
                 " 0x%08X/0x%08X.\n",
                 alias, position, vendor_id, product_code);
 
-        if (!(sc = (ec_slave_config_t *) kmalloc(sizeof(ec_slave_config_t),
-                        GFP_KERNEL))) {
+        if (!(sc = (ec_slave_config_t *) ec_pal_malloc(sizeof(ec_slave_config_t)))) {
             EC_MASTER_ERR(master, "Failed to allocate memory"
                     " for slave configuration.\n");
             return ERR_PTR(-ENOMEM);
