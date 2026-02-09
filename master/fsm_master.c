@@ -361,7 +361,7 @@ void ec_fsm_master_state_broadcast(
             // clear all slaves and scan the bus
             fsm->rescan_required = 0;
             fsm->idle = 0;
-            fsm->scan_jiffies = jiffies;
+            fsm->scan_jiffies = ec_pal_jiffies();
 
 #ifdef EC_EOE
             ec_master_eoe_stop(master);
@@ -634,7 +634,7 @@ void ec_fsm_master_action_idle(
                 || slave->sdo_dictionary_fetched
                 || slave->current_state == EC_SLAVE_STATE_INIT
                 || slave->current_state == EC_SLAVE_STATE_UNKNOWN
-                || jiffies - slave->jiffies_preop < EC_WAIT_SDO_DICT * HZ
+                || ec_pal_jiffies() - slave->jiffies_preop < EC_WAIT_SDO_DICT * ec_pal_hz()
                 ) continue;
 
         EC_SLAVE_DBG(slave, 1, "Fetching SDO dictionary.\n");
@@ -983,7 +983,7 @@ void ec_fsm_master_state_scan_slave(
     }
 
     EC_MASTER_INFO(master, "Bus scanning completed in %lu ms.\n",
-            (jiffies - fsm->scan_jiffies) * 1000 / HZ);
+            (ec_pal_jiffies() - fsm->scan_jiffies) * 1000 / ec_pal_hz());
 
     master->scan_busy = 0;
     master->scan_index = master->slave_count;
@@ -1108,7 +1108,7 @@ u64 ec_fsm_master_dc_offset32(
     old_offset32 = (u32) old_offset;
 
     // correct read system time by elapsed time since read operation
-    correction = jiffies_since_read * 1000 / HZ * 1000000;
+    correction = jiffies_since_read * 1000 / ec_pal_hz() * 1000000;
     system_time32 += correction;
     time_diff = (u32) slave->master->app_time - system_time32;
 
@@ -1147,7 +1147,7 @@ u64 ec_fsm_master_dc_offset64(
     s64 time_diff;
 
     // correct read system time by elapsed time since read operation
-    correction = (u64) (jiffies_since_read * 1000 / HZ) * 1000000;
+    correction = (u64) (jiffies_since_read * 1000 / ec_pal_hz()) * 1000000;
     system_time += correction;
     time_diff = fsm->slave->master->app_time - system_time;
 
@@ -1203,7 +1203,7 @@ void ec_fsm_master_state_dc_read_offset(
 
     system_time = EC_READ_U64(datagram->data);     // 0x0910
     old_offset = EC_READ_U64(datagram->data + 16); // 0x0920
-    jiffies_since_read = jiffies - datagram->jiffies_sent;
+    jiffies_since_read = ec_pal_jiffies() - datagram->jiffies_sent;
 
     if (slave->base_dc_range == EC_DC_32) {
         new_offset = ec_fsm_master_dc_offset32(fsm,
