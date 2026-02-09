@@ -83,7 +83,6 @@
 /* Time functions */
 #define ec_pal_time_now()           ktime_get_real_seconds()
 #define ec_pal_msleep(ms)           msleep(ms)
-#define ec_pal_usleep(us)           usleep_range(us, us + 1)
 #define ec_pal_get_jiffies()        jiffies
 
 /* Logging */
@@ -119,6 +118,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <stdio.h>
+#include <stdatomic.h>
 
 /* Memory allocation */
 #define ec_pal_malloc(size)         malloc(size)
@@ -153,8 +153,12 @@
 /* Time functions */
 #define ec_pal_time_now()           time(NULL)
 #define ec_pal_msleep(ms)           usleep((ms) * 1000)
-#define ec_pal_usleep(us)           usleep(us)
-#define ec_pal_get_jiffies()        (clock() / (CLOCKS_PER_SEC / 1000))
+
+static inline unsigned long ec_pal_get_jiffies(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (unsigned long)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+}
 
 /* Logging */
 #define EC_PAL_INFO(fmt, args...)   printf("EtherCAT: " fmt, ##args)
@@ -162,20 +166,20 @@
 #define EC_PAL_WARN(fmt, args...)   fprintf(stderr, "EtherCAT WARNING: " fmt, ##args)
 #define EC_PAL_DBG(fmt, args...)    printf("EtherCAT DEBUG: " fmt, ##args)
 
-/* Atomics (using compiler intrinsics) */
+/* Atomics (using C11 stdatomic) */
 typedef struct {
-    volatile int counter;
+    atomic_int counter;
 } ec_pal_atomic_t;
 
-#define ec_pal_atomic_read(v)       ((v)->counter)
-#define ec_pal_atomic_set(v, i)     ((v)->counter = (i))
-#define ec_pal_atomic_inc(v)        do { (void)__sync_add_and_fetch(&(v)->counter, 1); } while (0)
-#define ec_pal_atomic_dec(v)        do { (void)__sync_sub_and_fetch(&(v)->counter, 1); } while (0)
-#define ec_pal_atomic_add(i, v)     do { (void)__sync_add_and_fetch(&(v)->counter, i); } while (0)
-#define ec_pal_atomic_sub(i, v)     do { (void)__sync_sub_and_fetch(&(v)->counter, i); } while (0)
-#define ec_pal_atomic_inc_return(v) __sync_add_and_fetch(&(v)->counter, 1)
-#define ec_pal_atomic_dec_return(v) __sync_sub_and_fetch(&(v)->counter, 1)
-#define ec_pal_atomic_dec_and_test(v) (__sync_sub_and_fetch(&(v)->counter, 1) == 0)
+#define ec_pal_atomic_read(v)       atomic_load(&(v)->counter)
+#define ec_pal_atomic_set(v, i)     atomic_store(&(v)->counter, i)
+#define ec_pal_atomic_inc(v)        do { (void)atomic_fetch_add(&(v)->counter, 1); } while (0)
+#define ec_pal_atomic_dec(v)        do { (void)atomic_fetch_sub(&(v)->counter, 1); } while (0)
+#define ec_pal_atomic_add(i, v)     do { (void)atomic_fetch_add(&(v)->counter, i); } while (0)
+#define ec_pal_atomic_sub(i, v)     do { (void)atomic_fetch_sub(&(v)->counter, i); } while (0)
+#define ec_pal_atomic_inc_return(v) (atomic_fetch_add(&(v)->counter, 1) + 1)
+#define ec_pal_atomic_dec_return(v) (atomic_fetch_sub(&(v)->counter, 1) - 1)
+#define ec_pal_atomic_dec_and_test(v) (atomic_fetch_sub(&(v)->counter, 1) == 1)
 
 /****************************************************************************/
 
