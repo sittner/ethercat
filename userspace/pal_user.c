@@ -237,8 +237,7 @@ int ecrt_master_init(
     /* Store state */
     state->transport = transport;
     state->device_type = device_type;
-    strncpy(state->interface, interface, sizeof(state->interface) - 1);
-    state->interface[sizeof(state->interface) - 1] = '\0';
+    snprintf(state->interface, sizeof(state->interface), "%s", interface);
     state->initialized = 1;
 
     fprintf(stderr, "Master %u initialized on %s (transport: %s)\n",
