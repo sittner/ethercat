@@ -30,7 +30,7 @@
 
 #include "slave_config.h"
 
-#include "globals.h"
+#include "globals_int.h"
 #include "master.h"
 #include "voe_handler.h"
 #include "flag.h"

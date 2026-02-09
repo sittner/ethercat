@@ -38,7 +38,7 @@
 #include <linux/hrtimer.h>
 #include <linux/kthread.h>
 
-#include "globals.h"
+#include "globals_int.h"
 #include "slave.h"
 #include "slave_config.h"
 #include "device.h"

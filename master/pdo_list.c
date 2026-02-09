@@ -36,7 +36,7 @@
 #define IS_ERR(ptr) ((unsigned long)(ptr) > (unsigned long)(-1000))
 #endif
 
-#include "globals.h"
+#include "globals_int.h"
 #include "pal.h"
 #include "pdo.h"
 #ifdef __KERNEL__

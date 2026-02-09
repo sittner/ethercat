@@ -29,7 +29,7 @@
 #include <linux/module.h>
 #include <linux/delay.h>
 
-#include "globals.h"
+#include "globals_int.h"
 #include "datagram.h"
 #include "master.h"
 #include "slave_config.h"

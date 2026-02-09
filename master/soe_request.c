@@ -30,6 +30,7 @@
 #include <linux/slab.h>
 
 #include "soe_request.h"
+#include "globals_int.h"
 
 /****************************************************************************/
 

@@ -50,6 +50,7 @@ noinst_HEADERS = \
 	fsm_slave_scan.c fsm_slave_scan.h \
 	fsm_soe.c fsm_soe.h \
 	globals.h \
+	globals_int.h \
 	ioctl.c ioctl.h \
 	mailbox.c mailbox.h \
 	master.c master.h \
