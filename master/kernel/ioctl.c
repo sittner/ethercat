@@ -28,10 +28,10 @@
 #include <linux/module.h>
 #include <linux/vmalloc.h>
 
-#include "master.h"
-#include "slave_config.h"
-#include "voe_handler.h"
-#include "ethernet.h"
+#include "../master.h"
+#include "../slave_config.h"
+#include "../voe_handler.h"
+#include "../ethernet.h"
 #include "ioctl.h"
 
 /** Set to 1 to enable ioctl() latency tracing.

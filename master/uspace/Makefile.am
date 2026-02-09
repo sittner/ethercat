@@ -35,7 +35,7 @@ MASTER_SOURCES = \
 
 # Userspace-specific sources
 USERSPACE_SOURCES = \
-	pal_user.c
+	pal.c
 
 # Transport layer sources
 TRANSPORT_SOURCES = \
@@ -49,9 +49,9 @@ libethercat_master_la_SOURCES = \
 
 # Include paths for master headers
 libethercat_master_la_CFLAGS = \
+	-I$(srcdir) \
 	-I$(top_srcdir)/master \
 	-I$(top_srcdir)/include \
-	-I$(top_builddir)/userspace/include \
 	-I$(srcdir)/transport \
 	-Wall
 
@@ -64,7 +64,7 @@ libethercat_master_la_LDFLAGS = \
 
 # Headers to install
 include_HEADERS = \
-	include/ecrt_user.h
+	ecrt_user.h
 
 # Additional files to distribute
 EXTRA_DIST = \
@@ -77,7 +77,7 @@ ethercat_master_SOURCES = ethercat_master.c
 
 ethercat_master_CFLAGS = \
 	-I$(top_srcdir)/include \
-	-I$(srcdir)/include \
+	-I$(srcdir) \
 	-Wall
 
 ethercat_master_LDADD = \

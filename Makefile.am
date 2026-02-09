@@ -56,10 +56,6 @@ if ENABLE_TTY
 SUBDIRS += tty
 endif
 
-if ENABLE_USERSPACE
-SUBDIRS += userspace
-endif
-
 noinst_HEADERS = \
 	globals.h
 

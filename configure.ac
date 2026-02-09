@@ -1475,11 +1475,11 @@ AC_CONFIG_FILES([
         lib/libethercat.pc
         master/Kbuild
         master/Makefile
+        master/uspace/Makefile
         script/Makefile
         tool/Makefile
         tty/Kbuild
         tty/Makefile
-        userspace/Makefile
 ])
 
 AC_OUTPUT

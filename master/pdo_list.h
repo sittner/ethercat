@@ -32,7 +32,7 @@
 #ifdef __KERNEL__
 #include <linux/list.h>
 #else
-#include "../userspace/list.h"
+#include "uspace/list.h"
 #endif
 
 #include "globals.h"

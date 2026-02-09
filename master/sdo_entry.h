@@ -33,7 +33,7 @@
 #include <linux/list.h>
 #include <linux/kobject.h>
 #else
-#include "../userspace/list.h"
+#include "uspace/list.h"
 #endif
 
 #include "globals.h"

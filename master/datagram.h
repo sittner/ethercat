@@ -34,7 +34,7 @@
 #include <linux/time.h>
 #include <linux/timex.h>
 #else
-#include "../userspace/list.h"
+#include "uspace/list.h"
 #include <sys/time.h>
 #endif
 
