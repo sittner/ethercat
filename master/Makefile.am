@@ -51,6 +51,7 @@ noinst_HEADERS = \
 	coe_emerg_ring.c coe_emerg_ring.h \
 	datagram.c datagram.h \
 	datagram_pair.c datagram_pair.h \
+	device.h \
 	domain.c domain.h \
 	doxygen.c \
 	eoe_request.c eoe_request.h \

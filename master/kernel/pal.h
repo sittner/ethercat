@@ -191,8 +191,8 @@ typedef struct {
 
 /** Kernel-specific master fields. */
 typedef struct {
-    /* Platform-specific master fields will be added later */
-    int placeholder;  /* Temporary placeholder */
+    /* TODO: Platform-specific master fields will be added in future phases */
+    int placeholder;  /* Temporary placeholder to avoid empty struct */
 } ec_master_plat_t;
 
 /****************************************************************************/
