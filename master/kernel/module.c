@@ -498,7 +498,7 @@ ec_device_t *ecdev_offer(
 
         for (dev_idx = EC_DEVICE_MAIN;
                 dev_idx < ec_master_num_devices(master); dev_idx++) {
-            if (!master->devices[dev_idx].dev
+            if (!master->devices[dev_idx].plat.dev
                 && (ec_mac_equal(master->macs[dev_idx], net_dev->dev_addr)
                     || ec_mac_is_broadcast(master->macs[dev_idx]))) {
 
@@ -578,7 +578,7 @@ ec_master_t *ecrt_request_master_err(
 
     for (; dev_idx < ec_master_num_devices(master); dev_idx++) {
         ec_device_t *device = &master->devices[dev_idx];
-        if (!try_module_get(device->module)) {
+        if (!try_module_get(device->plat.module)) {
             up(&master->device_sem);
             EC_MASTER_ERR(master, "Device module is unloading!\n");
             errptr = ERR_PTR(-ENODEV);
@@ -600,7 +600,7 @@ ec_master_t *ecrt_request_master_err(
  out_module_put:
     for (; dev_idx > 0; dev_idx--) {
         ec_device_t *device = &master->devices[dev_idx - 1];
-        module_put(device->module);
+        module_put(device->plat.module);
     }
  out_release:
     master->reserved = 0;
@@ -634,7 +634,7 @@ void ecrt_release_master(ec_master_t *master)
 
     for (dev_idx = EC_DEVICE_MAIN; dev_idx < ec_master_num_devices(master);
             dev_idx++) {
-        module_put(master->devices[dev_idx].module);
+        module_put(master->devices[dev_idx].plat.module);
     }
 
     master->reserved = 0;

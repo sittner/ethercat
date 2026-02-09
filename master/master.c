@@ -1144,7 +1144,7 @@ void ec_master_receive_datagrams(
         if (master->debug_level || FORCE_OUTPUT_CORRUPTED) {
             EC_MASTER_DBG(master, 0, "Corrupted frame received"
                     " on %s (size %zu < %u byte):\n",
-                    device->dev->name, size, EC_FRAME_HEADER_SIZE);
+                    device->plat.dev->name, size, EC_FRAME_HEADER_SIZE);
             ec_print_data(frame_data, size);
         }
         master->stats.corrupted++;
@@ -1164,7 +1164,7 @@ void ec_master_receive_datagrams(
         if (master->debug_level || FORCE_OUTPUT_CORRUPTED) {
             EC_MASTER_DBG(master, 0, "Corrupted frame received"
                     " on %s (invalid frame size %zu for "
-                    "received size %zu):\n", device->dev->name,
+                    "received size %zu):\n", device->plat.dev->name,
                     frame_size, size);
             ec_print_data(frame_data, size);
         }
@@ -1189,7 +1189,7 @@ void ec_master_receive_datagrams(
             if (master->debug_level || FORCE_OUTPUT_CORRUPTED) {
                 EC_MASTER_DBG(master, 0, "Corrupted frame received"
                         " on %s (invalid data size %zu):\n",
-                        device->dev->name, data_size);
+                        device->plat.dev->name, data_size);
                 ec_print_data(frame_data, size);
             }
             master->stats.corrupted++;
@@ -1250,10 +1250,10 @@ void ec_master_receive_datagrams(
         datagram->state = EC_DATAGRAM_RECEIVED;
 #ifdef EC_HAVE_CYCLES
         datagram->cycles_received =
-            master->devices[EC_DEVICE_MAIN].cycles_poll;
+            master->devices[EC_DEVICE_MAIN].plat.cycles_poll;
 #endif
         datagram->jiffies_received =
-            master->devices[EC_DEVICE_MAIN].jiffies_poll;
+            master->devices[EC_DEVICE_MAIN].plat.jiffies_poll;
         list_del_init(&datagram->queue);
     }
 }
@@ -2458,7 +2458,7 @@ int ecrt_master_send(ec_master_t *master)
                 }
             }
 
-            if (!master->devices[dev_idx].dev) {
+            if (!master->devices[dev_idx].plat.dev) {
                 continue;
             }
 
@@ -2495,10 +2495,10 @@ int ecrt_master_receive(ec_master_t *master)
         if (datagram->state != EC_DATAGRAM_SENT) continue;
 
 #ifdef EC_HAVE_CYCLES
-        if (master->devices[EC_DEVICE_MAIN].cycles_poll -
+        if (master->devices[EC_DEVICE_MAIN].plat.cycles_poll -
                 datagram->cycles_sent > timeout_cycles) {
 #else
-        if (master->devices[EC_DEVICE_MAIN].jiffies_poll -
+        if (master->devices[EC_DEVICE_MAIN].plat.jiffies_poll -
                 datagram->jiffies_sent > timeout_jiffies) {
 #endif
             list_del_init(&datagram->queue);
@@ -2512,11 +2512,11 @@ int ecrt_master_receive(ec_master_t *master)
                 unsigned int time_us;
 #ifdef EC_HAVE_CYCLES
                 time_us = (unsigned int)
-                    (master->devices[EC_DEVICE_MAIN].cycles_poll -
+                    (master->devices[EC_DEVICE_MAIN].plat.cycles_poll -
                         datagram->cycles_sent) * 1000 / cpu_khz;
 #else
                 time_us = (unsigned int)
-                    ((master->devices[EC_DEVICE_MAIN].jiffies_poll -
+                    ((master->devices[EC_DEVICE_MAIN].plat.jiffies_poll -
                             datagram->jiffies_sent) * 1000000 / ec_pal_hz());
 #endif
                 EC_MASTER_DBG(master, 0, "TIMED OUT datagram %p,"

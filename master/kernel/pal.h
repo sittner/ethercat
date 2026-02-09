@@ -130,4 +130,71 @@
 
 /****************************************************************************/
 
+#include <linux/netdevice.h>
+#include <linux/skbuff.h>
+
+/* Forward declarations */
+struct ec_master;
+
+/* Device poll function type from ecdev.h */
+typedef void (*ec_pollfunc_t)(struct net_device *);
+
+/****************************************************************************/
+/* Platform-specific types */
+/****************************************************************************/
+
+#define EC_TX_RING_SIZE 2
+
+#ifdef EC_DEBUG_IF
+/* Forward declaration */
+typedef struct ec_debug ec_debug_t;
+#endif
+
+#ifdef EC_DEBUG_RING
+#define EC_DEBUG_RING_SIZE 10
+
+typedef enum {
+    TX, RX
+} ec_debug_frame_dir_t;
+
+typedef struct {
+    ec_debug_frame_dir_t dir;
+    struct timeval t;
+    uint8_t data[1518];  /* EC_MAX_DATA_SIZE equivalent */
+    unsigned int data_size;
+} ec_debug_frame_t;
+#endif
+
+/** Kernel-specific device fields. */
+typedef struct {
+    struct net_device *dev;              /**< Pointer to the network device. */
+    ec_pollfunc_t poll;                  /**< Pointer to poll function. */
+    struct module *module;               /**< Pointer to device's module. */
+    struct sk_buff *tx_skb[EC_TX_RING_SIZE]; /**< Transmit socket buffers. */
+    unsigned int tx_ring_index;          /**< Index into tx_skb ring. */
+#ifdef EC_HAVE_CYCLES
+    cycles_t cycles_poll;                /**< Cycles of last poll. */
+#endif
+#ifdef EC_DEBUG_RING
+    struct timeval timeval_poll;         /**< Timeval of last poll. */
+#endif
+    unsigned long jiffies_poll;          /**< Jiffies of last poll. */
+#ifdef EC_DEBUG_IF
+    ec_debug_t dbg;                      /**< Debug device. */
+#endif
+#ifdef EC_DEBUG_RING
+    ec_debug_frame_t debug_frames[EC_DEBUG_RING_SIZE];
+    unsigned int debug_frame_index;
+    unsigned int debug_frame_count;
+#endif
+} ec_device_plat_t;
+
+/** Kernel-specific master fields. */
+typedef struct {
+    /* Platform-specific master fields will be added later */
+    int placeholder;  /* Temporary placeholder */
+} ec_master_plat_t;
+
+/****************************************************************************/
+
 #endif /* __EC_PAL_KERNEL_H__ */

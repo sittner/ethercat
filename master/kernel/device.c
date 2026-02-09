@@ -35,6 +35,10 @@
 #include "../master.h"
 #include "../globals_int.h"
 
+#ifdef EC_DEBUG_IF
+#include "debug.h"
+#endif
+
 #ifdef EC_DEBUG_RING
 #define timersub(a, b, result) \
     do { \
@@ -72,29 +76,29 @@ int ec_device_init(
 #endif
 
     device->master = master;
-    device->dev = NULL;
-    device->poll = NULL;
-    device->module = NULL;
+    device->plat.dev = NULL;
+    device->plat.poll = NULL;
+    device->plat.module = NULL;
     device->open = 0;
     device->link_state = 0;
     for (i = 0; i < EC_TX_RING_SIZE; i++) {
-        device->tx_skb[i] = NULL;
+        device->plat.tx_skb[i] = NULL;
     }
-    device->tx_ring_index = 0;
+    device->plat.tx_ring_index = 0;
 #ifdef EC_HAVE_CYCLES
-    device->cycles_poll = 0;
+    device->plat.cycles_poll = 0;
 #endif
 #ifdef EC_DEBUG_RING
-    device->timeval_poll.tv_sec = 0;
-    device->timeval_poll.tv_usec = 0;
+    device->plat.timeval_poll.tv_sec = 0;
+    device->plat.timeval_poll.tv_usec = 0;
 #endif
-    device->jiffies_poll = 0;
+    device->plat.jiffies_poll = 0;
 
     ec_device_clear_stats(device);
 
 #ifdef EC_DEBUG_RING
     for (i = 0; i < EC_DEBUG_RING_SIZE; i++) {
-        ec_debug_frame_t *df = &device->debug_frames[i];
+        ec_debug_frame_t *df = &device->plat.debug_frames[i];
         df->dir = TX;
         df->t.tv_sec = 0;
         df->t.tv_usec = 0;
@@ -103,8 +107,8 @@ int ec_device_init(
     }
 #endif
 #ifdef EC_DEBUG_RING
-    device->debug_frame_index = 0;
-    device->debug_frame_count = 0;
+    device->plat.debug_frame_index = 0;
+    device->plat.debug_frame_count = 0;
 #endif
 
 #ifdef EC_DEBUG_IF
@@ -117,7 +121,7 @@ int ec_device_init(
 
     sprintf(ifname, "ecdbg%c%u", mb, master->index);
 
-    ret = ec_debug_init(&device->dbg, device, ifname);
+    ret = ec_debug_init(&device->plat.dbg, device, ifname);
     if (ret < 0) {
         EC_MASTER_ERR(master, "Failed to init debug device!\n");
         goto out_return;
@@ -125,15 +129,15 @@ int ec_device_init(
 #endif
 
     for (i = 0; i < EC_TX_RING_SIZE; i++) {
-        if (!(device->tx_skb[i] = dev_alloc_skb(ETH_FRAME_LEN + EXTRA_HEADROOM))) {
+        if (!(device->plat.tx_skb[i] = dev_alloc_skb(ETH_FRAME_LEN + EXTRA_HEADROOM))) {
             EC_MASTER_ERR(master, "Error allocating device socket buffer!\n");
             ret = -ENOMEM;
             goto out_tx_ring;
         }
 
         // add Ethernet-II-header
-        skb_reserve(device->tx_skb[i], ETH_HLEN + EXTRA_HEADROOM);
-        eth = (struct ethhdr *) skb_push(device->tx_skb[i], ETH_HLEN);
+        skb_reserve(device->plat.tx_skb[i], ETH_HLEN + EXTRA_HEADROOM);
+        eth = (struct ethhdr *) skb_push(device->plat.tx_skb[i], ETH_HLEN);
         eth->h_proto = htons(0x88A4);
         memset(eth->h_dest, 0xFF, ETH_ALEN);
     }
@@ -142,12 +146,12 @@ int ec_device_init(
 
 out_tx_ring:
     for (i = 0; i < EC_TX_RING_SIZE; i++) {
-        if (device->tx_skb[i]) {
-            dev_kfree_skb(device->tx_skb[i]);
+        if (device->plat.tx_skb[i]) {
+            dev_kfree_skb(device->plat.tx_skb[i]);
         }
     }
 #ifdef EC_DEBUG_IF
-    ec_debug_clear(&device->dbg);
+    ec_debug_clear(&device->plat.dbg);
 out_return:
 #endif
     return ret;
@@ -167,9 +171,9 @@ void ec_device_clear(
         ec_device_close(device);
     }
     for (i = 0; i < EC_TX_RING_SIZE; i++)
-        dev_kfree_skb(device->tx_skb[i]);
+        dev_kfree_skb(device->plat.tx_skb[i]);
 #ifdef EC_DEBUG_IF
-    ec_debug_clear(&device->dbg);
+    ec_debug_clear(&device->plat.dbg);
 #endif
 }
 
@@ -189,18 +193,18 @@ void ec_device_attach(
 
     ec_device_detach(device); // resets fields
 
-    device->dev = net_dev;
-    device->poll = poll;
-    device->module = module;
+    device->plat.dev = net_dev;
+    device->plat.poll = poll;
+    device->plat.module = module;
 
     for (i = 0; i < EC_TX_RING_SIZE; i++) {
-        device->tx_skb[i]->dev = net_dev;
-        eth = (struct ethhdr *) (device->tx_skb[i]->data);
+        device->plat.tx_skb[i]->dev = net_dev;
+        eth = (struct ethhdr *) (device->plat.tx_skb[i]->data);
         memcpy(eth->h_source, net_dev->dev_addr, ETH_ALEN);
     }
 
 #ifdef EC_DEBUG_IF
-    ec_debug_register(&device->dbg, net_dev);
+    ec_debug_register(&device->plat.dbg, net_dev);
 #endif
 }
 
@@ -215,19 +219,19 @@ void ec_device_detach(
     unsigned int i;
 
 #ifdef EC_DEBUG_IF
-    ec_debug_unregister(&device->dbg);
+    ec_debug_unregister(&device->plat.dbg);
 #endif
 
-    device->dev = NULL;
-    device->poll = NULL;
-    device->module = NULL;
+    device->plat.dev = NULL;
+    device->plat.poll = NULL;
+    device->plat.module = NULL;
     device->open = 0;
     device->link_state = 0; // down
 
     ec_device_clear_stats(device);
 
     for (i = 0; i < EC_TX_RING_SIZE; i++) {
-        device->tx_skb[i]->dev = NULL;
+        device->plat.tx_skb[i]->dev = NULL;
     }
 }
 
@@ -243,7 +247,7 @@ int ec_device_open(
 {
     int ret;
 
-    if (!device->dev) {
+    if (!device->plat.dev) {
         EC_MASTER_ERR(device->master, "No net_device to open!\n");
         return -ENODEV;
     }
@@ -257,7 +261,7 @@ int ec_device_open(
 
     ec_device_clear_stats(device);
 
-    ret = device->dev->netdev_ops->ndo_open(device->dev);
+    ret = device->plat.dev->netdev_ops->ndo_open(device->plat.dev);
     if (!ret)
         device->open = 1;
 
@@ -276,7 +280,7 @@ int ec_device_close(
 {
     int ret;
 
-    if (!device->dev) {
+    if (!device->plat.dev) {
         EC_MASTER_ERR(device->master, "No device to close!\n");
         return -ENODEV;
     }
@@ -286,7 +290,7 @@ int ec_device_close(
         return 0;
     }
 
-    ret = device->dev->netdev_ops->ndo_stop(device->dev);
+    ret = device->plat.dev->netdev_ops->ndo_stop(device->plat.dev);
     if (!ret)
         device->open = 0;
 
@@ -306,9 +310,9 @@ uint8_t *ec_device_tx_data(
     /* cycle through socket buffers, because otherwise there is a race
      * condition, if multiple frames are sent and the DMA is not scheduled in
      * between. */
-    device->tx_ring_index++;
-    device->tx_ring_index %= EC_TX_RING_SIZE;
-    return device->tx_skb[device->tx_ring_index]->data + ETH_HLEN;
+    device->plat.tx_ring_index++;
+    device->plat.tx_ring_index %= EC_TX_RING_SIZE;
+    return device->plat.tx_skb[device->plat.tx_ring_index]->data + ETH_HLEN;
 }
 
 /****************************************************************************/
@@ -323,7 +327,7 @@ void ec_device_send(
         size_t size /**< number of bytes to send */
         )
 {
-    struct sk_buff *skb = device->tx_skb[device->tx_ring_index];
+    struct sk_buff *skb = device->plat.tx_skb[device->plat.tx_ring_index];
 
     // set the right length for the data
     skb->len = ETH_HLEN + size;
@@ -334,7 +338,7 @@ void ec_device_send(
     }
 
     // start sending
-    if (device->dev->netdev_ops->ndo_start_xmit(skb, device->dev) ==
+    if (device->plat.dev->netdev_ops->ndo_start_xmit(skb, device->plat.dev) ==
             NETDEV_TX_OK)
     {
         device->tx_count++;
@@ -342,7 +346,7 @@ void ec_device_send(
         device->tx_bytes += ETH_HLEN + size;
         device->master->device_stats.tx_bytes += ETH_HLEN + size;
 #ifdef EC_DEBUG_IF
-        ec_debug_send(&device->dbg, skb->data, ETH_HLEN + size);
+        ec_debug_send(&device->plat.dbg, skb->data, ETH_HLEN + size);
 #endif
 #ifdef EC_DEBUG_RING
         ec_device_debug_ring_append(
@@ -394,22 +398,22 @@ void ec_device_debug_ring_append(
         size_t size /**< data size */
         )
 {
-    ec_debug_frame_t *df = &device->debug_frames[device->debug_frame_index];
+    ec_debug_frame_t *df = &device->plat.debug_frames[device->plat.debug_frame_index];
 
     df->dir = dir;
     if (dir == TX) {
         do_gettimeofday(&df->t);
     }
     else {
-        df->t = device->timeval_poll;
+        df->t = device->plat.timeval_poll;
     }
     memcpy(df->data, data, size);
     df->data_size = size;
 
-    device->debug_frame_index++;
-    device->debug_frame_index %= EC_DEBUG_RING_SIZE;
-    if (unlikely(device->debug_frame_count < EC_DEBUG_RING_SIZE))
-        device->debug_frame_count++;
+    device->plat.debug_frame_index++;
+    device->plat.debug_frame_index %= EC_DEBUG_RING_SIZE;
+    if (unlikely(device->plat.debug_frame_count < EC_DEBUG_RING_SIZE))
+        device->plat.debug_frame_count++;
 }
 
 /****************************************************************************/
@@ -426,22 +430,22 @@ void ec_device_debug_ring_print(
     struct timeval t0, diff;
 
     // calculate index of the newest frame in the ring to get its time
-    ring_index = (device->debug_frame_index + EC_DEBUG_RING_SIZE - 1)
+    ring_index = (device->plat.debug_frame_index + EC_DEBUG_RING_SIZE - 1)
         % EC_DEBUG_RING_SIZE;
-    t0 = device->debug_frames[ring_index].t;
+    t0 = device->plat.debug_frames[ring_index].t;
 
     EC_MASTER_DBG(device->master, 1, "Debug ring %u:\n", ring_index);
 
     // calculate index of the oldest frame in the ring
-    ring_index = (device->debug_frame_index + EC_DEBUG_RING_SIZE
-            - device->debug_frame_count) % EC_DEBUG_RING_SIZE;
+    ring_index = (device->plat.debug_frame_index + EC_DEBUG_RING_SIZE
+            - device->plat.debug_frame_count) % EC_DEBUG_RING_SIZE;
 
-    for (i = 0; i < device->debug_frame_count; i++) {
-        df = &device->debug_frames[ring_index];
+    for (i = 0; i < device->plat.debug_frame_count; i++) {
+        df = &device->plat.debug_frames[ring_index];
         timersub(&t0, &df->t, &diff);
 
         EC_MASTER_DBG(device->master, 1, "Frame %u, dt=%u.%06u s, %s:\n",
-                i + 1 - device->debug_frame_count,
+                i + 1 - device->plat.debug_frame_count,
                 (unsigned int) diff.tv_sec,
                 (unsigned int) diff.tv_usec,
                 (df->dir == TX) ? "TX" : "RX");
@@ -466,13 +470,13 @@ void ec_device_poll(
         )
 {
 #ifdef EC_HAVE_CYCLES
-    device->cycles_poll = get_cycles();
+    device->plat.cycles_poll = get_cycles();
 #endif
-    device->jiffies_poll = jiffies;
+    device->plat.jiffies_poll = jiffies;
 #ifdef EC_DEBUG_RING
-    do_gettimeofday(&device->timeval_poll);
+    do_gettimeofday(&device->plat.timeval_poll);
 #endif
-    device->poll(device->dev);
+    device->plat.poll(device->plat.dev);
 }
 
 /****************************************************************************/
@@ -531,7 +535,7 @@ void ecdev_withdraw(ec_device_t *device /**< EtherCAT device */)
     ec_master_t *master = device->master;
     char dev_str[20], mac_str[20];
 
-    ec_mac_print(device->dev->dev_addr, mac_str);
+    ec_mac_print(device->plat.dev->dev_addr, mac_str);
 
     if (device == &master->devices[EC_DEVICE_MAIN]) {
         sprintf(dev_str, "main");
@@ -645,7 +649,7 @@ void ecdev_receive(
     }
 
 #ifdef EC_DEBUG_IF
-    ec_debug_send(&device->dbg, data, size);
+    ec_debug_send(&device->plat.dbg, data, size);
 #endif
 #ifdef EC_DEBUG_RING
     ec_device_debug_ring_append(device, RX, ec_data, ec_size);
@@ -677,7 +681,7 @@ void ecdev_set_link(
         device->link_state = state;
         EC_MASTER_INFO(device->master,
                 "Link state of %s changed to %s.\n",
-                device->dev->name, (state ? "UP" : "DOWN"));
+                device->plat.dev->name, (state ? "UP" : "DOWN"));
     }
 }
 
