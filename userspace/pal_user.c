@@ -37,6 +37,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdint.h>
 
 #include "include/ecrt_user.h"
 

@@ -30,6 +30,7 @@
 #include <linux/module.h>
 #else
 #include <errno.h>
+#include <string.h>
 #define ERR_PTR(err) ((void*)(long)(err))
 #define PTR_ERR(ptr) ((long)(ptr))
 #define IS_ERR(ptr) ((unsigned long)(ptr) > (unsigned long)(-1000))
@@ -38,8 +39,10 @@
 #include "globals.h"
 #include "pal.h"
 #include "pdo.h"
+#ifdef __KERNEL__
 #include "slave_config.h"
 #include "master.h"
+#endif
 
 #include "pdo_list.h"
 

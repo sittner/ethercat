@@ -27,7 +27,10 @@
 /****************************************************************************/
 
 #include "pal.h"
+#include "globals.h"
+#ifdef __KERNEL__
 #include "master.h"
+#endif
 
 #include "sdo.h"
 

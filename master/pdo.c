@@ -33,6 +33,7 @@
 #include <linux/err.h>
 #else
 #include <errno.h>
+#include <string.h>
 #define ERR_PTR(err) ((void*)(long)(err))
 #define PTR_ERR(ptr) ((long)(ptr))
 #define IS_ERR(ptr) ((unsigned long)(ptr) > (unsigned long)(-1000))
