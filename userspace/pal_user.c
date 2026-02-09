@@ -66,12 +66,7 @@ void ec_pal_free_func(void *ptr)
  * Time Functions
  *****************************************************************************/
 
-uint64_t ec_pal_jiffies(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;  /* milliseconds */
-}
+/* ec_pal_get_jiffies() is implemented as a static inline in pal.h */
 
 void ec_pal_usleep(unsigned long usecs)
 {
