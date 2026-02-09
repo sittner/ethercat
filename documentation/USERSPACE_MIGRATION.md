@@ -240,6 +240,324 @@ void ecrt_master_cleanup(unsigned int master_index);
  * @param master_index Master index
  */
 void ecrt_master_idle(unsigned int master_index);
+
+/**
+ * Process control interface requests (for CLI tool)
+ * Should be called periodically, or run in a separate thread
+ * @param master_index Master index
+ * @return 0 on success, < 0 on error
+ */
+int ecrt_master_process_control(unsigned int master_index);
+```
+
+### ethercat_master Demonstrator
+
+For users who want a kernel-module-like experience without writing custom applications, the `ethercat_master` tool provides a standalone daemon that runs the EtherCAT master in idle mode.
+
+**Purpose:**
+
+- Equivalent to `modprobe ec_master` without loading kernel modules
+- Allows CLI tool (`ethercat`) to communicate with the master
+- Useful for testing, configuration, and slave commissioning
+- Can run as a system service for always-available master
+
+**Implementation (`tools/ethercat_master.c`):**
+
+```c
+// tools/ethercat_master.c
+
+/**
+ * EtherCAT Master Demonstrator
+ * 
+ * Standalone executable that runs an EtherCAT master in idle mode,
+ * allowing the ethercat CLI tool to communicate with it.
+ * 
+ * This is equivalent to loading the kernel module without any
+ * application using it.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <signal.h>
+#include <unistd.h>
+#include <getopt.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+#include <ecrt.h>
+#include <ecrt_user.h>
+
+static volatile int running = 1;
+static const char *pidfile_path = NULL;
+
+static struct option long_options[] = {
+    {"interface",  required_argument, 0, 'i'},
+    {"transport",  required_argument, 0, 't'},
+    {"socket",     required_argument, 0, 's'},
+    {"daemon",     no_argument,       0, 'd'},
+    {"pidfile",    required_argument, 0, 'p'},
+    {"verbose",    no_argument,       0, 'v'},
+    {"help",       no_argument,       0, 'h'},
+    {0, 0, 0, 0}
+};
+
+static void signal_handler(int sig)
+{
+    running = 0;
+}
+
+static void print_usage(const char *prog)
+{
+    printf("Usage: %s [options]\n", prog);
+    printf("\nOptions:\n");
+    printf("  -i, --interface IFACE   Network interface (required, e.g., eth0)\n");
+    printf("  -t, --transport TYPE    Transport type: raw, xdp (default: raw)\n");
+    printf("  -s, --socket PATH       Control socket path (default: /var/run/ethercat/master0)\n");
+    printf("  -d, --daemon            Run as daemon\n");
+    printf("  -p, --pidfile PATH      PID file path (default: /var/run/ethercat_master.pid)\n");
+    printf("  -v, --verbose           Verbose output\n");
+    printf("  -h, --help              Show this help\n");
+    printf("\nExample:\n");
+    printf("  %s -i eth0 -t raw\n", prog);
+    printf("  %s -i eth0 -t xdp -d -p /var/run/ethercat.pid\n", prog);
+}
+
+static int daemonize(void)
+{
+    pid_t pid, sid;
+    
+    /* Fork off the parent process */
+    pid = fork();
+    if (pid < 0) {
+        return -1;
+    }
+    
+    /* Exit parent process */
+    if (pid > 0) {
+        exit(0);
+    }
+    
+    /* Create new session and become session leader */
+    sid = setsid();
+    if (sid < 0) {
+        return -1;
+    }
+    
+    /* Fork again to prevent acquiring controlling terminal */
+    pid = fork();
+    if (pid < 0) {
+        return -1;
+    }
+    
+    if (pid > 0) {
+        exit(0);
+    }
+    
+    /* Change working directory to root */
+    if (chdir("/") < 0) {
+        return -1;
+    }
+    
+    /* Close standard file descriptors */
+    close(STDIN_FILENO);
+    close(STDOUT_FILENO);
+    close(STDERR_FILENO);
+    
+    /* Redirect to /dev/null */
+    open("/dev/null", O_RDONLY);  /* stdin */
+    open("/dev/null", O_WRONLY);  /* stdout */
+    open("/dev/null", O_WRONLY);  /* stderr */
+    
+    return 0;
+}
+
+static int write_pidfile(const char *path)
+{
+    FILE *f;
+    
+    f = fopen(path, "w");
+    if (!f) {
+        fprintf(stderr, "Failed to create PID file %s: %s\n", 
+                path, strerror(errno));
+        return -1;
+    }
+    
+    fprintf(f, "%d\n", getpid());
+    fclose(f);
+    
+    return 0;
+}
+
+static void cleanup_pidfile(void)
+{
+    if (pidfile_path) {
+        unlink(pidfile_path);
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    const char *interface = NULL;
+    const char *transport = "raw";
+    const char *socket_path = "/var/run/ethercat/master0";
+    int daemon_mode = 0;
+    int verbose = 0;
+    int opt;
+    ec_pal_device_type_t device_type;
+    
+    /* Parse command line arguments */
+    while ((opt = getopt_long(argc, argv, "i:t:s:dp:vh", long_options, NULL)) != -1) {
+        switch (opt) {
+        case 'i':
+            interface = optarg;
+            break;
+        case 't':
+            transport = optarg;
+            break;
+        case 's':
+            socket_path = optarg;
+            break;
+        case 'd':
+            daemon_mode = 1;
+            break;
+        case 'p':
+            pidfile_path = optarg;
+            break;
+        case 'v':
+            verbose = 1;
+            break;
+        case 'h':
+            print_usage(argv[0]);
+            return 0;
+        default:
+            print_usage(argv[0]);
+            return 1;
+        }
+    }
+    
+    if (!interface) {
+        fprintf(stderr, "Error: Network interface required\n\n");
+        print_usage(argv[0]);
+        return 1;
+    }
+    
+    /* Determine device type */
+    if (strcmp(transport, "raw") == 0) {
+        device_type = EC_PAL_DEVICE_RAW;
+    } else if (strcmp(transport, "xdp") == 0) {
+        device_type = EC_PAL_DEVICE_XDP;
+        if (!ec_pal_device_type_available(EC_PAL_DEVICE_XDP)) {
+            fprintf(stderr, "Error: XDP transport not available (not compiled in)\n");
+            return 1;
+        }
+    } else {
+        fprintf(stderr, "Error: Unknown transport type '%s'\n", transport);
+        return 1;
+    }
+    
+    /* Daemonize if requested */
+    if (daemon_mode) {
+        if (verbose) {
+            printf("Daemonizing...\n");
+        }
+        if (daemonize() < 0) {
+            fprintf(stderr, "Failed to daemonize\n");
+            return 1;
+        }
+    }
+    
+    /* Write PID file */
+    if (pidfile_path) {
+        if (write_pidfile(pidfile_path) < 0) {
+            return 1;
+        }
+        atexit(cleanup_pidfile);
+    }
+    
+    /* Install signal handlers */
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
+    
+    /* Initialize master */
+    if (verbose && !daemon_mode) {
+        printf("Initializing EtherCAT master on %s (transport: %s)...\n",
+               interface, transport);
+    }
+    
+    if (ecrt_master_init(0, device_type, interface) < 0) {
+        fprintf(stderr, "Failed to initialize master\n");
+        return 1;
+    }
+    
+    if (verbose && !daemon_mode) {
+        printf("EtherCAT master started. Press Ctrl+C to stop.\n");
+        printf("CLI tool can connect via: ethercat -m 0 slaves\n");
+    }
+    
+    /* Main loop: run idle processing and handle control interface */
+    while (running) {
+        /* Process idle state machine (bus scanning, etc.) */
+        ecrt_master_idle(0);
+        
+        /* Handle CLI tool requests via control socket */
+        ecrt_master_process_control(0);
+        
+        /* Sleep briefly to avoid busy-waiting */
+        usleep(10000);  /* 10ms */
+    }
+    
+    /* Cleanup */
+    if (verbose && !daemon_mode) {
+        printf("\nShutting down...\n");
+    }
+    
+    ecrt_master_cleanup(0);
+    
+    return 0;
+}
+```
+
+**Features:**
+
+- **Command line options**: `-i interface`, `-t transport`, `-s socket_path`
+- **Daemon mode**: `-d` flag for background operation
+- **PID file support**: `-p` flag for service management
+- **Signal handlers**: Clean shutdown on SIGINT/SIGTERM
+- **Verbose mode**: `-v` flag for debugging
+
+**Usage Examples:**
+
+```bash
+# Run master on eth0 with raw sockets (foreground)
+$ ethercat_master -i eth0 -v
+
+# Run as daemon with XDP transport
+$ ethercat_master -i eth0 -t xdp -d -p /var/run/ethercat.pid
+
+# Use with ethercat CLI tool
+$ ethercat slaves
+$ ethercat master
+$ ethercat upload -p 0 0x1000 0
+```
+
+**Systemd Service Example (`/etc/systemd/system/ethercat.service`):**
+
+```ini
+[Unit]
+Description=EtherCAT Master
+After=network.target
+
+[Service]
+Type=forking
+PIDFile=/var/run/ethercat.pid
+ExecStart=/usr/local/bin/ethercat_master -i eth0 -t raw -d -p /var/run/ethercat.pid
+ExecStop=/bin/kill -TERM $MAINPID
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
 ```
 
 ---
@@ -380,6 +698,231 @@ static const ec_pal_device_ops_t my_custom_ops = {
 ec_pal_device_register_custom(master, &my_custom_ops, "eth0");
 ```
 
+### EoE TUN/TAP Implementation
+
+For Ethernet over EtherCAT (EoE) in userspace, we use TUN/TAP devices to create virtual network interfaces. The kernel module uses `net_device`, but in userspace we leverage `/dev/net/tun` for equivalent functionality.
+
+**Implementation (`userspace/eoe_tun.c`):**
+
+```c
+// userspace/eoe_tun.c
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <linux/if.h>
+#include <linux/if_tun.h>
+
+typedef struct {
+    int fd;
+    char name[IFNAMSIZ];
+} ec_eoe_tun_t;
+
+/**
+ * Create a TUN/TAP device for EoE
+ * @param name Desired interface name (e.g., "eoe%d"), actual name returned
+ * @return TUN device handle or NULL on error
+ */
+ec_eoe_tun_t *ec_eoe_tun_create(char *name)
+{
+    ec_eoe_tun_t *tun;
+    struct ifreq ifr;
+    int fd, err;
+    
+    tun = malloc(sizeof(ec_eoe_tun_t));
+    if (!tun) {
+        return NULL;
+    }
+    
+    /* Open TUN/TAP device */
+    fd = open("/dev/net/tun", O_RDWR);
+    if (fd < 0) {
+        free(tun);
+        return NULL;
+    }
+    
+    memset(&ifr, 0, sizeof(ifr));
+    ifr.ifr_flags = IFF_TAP | IFF_NO_PI;  /* TAP mode, no packet info */
+    
+    if (name && *name) {
+        strncpy(ifr.ifr_name, name, IFNAMSIZ - 1);
+    }
+    
+    err = ioctl(fd, TUNSETIFF, (void *)&ifr);
+    if (err < 0) {
+        close(fd);
+        free(tun);
+        return NULL;
+    }
+    
+    tun->fd = fd;
+    strncpy(tun->name, ifr.ifr_name, IFNAMSIZ - 1);
+    tun->name[IFNAMSIZ - 1] = '\0';
+    
+    return tun;
+}
+
+/**
+ * Destroy TUN device
+ */
+void ec_eoe_tun_destroy(ec_eoe_tun_t *tun)
+{
+    if (tun) {
+        if (tun->fd >= 0) {
+            close(tun->fd);
+        }
+        free(tun);
+    }
+}
+
+/**
+ * Send frame to TUN device (from EtherCAT slave to local network)
+ */
+int ec_eoe_tun_send(ec_eoe_tun_t *tun, const void *data, size_t len)
+{
+    ssize_t ret;
+    
+    if (!tun || tun->fd < 0) {
+        return -1;
+    }
+    
+    ret = write(tun->fd, data, len);
+    return (ret == (ssize_t)len) ? 0 : -1;
+}
+
+/**
+ * Receive frame from TUN device (from local network to EtherCAT slave)
+ */
+int ec_eoe_tun_receive(ec_eoe_tun_t *tun, void *buf, size_t maxlen)
+{
+    ssize_t ret;
+    
+    if (!tun || tun->fd < 0) {
+        return -1;
+    }
+    
+    ret = read(tun->fd, buf, maxlen);
+    return (int)ret;  /* Returns bytes read or -1 on error */
+}
+
+/**
+ * Get file descriptor for polling
+ */
+int ec_eoe_tun_get_fd(ec_eoe_tun_t *tun)
+{
+    return tun ? tun->fd : -1;
+}
+
+/**
+ * Set TUN device non-blocking
+ */
+int ec_eoe_tun_set_nonblocking(ec_eoe_tun_t *tun)
+{
+    int flags;
+    
+    if (!tun || tun->fd < 0) {
+        return -1;
+    }
+    
+    flags = fcntl(tun->fd, F_GETFL, 0);
+    if (flags < 0) {
+        return -1;
+    }
+    
+    return fcntl(tun->fd, F_SETFL, flags | O_NONBLOCK);
+}
+
+/**
+ * Bring TUN interface up and configure IP
+ */
+int ec_eoe_tun_configure(ec_eoe_tun_t *tun, const char *ip_addr, const char *netmask)
+{
+    char cmd[256];
+    int ret;
+    
+    if (!tun) {
+        return -1;
+    }
+    
+    /* Bring interface up */
+    snprintf(cmd, sizeof(cmd), "ip link set %s up", tun->name);
+    ret = system(cmd);
+    if (ret != 0) {
+        return -1;
+    }
+    
+    /* Configure IP address if provided */
+    if (ip_addr && netmask) {
+        snprintf(cmd, sizeof(cmd), "ip addr add %s/%s dev %s", 
+                 ip_addr, netmask, tun->name);
+        ret = system(cmd);
+        if (ret != 0) {
+            return -1;
+        }
+    }
+    
+    return 0;
+}
+```
+
+**Usage in EoE Implementation:**
+
+```c
+/* In ethernet.c (EoE module) - userspace variant */
+#ifndef __KERNEL__
+
+#include "eoe_tun.h"
+
+int ec_eoe_init(ec_eoe_t *eoe)
+{
+    char ifname[IFNAMSIZ];
+    
+    /* Create TUN/TAP device with automatic naming */
+    snprintf(ifname, sizeof(ifname), "eoe%u", eoe->slave->ring_position);
+    
+    eoe->tun = ec_eoe_tun_create(ifname);
+    if (!eoe->tun) {
+        EC_SLAVE_ERR(eoe->slave, "Failed to create TUN device.\n");
+        return -1;
+    }
+    
+    ec_eoe_tun_set_nonblocking(eoe->tun);
+    
+    EC_SLAVE_INFO(eoe->slave, "Created EoE interface %s\n", ifname);
+    return 0;
+}
+
+void ec_eoe_clear(ec_eoe_t *eoe)
+{
+    if (eoe->tun) {
+        ec_eoe_tun_destroy(eoe->tun);
+        eoe->tun = NULL;
+    }
+}
+
+/* Integration with master's event loop (poll/epoll) */
+int ec_eoe_get_poll_fd(ec_eoe_t *eoe)
+{
+    return ec_eoe_tun_get_fd(eoe->tun);
+}
+
+#endif /* __KERNEL__ */
+```
+
+**Key Differences from Kernel Implementation:**
+
+| Aspect | Kernel (`net_device`) | Userspace (TUN/TAP) |
+|--------|----------------------|---------------------|
+| **Interface Creation** | `alloc_netdev()` | `open("/dev/net/tun")` + `ioctl(TUNSETIFF)` |
+| **Frame TX** | `netif_rx()` | `write()` to TUN fd |
+| **Frame RX** | `hard_start_xmit()` callback | `read()` from TUN fd |
+| **Interface Up/Down** | `netif_carrier_on/off()` | `ip link set up/down` |
+| **IP Configuration** | Userspace tools (`ifconfig`/`ip`) | Same (external) |
+| **Event Loop Integration** | Kernel network stack | `poll()`/`epoll()` on TUN fd |
+
 ### Benefits of Shared Codebase
 
 - **Single source of truth**: Bug fixes and features apply to both builds
@@ -417,6 +960,7 @@ ethercat/
 │   ├── Makefile.am
 │   ├── ecrt_user.c           # NEW: Userspace API implementation
 │   ├── control_socket.c      # NEW: Unix socket for CLI
+│   ├── eoe_tun.c             # NEW: TUN/TAP for EoE
 │   ├── transport/
 │   │   ├── transport.c       # Transport registry and lifecycle
 │   │   ├── transport_raw.c   # AF_PACKET (SOCK_RAW) implementation
@@ -425,13 +969,20 @@ ethercat/
 │   │   └── ecrt_user.h       # Userspace-specific API extensions
 │   └── examples/
 │       └── basic_example.c
+├── tools/
+│   ├── ...
+│   └── ethercat_master.c     # NEW: Standalone demonstrator daemon
 ├── tests/                    # NEW: Test infrastructure
 │   ├── Makefile.am
 │   ├── ec_test.h             # Lightweight test framework
-│   └── unit/
-│       ├── test_pal.c        # PAL function tests
-│       ├── test_transport.c  # Transport layer tests
-│       └── test_datagram.c   # Datagram handling tests
+│   ├── unit/
+│   │   ├── test_pal.c        # PAL function tests
+│   │   ├── test_transport.c  # Transport layer tests
+│   │   └── test_datagram.c   # Datagram handling tests
+│   └── performance/          # NEW: Performance benchmarks
+│       ├── bench_latency.c   # TX+RX latency measurement
+│       ├── bench_jitter.c    # Timing jitter distribution
+│       └── bench_cpu.c       # CPU utilization measurement
 └── include/
     └── ecrt.h                # Unchanged: public API
 ```
@@ -672,6 +1223,11 @@ libethercat_la_CFLAGS += $(LIBBPF_CFLAGS) -DHAVE_XDP
 libethercat_la_LIBADD += $(LIBBPF_LIBS)
 endif
 
+# EoE TUN/TAP support
+if ENABLE_EOE
+libethercat_la_SOURCES += eoe_tun.c
+endif
+
 # Install headers
 userspacetransportincludedir = $(includedir)/ethercat
 userspacetransportinclude_HEADERS = \
@@ -706,6 +1262,14 @@ LDADD = \
 test_pal_SOURCES = unit/test_pal.c
 test_transport_SOURCES = unit/test_transport.c
 test_datagram_SOURCES = unit/test_datagram.c
+
+# Performance benchmark programs (optional)
+if BUILD_BENCHMARKS
+check_PROGRAMS += bench_latency bench_jitter bench_cpu
+bench_latency_SOURCES = performance/bench_latency.c
+bench_jitter_SOURCES = performance/bench_jitter.c
+bench_cpu_SOURCES = performance/bench_cpu.c
+endif
 
 endif
 ```
@@ -1066,6 +1630,54 @@ Incrementally refactor `master/*.c` to use PAL macros:
 - Core EoE protocol logic in `ethernet.c` is shared
 - Only the network interface creation differs
 
+**Distributed Clocks Implementation Notes:**
+
+For precise DC synchronization in userspace, hardware timestamping is crucial:
+
+1. **Hardware Timestamps**: Use `SO_TIMESTAMPING` socket option:
+   ```c
+   int flags = SOF_TIMESTAMPING_TX_HARDWARE | 
+               SOF_TIMESTAMPING_RX_HARDWARE |
+               SOF_TIMESTAMPING_RAW_HARDWARE;
+   setsockopt(fd, SOL_SOCKET, SO_TIMESTAMPING, &flags, sizeof(flags));
+   ```
+
+2. **Retrieve Timestamps**: Use `recvmsg()` with `SCM_TIMESTAMPING` ancillary data:
+   ```c
+   struct msghdr msg = {0};
+   struct iovec iov = {.iov_base = buffer, .iov_len = buffer_size};
+   char control[512];
+   struct cmsghdr *cmsg;
+   struct timespec *ts;
+   
+   msg.msg_iov = &iov;
+   msg.msg_iovlen = 1;
+   msg.msg_control = control;
+   msg.msg_controllen = sizeof(control);
+   
+   recvmsg(fd, &msg, 0);
+   
+   for (cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg)) {
+       if (cmsg->cmsg_level == SOL_SOCKET && 
+           cmsg->cmsg_type == SCM_TIMESTAMPING) {
+           ts = (struct timespec *)CMSG_DATA(cmsg);
+           /* ts[2] contains hardware timestamp */
+       }
+   }
+   ```
+
+3. **Clock Synchronization**: Calculate offset between master clock and slave DC clocks:
+   - Use hardware TX timestamp for outgoing frames
+   - Use hardware RX timestamp for incoming frames
+   - Apply offset correction to maintain synchronization
+
+4. **Fallback**: If hardware timestamps unavailable, use software timestamps with `CLOCK_MONOTONIC_RAW`:
+   ```c
+   struct timespec ts;
+   clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+   /* Note: Software timestamps have higher jitter (~1-5µs vs ~100ns for hardware) */
+   ```
+
 **Milestone:** Feature parity with kernel version
 
 ### Phase 6: XDP Transport & Polish (2-3 weeks)
@@ -1073,9 +1685,17 @@ Incrementally refactor `master/*.c` to use PAL macros:
 | Task | Description | Est. |
 |------|-------------|------|
 | 6.1 | Implement AF_XDP transport | 4d |
-| 6.2 | Performance testing & optimization | 3d |
-| 6.3 | Documentation | 2d |
-| 6.4 | Final testing & release prep | 2d |
+| 6.2 | **Performance benchmarking** | 2d |
+| 6.3 | **Latency/jitter optimization** | 2d |
+| 6.4 | Documentation | 2d |
+| 6.5 | Final testing & release prep | 2d |
+
+**Performance Tasks:**
+- Run `bench_latency` to measure round-trip times
+- Run `bench_jitter` to analyze timing distribution
+- Run `bench_cpu` to measure overhead
+- Compare with kernel module baseline
+- Optimize hot paths if targets not met
 
 **Milestone:** Production-ready release
 
@@ -1115,6 +1735,95 @@ tests/
 3. **PDO exchange test** - Exchange process data at 1kHz
 4. **DC sync test** - Verify DC synchronization accuracy
 5. **CLI test** - All `ethercat` commands work via socket
+
+### Performance Benchmarks
+
+Performance benchmarking is critical to ensure userspace implementation meets real-time requirements:
+
+| Test | Method | Target |
+|------|--------|--------|
+| Round-trip latency | Send BRD, measure response time | < 30µs |
+| Jitter | Statistical analysis over 10k cycles | < 20µs (99th percentile) |
+| CPU overhead | `perf stat` at 1kHz cycle | < 5% |
+| Comparison | Side-by-side with kernel module | Within 20% |
+
+**Benchmark Tools:**
+
+```
+tests/performance/
+├── bench_latency.c    # Measures TX+RX latency
+├── bench_jitter.c     # Measures timing jitter distribution
+└── bench_cpu.c        # Measures CPU utilization
+```
+
+**bench_latency.c** - Measures round-trip latency:
+```c
+/* Measures time from sending BRD to receiving response */
+for (i = 0; i < 10000; i++) {
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    ecrt_master_send(master);
+    ecrt_master_receive(master);
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    
+    latency = timespec_diff_ns(&start, &end);
+    /* Record min, max, average, percentiles */
+}
+```
+
+**bench_jitter.c** - Measures cycle time jitter:
+```c
+/* Measures deviation from target cycle time */
+target_period_ns = 1000000;  /* 1ms = 1kHz */
+for (i = 0; i < 10000; i++) {
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    
+    /* Perform cycle work */
+    ecrt_master_receive(master);
+    ecrt_domain_process(domain);
+    ecrt_domain_queue(domain);
+    ecrt_master_send(master);
+    
+    clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &wakeup, NULL);
+    
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    actual_period = timespec_diff_ns(&start, &end);
+    jitter = abs(actual_period - target_period_ns);
+    /* Build histogram, calculate statistics */
+}
+```
+
+**bench_cpu.c** - Measures CPU utilization:
+```c
+/* Uses getrusage() or /proc/stat to measure CPU time */
+/* Runs cyclic task and measures percentage of CPU consumed */
+/* Can also use 'perf stat' wrapper for hardware counters */
+```
+
+**Running Benchmarks:**
+
+```bash
+# Latency test
+$ ./bench_latency -i eth0 -c 10000
+Latency Statistics (10000 cycles):
+  Min:  12.3 µs
+  Max:  45.7 µs
+  Avg:  18.2 µs
+  99%:  28.4 µs
+
+# Jitter test  
+$ ./bench_jitter -i eth0 -f 1000 -c 10000
+Jitter Statistics (10000 cycles at 1kHz):
+  Min jitter:   0.8 µs
+  Max jitter:  34.2 µs
+  Avg jitter:   4.1 µs
+  99%:         16.8 µs
+
+# CPU overhead
+$ ./bench_cpu -i eth0 -f 1000 -d 60
+CPU Overhead (60s at 1kHz):
+  CPU time:  2.3%
+  Peak:      4.1%
+```
 
 ### Dual-Build Verification
 
