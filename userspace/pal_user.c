@@ -40,6 +40,7 @@
 #include <stdint.h>
 
 #include "include/ecrt_user.h"
+#include "transport/ec_transport.h"
 
 /******************************************************************************
  * Memory Allocation
@@ -91,7 +92,7 @@ void ec_pal_print(const char *fmt, ...)
 }
 
 /******************************************************************************
- * Userspace Master Management - Stub Implementations
+ * Userspace Master Management
  *****************************************************************************/
 
 int ecrt_master_init(
@@ -99,24 +100,53 @@ int ecrt_master_init(
     ec_pal_device_type_t device_type,
     const char *interface
 ) {
-    /* TODO: Implement master initialization */
+    ec_transport_type_t transport_type;
+
+    (void)master_index;
+
+    /* Map device type to transport type */
+    switch (device_type) {
+    case EC_PAL_DEVICE_RAW:
+        transport_type = EC_TRANSPORT_RAW;
+        break;
+    case EC_PAL_DEVICE_XDP:
+        transport_type = EC_TRANSPORT_XDP;
+        break;
+    default:
+        return -EINVAL;
+    }
+
+    /* Check if transport is available */
+    if (!ec_transport_type_available(transport_type)) {
+        fprintf(stderr, "Transport '%s' not available\n",
+                ec_transport_type_name(transport_type));
+        return -ENOTSUP;
+    }
+
+    /* TODO: Create transport and open interface (PR 2b) */
+    fprintf(stderr, "ecrt_master_init: transport=%s interface=%s (not yet implemented)\n",
+            ec_transport_type_name(transport_type), interface);
+
     return -ENOSYS;
 }
 
 void ecrt_master_cleanup(unsigned int master_index)
 {
-    /* TODO: Implement master cleanup */
+    (void)master_index;
+    /* TODO: Destroy transport (PR 2b) */
 }
 
 void ecrt_master_idle(unsigned int master_index)
 {
-    /* TODO: Implement idle processing */
+    (void)master_index;
+    /* TODO: Process idle work (PR 2b) */
 }
 
 int ecrt_master_process_control(unsigned int master_index)
 {
-    /* TODO: Implement control interface processing */
-    return -ENOSYS;
+    (void)master_index;
+    /* TODO: Process control interface (PR 2b) */
+    return 0;
 }
 
 /*****************************************************************************/

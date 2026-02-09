@@ -36,7 +36,6 @@ MASTER_SOURCES = \
 # Userspace-specific sources
 USERSPACE_SOURCES = \
 	pal_user.c \
-	ecrt_user.c \
 	transport/transport.c \
 	transport/transport_raw_stub.c
 
