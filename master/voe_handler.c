@@ -31,6 +31,7 @@
 #include "slave_config.h"
 #include "mailbox.h"
 #include "voe_handler.h"
+#include "pal.h"
 
 /** VoE header size.
  */
@@ -233,7 +234,7 @@ void ec_voe_handler_state_write_start(ec_voe_handler_t *voe)
     /* data already in datagram */
 
     voe->retries = EC_FSM_RETRIES;
-    voe->jiffies_start = jiffies;
+    voe->jiffies_start = ec_pal_jiffies();
     voe->state = ec_voe_handler_state_write_response;
 }
 
@@ -260,7 +261,7 @@ void ec_voe_handler_state_write_response(ec_voe_handler_t *voe)
     if (datagram->working_counter != 1) {
         if (!datagram->working_counter) {
             unsigned long diff_ms =
-                (jiffies - voe->jiffies_start) * 1000 / HZ;
+                (ec_pal_jiffies() - voe->jiffies_start) * 1000 / ec_pal_hz();
             if (diff_ms < EC_VOE_RESPONSE_TIMEOUT) {
                 EC_SLAVE_DBG(slave, 1, "Slave did not respond to"
                         " VoE write request. Retrying after %lu ms...\n",
@@ -302,7 +303,7 @@ void ec_voe_handler_state_read_start(ec_voe_handler_t *voe)
 
     ec_slave_mbox_prepare_check(slave, datagram); // can not fail.
 
-    voe->jiffies_start = jiffies;
+    voe->jiffies_start = ec_pal_jiffies();
     voe->retries = EC_FSM_RETRIES;
     voe->state = ec_voe_handler_state_read_check;
 }
@@ -338,7 +339,7 @@ void ec_voe_handler_state_read_check(ec_voe_handler_t *voe)
 
     if (!ec_slave_mbox_check(datagram)) {
         unsigned long diff_ms =
-            (datagram->jiffies_received - voe->jiffies_start) * 1000 / HZ;
+            (datagram->jiffies_received - voe->jiffies_start) * 1000 / ec_pal_hz();
         if (diff_ms >= EC_VOE_RESPONSE_TIMEOUT) {
             voe->state = ec_voe_handler_state_error;
             voe->request_state = EC_INT_REQUEST_FAILURE;
@@ -442,7 +443,7 @@ void ec_voe_handler_state_read_nosync_start(ec_voe_handler_t *voe)
 
     ec_slave_mbox_prepare_fetch(slave, datagram); // can not fail.
 
-    voe->jiffies_start = jiffies;
+    voe->jiffies_start = ec_pal_jiffies();
     voe->retries = EC_FSM_RETRIES;
     voe->state = ec_voe_handler_state_read_nosync_response;
 }

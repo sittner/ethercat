@@ -26,7 +26,6 @@
 /****************************************************************************/
 
 #include <linux/module.h>
-#include <linux/jiffies.h>
 #include <linux/slab.h>
 
 #include "sdo_request.h"
@@ -172,7 +171,7 @@ int ec_sdo_request_copy_data(
 int ec_sdo_request_timed_out(const ec_sdo_request_t *req /**< SDO request. */)
 {
     return req->issue_timeout
-        && jiffies - req->jiffies_start > HZ * req->issue_timeout / 1000;
+        && ec_pal_jiffies() - req->jiffies_start > ec_pal_hz() * req->issue_timeout / 1000;
 }
 
 /*****************************************************************************
@@ -224,7 +223,7 @@ int ecrt_sdo_request_read(ec_sdo_request_t *req)
     req->state = EC_INT_REQUEST_QUEUED;
     req->errno = 0;
     req->abort_code = 0x00000000;
-    req->jiffies_start = jiffies;
+    req->jiffies_start = ec_pal_jiffies();
     return 0;
 }
 
@@ -236,7 +235,7 @@ int ecrt_sdo_request_write(ec_sdo_request_t *req)
     req->state = EC_INT_REQUEST_QUEUED;
     req->errno = 0;
     req->abort_code = 0x00000000;
-    req->jiffies_start = jiffies;
+    req->jiffies_start = ec_pal_jiffies();
     return 0;
 }
 

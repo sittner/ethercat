@@ -26,7 +26,6 @@
 /****************************************************************************/
 
 #include <linux/module.h>
-#include <linux/jiffies.h>
 #include <linux/slab.h>
 
 #include "soe_request.h"
@@ -231,7 +230,7 @@ int ec_soe_request_read(
     req->dir = EC_DIR_INPUT;
     req->state = EC_INT_REQUEST_QUEUED;
     req->error_code = 0x0000;
-    req->jiffies_start = jiffies;
+    req->jiffies_start = ec_pal_jiffies();
     return 0;
 }
 
@@ -246,7 +245,7 @@ int ec_soe_request_write(
     req->dir = EC_DIR_OUTPUT;
     req->state = EC_INT_REQUEST_QUEUED;
     req->error_code = 0x0000;
-    req->jiffies_start = jiffies;
+    req->jiffies_start = ec_pal_jiffies();
     return 0;
 }
 
@@ -259,7 +258,7 @@ int ec_soe_request_write(
 int ec_soe_request_timed_out(const ec_soe_request_t *req /**< SDO request. */)
 {
     return req->issue_timeout
-        && jiffies - req->jiffies_start > HZ * req->issue_timeout / 1000;
+        && ec_pal_jiffies() - req->jiffies_start > ec_pal_hz() * req->issue_timeout / 1000;
 }
 
 /*****************************************************************************

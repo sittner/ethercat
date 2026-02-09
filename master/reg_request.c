@@ -26,7 +26,6 @@
 /****************************************************************************/
 
 #include <linux/module.h>
-#include <linux/jiffies.h>
 #include <linux/slab.h>
 
 #include "reg_request.h"

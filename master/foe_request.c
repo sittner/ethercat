@@ -27,7 +27,6 @@
 /****************************************************************************/
 
 #include <linux/module.h>
-#include <linux/jiffies.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 
@@ -162,7 +161,7 @@ int ec_foe_request_timed_out(
         )
 {
     return req->issue_timeout
-        && jiffies - req->jiffies_start > HZ * req->issue_timeout / 1000;
+        && ec_pal_jiffies() - req->jiffies_start > ec_pal_hz() * req->issue_timeout / 1000;
 }
 
 /****************************************************************************/
@@ -176,7 +175,7 @@ void ec_foe_request_read(
     req->dir = EC_DIR_INPUT;
     req->state = EC_INT_REQUEST_QUEUED;
     req->result = FOE_BUSY;
-    req->jiffies_start = jiffies;
+    req->jiffies_start = ec_pal_jiffies();
 }
 
 /****************************************************************************/
@@ -190,7 +189,7 @@ void ec_foe_request_write(
     req->dir = EC_DIR_OUTPUT;
     req->state = EC_INT_REQUEST_QUEUED;
     req->result = FOE_BUSY;
-    req->jiffies_start = jiffies;
+    req->jiffies_start = ec_pal_jiffies();
 }
 
 /****************************************************************************/

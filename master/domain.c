@@ -609,8 +609,8 @@ int ecrt_domain_process(ec_domain_t *domain)
     }
 
     if (domain->working_counter_changes &&
-        jiffies - domain->notify_jiffies > HZ) {
-        domain->notify_jiffies = jiffies;
+        ec_pal_jiffies() - domain->notify_jiffies > ec_pal_hz()) {
+        domain->notify_jiffies = ec_pal_jiffies();
         if (domain->working_counter_changes == 1) {
             EC_MASTER_INFO(domain->master, "Domain %u: Working counter"
                     " changed to %u/%u", domain->index,
