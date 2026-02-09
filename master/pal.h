@@ -122,7 +122,12 @@
 #include <unistd.h>
 #include <time.h>
 #include <stdio.h>
+
+#ifdef __cplusplus
+#include <atomic>
+#else
 #include <stdatomic.h>
+#endif
 
 /* Memory allocation */
 #define ec_pal_malloc(size)         malloc(size)
@@ -170,7 +175,24 @@ static inline unsigned long ec_pal_get_jiffies(void) {
 #define EC_PAL_WARN(fmt, args...)   fprintf(stderr, "EtherCAT WARNING: " fmt, ##args)
 #define EC_PAL_DBG(fmt, args...)    printf("EtherCAT DEBUG: " fmt, ##args)
 
-/* Atomics (using C11 stdatomic) */
+/* Atomics - C++ and C11 compatible */
+#ifdef __cplusplus
+typedef struct {
+    std::atomic<int> counter;
+} ec_pal_atomic_t;
+
+#define ec_pal_atomic_read(v)       ((v)->counter.load())
+#define ec_pal_atomic_set(v, i)     ((v)->counter.store(i))
+#define ec_pal_atomic_inc(v)        do { (void)(v)->counter.fetch_add(1); } while (0)
+#define ec_pal_atomic_dec(v)        do { (void)(v)->counter.fetch_sub(1); } while (0)
+#define ec_pal_atomic_add(i, v)     do { (void)(v)->counter.fetch_add(i); } while (0)
+#define ec_pal_atomic_sub(i, v)     do { (void)(v)->counter.fetch_sub(i); } while (0)
+#define ec_pal_atomic_inc_return(v) ((v)->counter.fetch_add(1) + 1)
+#define ec_pal_atomic_dec_return(v) ((v)->counter.fetch_sub(1) - 1)
+#define ec_pal_atomic_dec_and_test(v) ((v)->counter.fetch_sub(1) == 1)
+
+#else /* C11 */
+
 typedef struct {
     atomic_int counter;
 } ec_pal_atomic_t;
@@ -184,6 +206,8 @@ typedef struct {
 #define ec_pal_atomic_inc_return(v) (atomic_fetch_add(&(v)->counter, 1) + 1)
 #define ec_pal_atomic_dec_return(v) (atomic_fetch_sub(&(v)->counter, 1) - 1)
 #define ec_pal_atomic_dec_and_test(v) (atomic_fetch_sub(&(v)->counter, 1) == 1)
+
+#endif /* __cplusplus */
 
 /* Compiler hints (userspace) */
 #define likely(x)      __builtin_expect(!!(x), 1)
