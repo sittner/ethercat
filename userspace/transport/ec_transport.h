@@ -192,6 +192,14 @@ int ec_transport_get_fd(ec_transport_t *transport);
  */
 int ec_transport_available(ec_transport_type_t type);
 
+/**
+ * Get the name of a transport type.
+ * 
+ * @param type Transport type
+ * @return Transport type name string, or "unknown" if invalid
+ */
+const char *ec_transport_type_name(ec_transport_type_t type);
+
 /****************************************************************************/
 
 /* Transport operation tables (implemented by each transport) */
