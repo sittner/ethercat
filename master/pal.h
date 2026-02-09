@@ -84,6 +84,9 @@
 #define ec_pal_time_now()           ktime_get_real_seconds()
 #define ec_pal_msleep(ms)           msleep(ms)
 #define ec_pal_get_jiffies()        jiffies
+#define ec_pal_jiffies()            jiffies
+#define ec_pal_hz()                 HZ
+#define ec_pal_time_after(a, b)     time_after(a, b)
 
 /* Logging */
 #define EC_PAL_INFO(fmt, args...)   printk(KERN_INFO "EtherCAT: " fmt, ##args)
@@ -163,6 +166,10 @@ static inline unsigned long ec_pal_get_jiffies(void) {
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (unsigned long)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
 }
+
+#define ec_pal_jiffies()            ec_pal_get_jiffies()
+#define ec_pal_hz()                 1000  /* 1000 ms = 1 second */
+#define ec_pal_time_after(a, b)     ((long)((b) - (a)) < 0)
 
 /* Logging */
 #define EC_PAL_INFO(fmt, args...)   printf("EtherCAT: " fmt, ##args)
