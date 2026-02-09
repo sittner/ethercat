@@ -59,4 +59,17 @@ libethercat_master_la_LDFLAGS = \
 include_HEADERS = \
 	include/ecrt_user.h
 
+# Userspace master daemon
+bin_PROGRAMS = ethercat_master
+
+ethercat_master_SOURCES = ethercat_master.c
+
+ethercat_master_CFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(srcdir)/include \
+	-Wall
+
+ethercat_master_LDADD = \
+	libethercat_master.la
+
 #-----------------------------------------------------------------------------

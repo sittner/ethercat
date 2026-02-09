@@ -125,23 +125,3 @@ ethercat_CXXFLAGS = \
 	-fno-strict-aliasing
 
 #-----------------------------------------------------------------------------
-# Userspace Master Daemon
-#-----------------------------------------------------------------------------
-
-if ENABLE_USERSPACE
-
-bin_PROGRAMS += ethercat_master
-
-ethercat_master_SOURCES = ethercat_master.c
-
-ethercat_master_CFLAGS = \
-	-I$(top_srcdir)/include \
-	-I$(top_srcdir)/userspace/include \
-	-Wall
-
-ethercat_master_LDADD = \
-	$(top_builddir)/userspace/libethercat_master.la
-
-endif
-
-#-----------------------------------------------------------------------------
