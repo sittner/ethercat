@@ -250,7 +250,7 @@ int ec_fsm_eoe_prepare_set(
         ec_print_data(data, cur - data);
     }
 
-    fsm->request->jiffies_sent = jiffies;
+    fsm->request->jiffies_sent = ec_pal_jiffies();
 
     return 0;
 }
@@ -311,7 +311,7 @@ void ec_fsm_eoe_set_ip_request(
 
     if (fsm->datagram->working_counter != 1) {
         unsigned long diff_ms =
-            (jiffies - fsm->request->jiffies_sent) * 1000 / HZ;
+            (ec_pal_jiffies() - fsm->request->jiffies_sent) * 1000 / ec_pal_hz();
 
         if (!fsm->datagram->working_counter) {
             if (diff_ms < EC_EOE_RESPONSE_TIMEOUT) {
@@ -370,7 +370,7 @@ void ec_fsm_eoe_set_ip_check(
     if (!ec_slave_mbox_check(fsm->datagram)) {
         unsigned long diff_ms =
             (fsm->datagram->jiffies_received - fsm->jiffies_start) *
-            1000 / HZ;
+            1000 / ec_pal_hz();
         if (diff_ms >= EC_EOE_RESPONSE_TIMEOUT) {
             fsm->state = ec_fsm_eoe_error;
             EC_SLAVE_ERR(slave, "Timeout after %lu ms while waiting for"

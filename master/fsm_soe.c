@@ -241,7 +241,7 @@ int ec_fsm_soe_prepare_read(
         ec_print_data(data, EC_SOE_SIZE);
     }
 
-    fsm->request->jiffies_sent = jiffies;
+    fsm->request->jiffies_sent = ec_pal_jiffies();
     fsm->state = ec_fsm_soe_read_request;
 
     return 0;
@@ -306,7 +306,7 @@ void ec_fsm_soe_read_request(
         return;
     }
 
-    diff_ms = (jiffies - fsm->request->jiffies_sent) * 1000 / HZ;
+    diff_ms = (ec_pal_jiffies() - fsm->request->jiffies_sent) * 1000 / ec_pal_hz();
 
     if (fsm->datagram->working_counter != 1) {
         if (!fsm->datagram->working_counter) {
@@ -369,7 +369,7 @@ void ec_fsm_soe_read_check(
     if (!ec_slave_mbox_check(fsm->datagram)) {
         unsigned long diff_ms =
             (fsm->datagram->jiffies_received - fsm->jiffies_start) *
-            1000 / HZ;
+            1000 / ec_pal_hz();
         if (diff_ms >= EC_SOE_RESPONSE_TIMEOUT) {
             fsm->state = ec_fsm_soe_error;
             EC_SLAVE_ERR(slave, "Timeout after %lu ms while waiting for"
@@ -595,7 +595,7 @@ void ec_fsm_soe_write_start(
     fsm->offset = 0;
     fsm->retries = EC_FSM_RETRIES;
     ec_fsm_soe_write_next_fragment(fsm, datagram);
-    req->jiffies_sent = jiffies;
+    req->jiffies_sent = ec_pal_jiffies();
 }
 
 /****************************************************************************/
@@ -648,7 +648,7 @@ void ec_fsm_soe_write_request(
         // next fragment
         fsm->retries = EC_FSM_RETRIES;
         ec_fsm_soe_write_next_fragment(fsm, datagram);
-        fsm->request->jiffies_sent = jiffies;
+        fsm->request->jiffies_sent = ec_pal_jiffies();
     } else {
         // all fragments sent; query response
         fsm->jiffies_start = fsm->datagram->jiffies_sent;
@@ -692,7 +692,7 @@ void ec_fsm_soe_write_check(
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
         unsigned long diff_ms =
-            (datagram->jiffies_received - fsm->jiffies_start) * 1000 / HZ;
+            (datagram->jiffies_received - fsm->jiffies_start) * 1000 / ec_pal_hz();
         if (diff_ms >= EC_SOE_RESPONSE_TIMEOUT) {
             fsm->state = ec_fsm_soe_error;
             EC_SLAVE_ERR(slave, "Timeout after %lu ms while waiting"

@@ -281,7 +281,7 @@ void ec_fsm_sii_state_read_fetch(
                                                     read operation busy */
         // still busy... timeout?
         unsigned long diff_ms =
-            (datagram->jiffies_received - fsm->jiffies_start) * 1000 / HZ;
+            (datagram->jiffies_received - fsm->jiffies_start) * 1000 / ec_pal_hz();
         if (diff_ms >= SII_TIMEOUT) {
             if (fsm->check_once_more) {
                 fsm->check_once_more = 0;
@@ -417,7 +417,7 @@ void ec_fsm_sii_state_write_check2(
 
     /* FIXME: some slaves never answer with the busy flag set...
      * wait a few ms for the write operation to complete. */
-    diff_ms = (datagram->jiffies_received - fsm->jiffies_start) * 1000 / HZ;
+    diff_ms = (datagram->jiffies_received - fsm->jiffies_start) * 1000 / ec_pal_hz();
     if (diff_ms < SII_INHIBIT) {
 #ifdef SII_DEBUG
         EC_SLAVE_DBG(fsm->slave, 0, "too early.\n");
