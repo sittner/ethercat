@@ -625,7 +625,7 @@ void ec_datagram_output_stats(
         )
 {
     unsigned long now = ec_pal_jiffies();
-    
+
     if (ec_pal_time_after(now, datagram->stats_output_jiffies + ec_pal_hz())) {
         datagram->stats_output_jiffies = now;
 
