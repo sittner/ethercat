@@ -22,7 +22,7 @@
  * Internal global definitions and macros for master code.
  * 
  * This header includes PAL and provides logging macros.
- * Only for use by master/*.c files, not for tool or external code.
+ * Only for use by master C files, not for tool or external code.
  */
 
 /****************************************************************************/
