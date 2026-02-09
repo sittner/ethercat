@@ -36,7 +36,7 @@
 #include <errno.h>
 
 #include "ecrt.h"
-#include "include/ecrt_user.h"
+#include "ecrt_user.h"
 
 static volatile int running = 1;
 
