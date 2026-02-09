@@ -29,10 +29,16 @@
 #ifndef __EC_SLAVE_H__
 #define __EC_SLAVE_H__
 
+#ifdef __KERNEL__
 #include <linux/list.h>
 #include <linux/kobject.h>
+#else
+#include <stdio.h>
+#include "../userspace/list.h"
+#endif
 
 #include "globals.h"
+#include "pal.h"
 #include "datagram.h"
 #include "pdo.h"
 #include "sync.h"
@@ -51,9 +57,15 @@
  * \param fmt format string (like in printf())
  * \param args arguments (optional)
  */
+#ifdef __KERNEL__
 #define EC_SLAVE_INFO(slave, fmt, args...) \
     printk(KERN_INFO "EtherCAT %u-%u: " fmt, slave->master->index, \
             slave->ring_position, ##args)
+#else
+#define EC_SLAVE_INFO(slave, fmt, args...) \
+    printf("EtherCAT %u-%u: " fmt, slave->master->index, \
+            slave->ring_position, ##args)
+#endif
 
 /** Convenience macro for printing slave-specific errors to syslog.
  *
@@ -65,9 +77,15 @@
  * \param fmt format string (like in printf())
  * \param args arguments (optional)
  */
+#ifdef __KERNEL__
 #define EC_SLAVE_ERR(slave, fmt, args...) \
     printk(KERN_ERR "EtherCAT ERROR %u-%u: " fmt, slave->master->index, \
             slave->ring_position, ##args)
+#else
+#define EC_SLAVE_ERR(slave, fmt, args...) \
+    fprintf(stderr, "EtherCAT ERROR %u-%u: " fmt, slave->master->index, \
+            slave->ring_position, ##args)
+#endif
 
 /** Convenience macro for printing slave-specific warnings to syslog.
  *
@@ -79,9 +97,15 @@
  * \param fmt format string (like in printf())
  * \param args arguments (optional)
  */
+#ifdef __KERNEL__
 #define EC_SLAVE_WARN(slave, fmt, args...) \
     printk(KERN_WARNING "EtherCAT WARNING %u-%u: " fmt, \
             slave->master->index, slave->ring_position, ##args)
+#else
+#define EC_SLAVE_WARN(slave, fmt, args...) \
+    fprintf(stderr, "EtherCAT WARNING %u-%u: " fmt, \
+            slave->master->index, slave->ring_position, ##args)
+#endif
 
 /** Convenience macro for printing slave-specific debug messages to syslog.
  *
@@ -95,6 +119,7 @@
  * \param fmt format string (like in printf())
  * \param args arguments (optional)
  */
+#ifdef __KERNEL__
 #define EC_SLAVE_DBG(slave, level, fmt, args...) \
     do { \
         if (slave->master->debug_level >= level) { \
@@ -102,6 +127,15 @@
                     slave->master->index, slave->ring_position, ##args); \
         } \
     } while (0)
+#else
+#define EC_SLAVE_DBG(slave, level, fmt, args...) \
+    do { \
+        if (slave->master->debug_level >= level) { \
+            printf("EtherCAT DEBUG %u-%u: " fmt, \
+                    slave->master->index, slave->ring_position, ##args); \
+        } \
+    } while (0)
+#endif
 
 /****************************************************************************/
 
