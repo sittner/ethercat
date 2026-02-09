@@ -48,9 +48,18 @@ The following components have been implemented and are present in the codebase:
 
 | Component | File | Status | Details |
 |-----------|------|--------|---------|
-| PAL Header Interface | `master/pal.h` | ✅ Implemented | 190 lines - Platform abstraction layer interface |
+| PAL Header Interface | `master/pal.h` | ✅ Implemented | Platform abstraction layer interface with kernel/userspace macros |
 | PAL Kernel Implementation | `master/pal_kernel.c` | ✅ Implemented | Kernel-side PAL implementation |
-| Kbuild Integration | `master/Kbuild.in` | ✅ Modified | Added `pal_kernel.o` to build |
+| Internal Globals Header | `master/globals_int.h` | ✅ Implemented | Internal master definitions with PAL logging |
+| Kbuild Integration | `master/Kbuild.in` | ✅ Modified | Added `pal_kernel.o` to kernel build |
+| Configure.ac | `configure.ac` | ✅ Modified | Added `--enable-userspace` option |
+| Top-level Makefile.am | `Makefile.am` | ✅ Modified | Added userspace subdirectory |
+| Userspace Directory | `userspace/` | ✅ Created | Complete directory structure |
+| Userspace Makefile | `userspace/Makefile.am` | ✅ Created | Build rules for libethercat_master.la |
+| Userspace PAL | `userspace/pal_user.c` | ✅ Created | Userspace PAL implementation (stubs) |
+| Userspace API Header | `userspace/include/ecrt_user.h` | ✅ Created | ecrt_master_init/cleanup/idle API |
+| Userspace API Implementation | `userspace/ecrt_user.c` | ✅ Created | Stub implementations |
+| Master Daemon | `userspace/ethercat_master.c` | ✅ Created | Standalone daemon with CLI options |
 | First Core File Migration | `master/datagram.c` | ✅ Started | Uses `ec_pal_malloc`, `ec_pal_free` |
 
 ### ❌ Components NOT Yet Implemented
@@ -60,18 +69,13 @@ The following components are planned but not yet implemented:
 | Component | Planned Location | Status | Phase |
 |-----------|------------------|--------|-------|
 | Device Abstraction Header | `master/pal_device.h` | ❌ Not created | Phase 2 |
-| Userspace PAL Implementation | `master/pal_user.c` | ❌ Not created | Phase 1 |
-| Userspace directory structure | `userspace/` | ❌ Not created | Phase 4 |
-| Userspace API implementation | `userspace/ecrt_user.c` | ❌ Not created | Phase 4 |
-| Unix socket control interface | `userspace/control_socket.c` | ❌ Not created | Phase 4 |
-| EoE TUN/TAP implementation | `userspace/eoe_tun.c` | ❌ Not created | Phase 5 |
+| Transport Interface | `userspace/transport/ec_transport.h` | ❌ Not created | Phase 2 |
+| Transport Registry | `userspace/transport/transport.c` | ❌ Not created | Phase 2 |
 | Raw socket transport | `userspace/transport/transport_raw.c` | ❌ Not created | Phase 2 |
 | XDP transport | `userspace/transport/transport_xdp.c` | ❌ Not created | Phase 6 |
-| Userspace API header | `userspace/include/ecrt_user.h` | ❌ Not created | Phase 4 |
-| Standalone master daemon | `tools/ethercat_master.c` | ❌ Not created | Phase 4 |
+| Unix socket control interface | `userspace/control_socket.c` | ❌ Not created | Phase 4 |
+| EoE TUN/TAP implementation | `userspace/eoe_tun.c` | ❌ Not created | Phase 5 |
 | Test infrastructure | `tests/` directory | ❌ Not created | All phases |
-| Configure.ac modifications | `configure.ac` | ❌ Not modified | Phase 1 |
-| Makefile.am modifications | Various | ❌ Not modified | Phase 1 |
 | Other master/*.c migrations | `master.c`, `slave.c`, `domain.c`, etc. | ❌ Not started | Phase 3 |
 
 ### Phase Progress Summary
@@ -80,16 +84,23 @@ The migration is divided into six phases. Current progress for each phase:
 
 | Phase | Description | Est. Duration | Progress | Status |
 |-------|-------------|---------------|----------|--------|
-| **Phase 1** | PAL Foundation | 2-3 weeks | ~20% | 🟡 In Progress |
-| **Phase 2** | Transport Layer | 2-3 weeks | 0% | ⚪ Not Started |
-| **Phase 3** | Core Migration | 4-5 weeks | ~5% | 🟡 In Progress |
-| **Phase 4** | Userspace API & Control | 2-3 weeks | 0% | ⚪ Not Started |
+| **Phase 1** | PAL Foundation | 2-3 weeks | ~95% | ✅ Nearly Complete |
+| **Phase 2** | Transport Layer | 2-3 weeks | 0% | 🟡 Starting |
+| **Phase 3** | Core Migration | 4-5 weeks | ~5% | ⚪ Not Started |
+| **Phase 4** | Userspace API & Control | 2-3 weeks | ~20% | 🟡 Partial (daemon done) |
 | **Phase 5** | Advanced Features | 3-4 weeks | 0% | ⚪ Not Started |
 | **Phase 6** | XDP Transport & Polish | 2-3 weeks | 0% | ⚪ Not Started |
 
-**Overall Progress:** ~5% complete
+**Overall Progress:** ~15% complete
 
-**Current Focus:** Establishing the Platform Abstraction Layer (PAL) foundation and beginning core file migration.
+**Current Focus:** Phase 2 - Implementing transport layer (raw socket) to enable actual network I/O.
+
+### Recent Milestones
+
+- ✅ **2026-02-09**: `ethercat_master` daemon runs and fails gracefully with "Function not implemented"
+- ✅ **2026-02-09**: Kernel + userspace builds working simultaneously
+- ✅ **2026-02-09**: `globals.h` / `globals_int.h` split to fix C++ tool build
+- ✅ **2026-02-09**: PAL header with C++ atomic compatibility
 
 ---
 
@@ -318,10 +329,10 @@ For users who want a kernel-module-like experience without writing custom applic
 - Useful for testing, configuration, and slave commissioning
 - Can run as a system service for always-available master
 
-**Implementation (`tools/ethercat_master.c`):**
+**Implementation (`userspace/ethercat_master.c`):**
 
 ```c
-// tools/ethercat_master.c
+// userspace/ethercat_master.c
 
 /**
  * EtherCAT Master Demonstrator
@@ -1015,7 +1026,9 @@ ethercat/
 │   └── ...                   # Other existing files (shared)
 ├── userspace/                # NEW: Userspace-specific code
 │   ├── Makefile.am
+│   ├── ethercat_master.c     # NEW: Standalone master daemon
 │   ├── ecrt_user.c           # NEW: Userspace API implementation
+│   ├── pal_user.c            # NEW: Userspace PAL implementation
 │   ├── control_socket.c      # NEW: Unix socket for CLI
 │   ├── eoe_tun.c             # NEW: TUN/TAP for EoE
 │   ├── transport/
@@ -1028,7 +1041,6 @@ ethercat/
 │       └── basic_example.c
 ├── tools/
 │   ├── ...
-│   └── ethercat_master.c     # NEW: Standalone demonstrator daemon
 ├── tests/                    # NEW: Test infrastructure
 │   ├── Makefile.am
 │   ├── ec_test.h             # Lightweight test framework
