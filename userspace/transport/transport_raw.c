@@ -81,6 +81,7 @@ static int raw_open(ec_transport_t *transport, const char *interface)
     /* Get interface index */
     memset(&ifr, 0, sizeof(ifr));
     strncpy(ifr.ifr_name, interface, IFNAMSIZ - 1);
+    ifr.ifr_name[IFNAMSIZ - 1] = '\0';
     if (ioctl(raw->socket_fd, SIOCGIFINDEX, &ifr) < 0) {
         ret = -errno;
         fprintf(stderr, "Failed to get interface index for %s: %s\n",
@@ -92,6 +93,7 @@ static int raw_open(ec_transport_t *transport, const char *interface)
     /* Get MAC address */
     memset(&ifr, 0, sizeof(ifr));
     strncpy(ifr.ifr_name, interface, IFNAMSIZ - 1);
+    ifr.ifr_name[IFNAMSIZ - 1] = '\0';
     if (ioctl(raw->socket_fd, SIOCGIFHWADDR, &ifr) < 0) {
         ret = -errno;
         fprintf(stderr, "Failed to get MAC address for %s: %s\n",
@@ -243,6 +245,7 @@ static int raw_get_link_state(ec_transport_t *transport)
 
     memset(&ifr, 0, sizeof(ifr));
     strncpy(ifr.ifr_name, transport->interface, IFNAMSIZ - 1);
+    ifr.ifr_name[IFNAMSIZ - 1] = '\0';
 
     if (ioctl(raw->socket_fd, SIOCGIFFLAGS, &ifr) < 0) {
         return -errno;
