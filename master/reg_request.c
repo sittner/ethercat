@@ -30,6 +30,7 @@
 #include <linux/slab.h>
 
 #include "reg_request.h"
+#include "globals_int.h"
 
 /****************************************************************************/
 

@@ -32,7 +32,7 @@
 #include <linux/lockdep.h>
 #include <linux/skbuff.h>
 
-#include "globals.h"
+#include "globals_int.h"
 #include "master.h"
 #include "slave.h"
 #include "mailbox.h"

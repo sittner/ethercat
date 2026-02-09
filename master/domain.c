@@ -28,7 +28,7 @@
 
 #include <linux/module.h>
 
-#include "globals.h"
+#include "globals_int.h"
 #include "master.h"
 #include "slave_config.h"
 

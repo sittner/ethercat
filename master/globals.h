@@ -29,7 +29,6 @@
 
 #include "../globals.h"
 #include "../include/ecrt.h"
-#include "pal.h"
 
 /*****************************************************************************
  * EtherCAT master
@@ -202,48 +201,6 @@ typedef enum {
 } ec_device_index_t;
 
 extern const char *ec_device_names[2]; // only main and backup!
-
-/****************************************************************************/
-
-/** Convenience macro for printing EtherCAT-specific information to syslog.
- *
- * This will print the message in \a fmt with a prefixed "EtherCAT: ".
- *
- * \param fmt format string (like in printf())
- * \param args arguments (optional)
- */
-#define EC_INFO(fmt, args...) \
-    EC_PAL_INFO(fmt, ##args)
-
-/** Convenience macro for printing EtherCAT-specific errors to syslog.
- *
- * This will print the message in \a fmt with a prefixed "EtherCAT ERROR: ".
- *
- * \param fmt format string (like in printf())
- * \param args arguments (optional)
- */
-#define EC_ERR(fmt, args...) \
-    EC_PAL_ERR(fmt, ##args)
-
-/** Convenience macro for printing EtherCAT-specific warnings to syslog.
- *
- * This will print the message in \a fmt with a prefixed "EtherCAT WARNING: ".
- *
- * \param fmt format string (like in printf())
- * \param args arguments (optional)
- */
-#define EC_WARN(fmt, args...) \
-    EC_PAL_WARN(fmt, ##args)
-
-/** Convenience macro for printing EtherCAT debug messages to syslog.
- *
- * This will print the message in \a fmt with a prefixed "EtherCAT DEBUG: ".
- *
- * \param fmt format string (like in printf())
- * \param args arguments (optional)
- */
-#define EC_DBG(fmt, args...) \
-    EC_PAL_DBG(fmt, ##args)
 
 /****************************************************************************/
 

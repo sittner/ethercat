@@ -33,6 +33,7 @@
 
 #include "foe_request.h"
 #include "foe.h"
+#include "globals_int.h"
 
 /****************************************************************************/
 

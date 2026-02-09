@@ -29,7 +29,7 @@
 #include <linux/device.h>
 #include <linux/err.h>
 
-#include "globals.h"
+#include "globals_int.h"
 #include "master.h"
 #include "device.h"
 

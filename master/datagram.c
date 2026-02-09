@@ -35,7 +35,7 @@
 
 #include "pal.h"
 #include "datagram.h"
-#include "globals.h"
+#include "globals_int.h"
 #ifdef __KERNEL__
 #include "master.h"
 #endif
