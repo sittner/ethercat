@@ -21,12 +21,23 @@
 
 include $(top_srcdir)/Makefile.kbuild
 
+# Override module build directory to point to kernel/ subdirectory
+modules:
+	+$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="$(abs_builddir)/kernel" INSTALL_MOD_DIR="$(INSTALL_MOD_DIR)" modules
+
+modules_install:
+	+$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="$(abs_builddir)/kernel" INSTALL_MOD_DIR="$(INSTALL_MOD_DIR)" modules_install
+
+kbuild-clean:
+	$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="$(abs_builddir)/kernel" INSTALL_MOD_DIR="$(INSTALL_MOD_DIR)" clean
+
 if ENABLE_USERSPACE
 SUBDIRS = uspace
 endif
 
 # using HEADERS to enable tags target
 noinst_HEADERS = \
+	kernel/Kbuild.in \
 	kernel/cdev.c kernel/cdev.h \
 	kernel/debug.c kernel/debug.h \
 	kernel/device.c kernel/device.h \
