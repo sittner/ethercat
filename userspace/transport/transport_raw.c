@@ -244,8 +244,7 @@ static int raw_get_link_state(ec_transport_t *transport)
     }
 
     memset(&ifr, 0, sizeof(ifr));
-    strncpy(ifr.ifr_name, transport->interface, IFNAMSIZ - 1);
-    ifr.ifr_name[IFNAMSIZ - 1] = '\0';
+    snprintf(ifr.ifr_name, IFNAMSIZ, "%s", transport->interface);
 
     if (ioctl(raw->socket_fd, SIOCGIFFLAGS, &ifr) < 0) {
         return -errno;
