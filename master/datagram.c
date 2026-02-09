@@ -624,9 +624,10 @@ void ec_datagram_output_stats(
         ec_datagram_t *datagram
         )
 {
-#ifdef __KERNEL__
-    if (jiffies - datagram->stats_output_jiffies > HZ) {
-        datagram->stats_output_jiffies = jiffies;
+    unsigned long now = ec_pal_jiffies();
+    
+    if (ec_pal_time_after(now, datagram->stats_output_jiffies + ec_pal_hz())) {
+        datagram->stats_output_jiffies = now;
 
         if (unlikely(datagram->skip_count)) {
             EC_WARN("Datagram %p (%s) was SKIPPED %u time%s.\n",
@@ -636,20 +637,6 @@ void ec_datagram_output_stats(
             datagram->skip_count = 0;
         }
     }
-#else
-    unsigned long now = ec_pal_get_jiffies();
-    if (now - datagram->stats_output_jiffies > 1000) { /* 1 second in milliseconds */
-        datagram->stats_output_jiffies = now;
-
-        if (datagram->skip_count) {
-            EC_PAL_WARN("Datagram %p (%s) was SKIPPED %u time%s.\n",
-                    datagram, datagram->name,
-                    datagram->skip_count,
-                    datagram->skip_count == 1 ? "" : "s");
-            datagram->skip_count = 0;
-        }
-    }
-#endif
 }
 
 /****************************************************************************/
