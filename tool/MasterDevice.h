@@ -27,7 +27,7 @@
 using namespace std;
 
 #include "ecrt.h"
-#include "ioctl.h"
+#include "../master/kernel/ioctl.h"
 
 /****************************************************************************/
 

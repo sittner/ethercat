@@ -34,7 +34,7 @@
 #include <linux/kobject.h>
 #else
 #include <stdio.h>
-#include "../userspace/list.h"
+#include "uspace/list.h"
 #endif
 
 #include "globals.h"

@@ -32,8 +32,8 @@
 #include <linux/netdevice.h>
 
 #include "device.h"
-#include "master.h"
-#include "globals_int.h"
+#include "../master.h"
+#include "../globals_int.h"
 
 #ifdef EC_DEBUG_RING
 #define timersub(a, b, result) \

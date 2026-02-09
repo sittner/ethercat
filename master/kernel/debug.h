@@ -29,7 +29,7 @@
 #ifndef __EC_DEBUG_H__
 #define __EC_DEBUG_H__
 
-#include "../devices/ecdev.h"
+#include "../../devices/ecdev.h"
 
 /****************************************************************************/
 

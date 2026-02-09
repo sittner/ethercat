@@ -69,54 +69,23 @@ static ec_master_state_t master_states[EC_MAX_MASTERS];
  * Memory Allocation
  *****************************************************************************/
 
-/* These are typically macros in pal.h, but provide function versions if needed */
-
-void *ec_pal_malloc_func(size_t size)
-{
-    return malloc(size);
-}
-
-void *ec_pal_zalloc_func(size_t size)
-{
-    return calloc(1, size);
-}
-
-void ec_pal_free_func(void *ptr)
-{
-    free(ptr);
-}
+/* Memory allocation functions are implemented as macros in pal.h */
 
 /******************************************************************************
  * Time Functions
  *****************************************************************************/
 
-/* ec_pal_get_jiffies() is implemented as a static inline in pal.h */
-
-void ec_pal_usleep(unsigned long usecs)
-{
-    usleep(usecs);
-}
-
-void ec_pal_msleep(unsigned long msecs)
-{
-    usleep(msecs * 1000);
-}
+/* Time functions are implemented as macros in pal.h */
 
 /******************************************************************************
  * Logging
  *****************************************************************************/
 
-void ec_pal_print(const char *fmt, ...)
-{
-    va_list args;
-    va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
-    va_end(args);
-}
+/* Logging functions are implemented as macros in pal.h */
 
 /******************************************************************************
  * Helper Functions
- *****************************************************************************/
+ ******************************************************************************/
 
 /**
  * Map PAL device type to transport type.
