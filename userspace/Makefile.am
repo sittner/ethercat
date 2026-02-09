@@ -22,14 +22,24 @@
 # Userspace master library
 lib_LTLIBRARIES = libethercat_master.la
 
-# For now, only build userspace-specific stub files
-# The master/*.c files will be migrated in later PRs as they are adapted
-# to work with the Platform Abstraction Layer (PAL)
+# Shared master sources (PAL-compatible)
+# These files have been migrated to use the Platform Abstraction Layer
+# and can be compiled for both kernel and userspace
+MASTER_SOURCES = \
+	$(top_srcdir)/master/datagram.c \
+	$(top_srcdir)/master/pdo.c \
+	$(top_srcdir)/master/pdo_entry.c \
+	$(top_srcdir)/master/pdo_list.c \
+	$(top_srcdir)/master/sdo.c \
+	$(top_srcdir)/master/sdo_entry.c
+
+# Userspace-specific sources
 USERSPACE_SOURCES = \
 	pal_user.c
 
 libethercat_master_la_SOURCES = \
-	$(USERSPACE_SOURCES)
+	$(USERSPACE_SOURCES) \
+	$(MASTER_SOURCES)
 
 # Include paths for master headers
 libethercat_master_la_CFLAGS = \

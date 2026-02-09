@@ -26,12 +26,23 @@
 
 /****************************************************************************/
 
+#ifdef __KERNEL__
 #include <linux/module.h>
+#else
+#include <errno.h>
+#include <string.h>
+#define ERR_PTR(err) ((void*)(long)(err))
+#define PTR_ERR(ptr) ((long)(ptr))
+#define IS_ERR(ptr) ((unsigned long)(ptr) > (unsigned long)(-1000))
+#endif
 
 #include "globals.h"
+#include "pal.h"
 #include "pdo.h"
+#ifdef __KERNEL__
 #include "slave_config.h"
 #include "master.h"
+#endif
 
 #include "pdo_list.h"
 
@@ -66,7 +77,7 @@ void ec_pdo_list_clear_pdos(ec_pdo_list_t *pl /**< PDO list. */)
     list_for_each_entry_safe(pdo, next, &pl->list, list) {
         list_del_init(&pdo->list);
         ec_pdo_clear(pdo);
-        kfree(pdo);
+        ec_pal_free(pdo);
     }
 }
 
@@ -113,8 +124,8 @@ ec_pdo_t *ec_pdo_list_add_pdo(
 {
     ec_pdo_t *pdo;
 
-    if (!(pdo = (ec_pdo_t *) kmalloc(sizeof(ec_pdo_t), GFP_KERNEL))) {
-        EC_ERR("Failed to allocate memory for PDO.\n");
+    if (!(pdo = (ec_pdo_t *) ec_pal_malloc(sizeof(ec_pdo_t)))) {
+        EC_PAL_ERR("Failed to allocate memory for PDO.\n");
         return ERR_PTR(-ENOMEM);
     }
 
@@ -141,18 +152,18 @@ int ec_pdo_list_add_pdo_copy(
     // PDO already mapped?
     list_for_each_entry(mapped_pdo, &pl->list, list) {
         if (mapped_pdo->index != pdo->index) continue;
-        EC_ERR("PDO 0x%04X is already mapped!\n", pdo->index);
+        EC_PAL_ERR("PDO 0x%04X is already mapped!\n", pdo->index);
         return -EEXIST;
     }
 
-    if (!(mapped_pdo = kmalloc(sizeof(ec_pdo_t), GFP_KERNEL))) {
-        EC_ERR("Failed to allocate PDO memory.\n");
+    if (!(mapped_pdo = ec_pal_malloc(sizeof(ec_pdo_t)))) {
+        EC_PAL_ERR("Failed to allocate PDO memory.\n");
         return -ENOMEM;
     }
 
     ret = ec_pdo_init_copy(mapped_pdo, pdo);
     if (ret < 0) {
-        kfree(mapped_pdo);
+        ec_pal_free(mapped_pdo);
         return ret;
     }
 
@@ -325,12 +336,12 @@ void ec_pdo_list_print(
     const ec_pdo_t *pdo;
 
     if (list_empty(&pl->list)) {
-        printk(KERN_CONT "(none)");
+        EC_PAL_INFO("(none)");
     } else {
         list_for_each_entry(pdo, &pl->list, list) {
-            printk(KERN_CONT "0x%04X", pdo->index);
+            EC_PAL_INFO("0x%04X", pdo->index);
             if (pdo->list.next != &pl->list)
-                printk(KERN_CONT " ");
+                EC_PAL_INFO(" ");
         }
     }
 }

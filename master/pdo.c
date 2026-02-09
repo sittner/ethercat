@@ -26,10 +26,18 @@
 
 /****************************************************************************/
 
-#include <linux/slab.h>
-#include <linux/err.h>
-
+#include "pal.h"
 #include "pdo.h"
+
+#ifdef __KERNEL__
+#include <linux/err.h>
+#else
+#include <errno.h>
+#include <string.h>
+#define ERR_PTR(err) ((void*)(long)(err))
+#define PTR_ERR(ptr) ((long)(ptr))
+#define IS_ERR(ptr) ((unsigned long)(ptr) > (unsigned long)(-1000))
+#endif
 
 /****************************************************************************/
 
@@ -86,7 +94,7 @@ out_return:
 void ec_pdo_clear(ec_pdo_t *pdo /**< EtherCAT PDO. */)
 {
     if (pdo->name)
-        kfree(pdo->name);
+        ec_pal_free(pdo->name);
 
     ec_pdo_clear_entries(pdo);
 }
@@ -103,7 +111,7 @@ void ec_pdo_clear_entries(ec_pdo_t *pdo /**< EtherCAT PDO. */)
     list_for_each_entry_safe(entry, next, &pdo->entries, list) {
         list_del(&entry->list);
         ec_pdo_entry_clear(entry);
-        kfree(entry);
+        ec_pal_free(entry);
     }
 }
 
@@ -125,11 +133,11 @@ int ec_pdo_set_name(
         return 0;
 
     if (pdo->name)
-        kfree(pdo->name);
+        ec_pal_free(pdo->name);
 
     if (name && (len = strlen(name))) {
-        if (!(pdo->name = (char *) kmalloc(len + 1, GFP_KERNEL))) {
-            EC_ERR("Failed to allocate PDO name.\n");
+        if (!(pdo->name = (char *) ec_pal_malloc(len + 1))) {
+            EC_PAL_ERR("Failed to allocate PDO name.\n");
             return -ENOMEM;
         }
         memcpy(pdo->name, name, len + 1);
@@ -155,8 +163,8 @@ ec_pdo_entry_t *ec_pdo_add_entry(
 {
     ec_pdo_entry_t *entry;
 
-    if (!(entry = kmalloc(sizeof(ec_pdo_entry_t), GFP_KERNEL))) {
-        EC_ERR("Failed to allocate memory for PDO entry.\n");
+    if (!(entry = ec_pal_malloc(sizeof(ec_pdo_entry_t)))) {
+        EC_PAL_ERR("Failed to allocate memory for PDO entry.\n");
         return ERR_PTR(-ENOMEM);
     }
 
@@ -187,14 +195,14 @@ int ec_pdo_copy_entries(
 
     list_for_each_entry(other_entry, &other->entries, list) {
         if (!(entry = (ec_pdo_entry_t *)
-                    kmalloc(sizeof(ec_pdo_entry_t), GFP_KERNEL))) {
-            EC_ERR("Failed to allocate memory for PDO entry copy.\n");
+                    ec_pal_malloc(sizeof(ec_pdo_entry_t)))) {
+            EC_PAL_ERR("Failed to allocate memory for PDO entry copy.\n");
             return -ENOMEM;
         }
 
         ret = ec_pdo_entry_init_copy(entry, other_entry);
         if (ret < 0) {
-            kfree(entry);
+            ec_pal_free(entry);
             return ret;
         }
 
@@ -295,13 +303,13 @@ void ec_pdo_print_entries(
     const ec_pdo_entry_t *entry;
 
     if (list_empty(&pdo->entries)) {
-        printk(KERN_CONT "(none)");
+        EC_PAL_INFO("(none)");
     } else {
         list_for_each_entry(entry, &pdo->entries, list) {
-            printk(KERN_CONT "0x%04X:%02X/%u",
+            EC_PAL_INFO("0x%04X:%02X/%u",
                     entry->index, entry->subindex, entry->bit_length);
             if (entry->list.next != &pdo->entries)
-                printk(KERN_CONT " ");
+                EC_PAL_INFO(" ");
         }
     }
 }

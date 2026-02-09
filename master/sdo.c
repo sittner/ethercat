@@ -26,9 +26,11 @@
 
 /****************************************************************************/
 
-#include <linux/slab.h>
-
+#include "pal.h"
+#include "globals.h"
+#ifdef __KERNEL__
 #include "master.h"
+#endif
 
 #include "sdo.h"
 
@@ -66,11 +68,11 @@ void ec_sdo_clear(
     list_for_each_entry_safe(entry, next, &sdo->entries, list) {
         list_del(&entry->list);
         ec_sdo_entry_clear(entry);
-        kfree(entry);
+        ec_pal_free(entry);
     }
 
     if (sdo->name)
-        kfree(sdo->name);
+        ec_pal_free(sdo->name);
 }
 
 /****************************************************************************/

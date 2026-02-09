@@ -29,9 +29,14 @@
 #ifndef __EC_DATAGRAM_H__
 #define __EC_DATAGRAM_H__
 
+#ifdef __KERNEL__
 #include <linux/list.h>
 #include <linux/time.h>
 #include <linux/timex.h>
+#else
+#include "../userspace/list.h"
+#include <sys/time.h>
+#endif
 
 #include "globals.h"
 

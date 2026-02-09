@@ -34,8 +34,61 @@
 #include <pthread.h>
 #include <stdatomic.h>
 #include <errno.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <stdint.h>
 
 #include "include/ecrt_user.h"
+
+/******************************************************************************
+ * Memory Allocation
+ *****************************************************************************/
+
+/* These are typically macros in pal.h, but provide function versions if needed */
+
+void *ec_pal_malloc_func(size_t size)
+{
+    return malloc(size);
+}
+
+void *ec_pal_zalloc_func(size_t size)
+{
+    return calloc(1, size);
+}
+
+void ec_pal_free_func(void *ptr)
+{
+    free(ptr);
+}
+
+/******************************************************************************
+ * Time Functions
+ *****************************************************************************/
+
+/* ec_pal_get_jiffies() is implemented as a static inline in pal.h */
+
+void ec_pal_usleep(unsigned long usecs)
+{
+    usleep(usecs);
+}
+
+void ec_pal_msleep(unsigned long msecs)
+{
+    usleep(msecs * 1000);
+}
+
+/******************************************************************************
+ * Logging
+ *****************************************************************************/
+
+void ec_pal_print(const char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+}
 
 /******************************************************************************
  * Userspace Master Management - Stub Implementations

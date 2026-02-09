@@ -26,9 +26,13 @@
 
 /****************************************************************************/
 
-#include <linux/slab.h>
-
+#include "pal.h"
 #include "pdo_entry.h"
+
+#ifndef __KERNEL__
+#include <errno.h>
+#include <string.h>
+#endif
 
 /****************************************************************************/
 
@@ -68,7 +72,7 @@ int ec_pdo_entry_init_copy(
 void ec_pdo_entry_clear(ec_pdo_entry_t *entry /**< PDO entry. */)
 {
     if (entry->name)
-        kfree(entry->name);
+        ec_pal_free(entry->name);
 }
 
 /****************************************************************************/
@@ -89,11 +93,11 @@ int ec_pdo_entry_set_name(
         return 0;
 
     if (entry->name)
-        kfree(entry->name);
+        ec_pal_free(entry->name);
 
     if (name && (len = strlen(name))) {
-        if (!(entry->name = (char *) kmalloc(len + 1, GFP_KERNEL))) {
-            EC_ERR("Failed to allocate PDO entry name.\n");
+        if (!(entry->name = (char *) ec_pal_malloc(len + 1))) {
+            EC_PAL_ERR("Failed to allocate PDO entry name.\n");
             return -ENOMEM;
         }
         memcpy(entry->name, name, len + 1);

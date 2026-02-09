@@ -103,6 +103,10 @@
 #define ec_pal_atomic_dec_return(v) atomic_dec_return(v)
 #define ec_pal_atomic_dec_and_test(v) atomic_dec_and_test(v)
 
+/* Compiler hints */
+#define likely(x)      __builtin_expect(!!(x), 1)
+#define unlikely(x)    __builtin_expect(!!(x), 0)
+
 /****************************************************************************/
 
 #else /* !__KERNEL__ */
@@ -180,6 +184,10 @@ typedef struct {
 #define ec_pal_atomic_inc_return(v) (atomic_fetch_add(&(v)->counter, 1) + 1)
 #define ec_pal_atomic_dec_return(v) (atomic_fetch_sub(&(v)->counter, 1) - 1)
 #define ec_pal_atomic_dec_and_test(v) (atomic_fetch_sub(&(v)->counter, 1) == 1)
+
+/* Compiler hints (userspace) */
+#define likely(x)      __builtin_expect(!!(x), 1)
+#define unlikely(x)    __builtin_expect(!!(x), 0)
 
 /****************************************************************************/
 
