@@ -233,3 +233,24 @@ int ec_transport_available(ec_transport_type_t type)
 }
 
 /****************************************************************************/
+
+/**
+ * Get the name of a transport type.
+ */
+const char *ec_transport_type_name(ec_transport_type_t type)
+{
+    const ec_transport_ops_t *ops;
+
+    if (type >= sizeof(transport_registry) / sizeof(transport_registry[0])) {
+        return "unknown";
+    }
+
+    ops = transport_registry[type];
+    if (!ops) {
+        return "unknown";
+    }
+
+    return ops->name ? ops->name : "unknown";
+}
+
+/****************************************************************************/
