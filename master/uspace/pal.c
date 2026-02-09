@@ -39,7 +39,8 @@
 #include <stdarg.h>
 #include <stdint.h>
 
-#include "include/ecrt_user.h"
+#include "pal.h"
+#include "ecrt_user.h"
 #include "transport/ec_transport.h"
 
 /******************************************************************************
