@@ -83,6 +83,37 @@ AM_CONDITIONAL(ENABLE_KERNEL, test "x$enablekernel" = "x1")
 AC_SUBST(ENABLE_KERNEL, [$enablekernel])
 
 #-----------------------------------------------------------------------------
+# Userspace master
+#-----------------------------------------------------------------------------
+
+AC_MSG_CHECKING([whether to build userspace master])
+
+AC_ARG_ENABLE([userspace],
+    AS_HELP_STRING([--enable-userspace],
+                   [Enable building userspace master library]),
+    [
+        case "${enableval}" in
+            yes) enableuserspace=1
+                ;;
+            no) enableuserspace=0
+                ;;
+            *) AC_MSG_ERROR([Invalid value for --enable-userspace])
+                ;;
+        esac
+    ],
+    [enableuserspace=0]
+)
+
+if test "x$enableuserspace" = "x1"; then
+    AC_MSG_RESULT([yes])
+else
+    AC_MSG_RESULT([no])
+fi
+
+AM_CONDITIONAL(ENABLE_USERSPACE, test "x$enableuserspace" = "x1")
+AC_SUBST(ENABLE_USERSPACE, [$enableuserspace])
+
+#-----------------------------------------------------------------------------
 # Linux sources
 #-----------------------------------------------------------------------------
 
@@ -1448,6 +1479,7 @@ AC_CONFIG_FILES([
         tool/Makefile
         tty/Kbuild
         tty/Makefile
+        userspace/Makefile
 ])
 
 AC_OUTPUT

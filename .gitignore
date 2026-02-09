@@ -37,6 +37,7 @@ fake_lib/libfakeethercat.la
 lib/*.cmake
 lib/libethercat.la
 lib/libethercat.pc
+userspace/*.la
 libtool
 master/*.o.d
 script/ethercat

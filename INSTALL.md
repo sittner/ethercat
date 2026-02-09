@@ -26,6 +26,21 @@ make modules_install install
 depmod
 ```
 
+## Userspace Master (Experimental)
+
+To build the experimental userspace master library instead of kernel modules:
+
+```bash
+./bootstrap # to create the configure script, if downloaded from the repo
+
+./configure --disable-kernel --enable-userspace --sysconfdir=/etc
+make all
+```
+
+This builds `libethercat_master.so` which provides userspace-based EtherCAT
+master functionality. Note: This is experimental and not all features are yet
+implemented.
+
 ... and then customizing the appropriate configuration file:
 
 ```bash
