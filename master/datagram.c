@@ -26,7 +26,9 @@
 
 /****************************************************************************/
 
+#ifdef __KERNEL__
 #include <linux/slab.h>
+#endif
 
 #include "pal.h"
 #include "datagram.h"
@@ -559,31 +561,31 @@ void ec_datagram_print_state(
         const ec_datagram_t *datagram /**< EtherCAT datagram */
         )
 {
-    printk(KERN_CONT "Datagram ");
+    EC_PAL_INFO("Datagram ");
     switch (datagram->state) {
         case EC_DATAGRAM_INIT:
-            printk(KERN_CONT "initialized");
+            EC_PAL_INFO("initialized");
             break;
         case EC_DATAGRAM_QUEUED:
-            printk(KERN_CONT "queued");
+            EC_PAL_INFO("queued");
             break;
         case EC_DATAGRAM_SENT:
-            printk(KERN_CONT "sent");
+            EC_PAL_INFO("sent");
             break;
         case EC_DATAGRAM_RECEIVED:
-            printk(KERN_CONT "received");
+            EC_PAL_INFO("received");
             break;
         case EC_DATAGRAM_TIMED_OUT:
-            printk(KERN_CONT "timed out");
+            EC_PAL_INFO("timed out");
             break;
         case EC_DATAGRAM_ERROR:
-            printk(KERN_CONT "error");
+            EC_PAL_INFO("error");
             break;
         default:
-            printk(KERN_CONT "???");
+            EC_PAL_INFO("???");
     }
 
-    printk(KERN_CONT ".\n");
+    EC_PAL_INFO(".\n");
 }
 
 /****************************************************************************/
@@ -597,15 +599,15 @@ void ec_datagram_print_wc_error(
         )
 {
     if (datagram->working_counter == 0) {
-        printk(KERN_CONT "No response.");
+        EC_PAL_INFO("No response.");
     }
     else if (datagram->working_counter > 1) {
-        printk(KERN_CONT "%u slaves responded!", datagram->working_counter);
+        EC_PAL_INFO("%u slaves responded!", datagram->working_counter);
     }
     else {
-        printk(KERN_CONT "Success.");
+        EC_PAL_INFO("Success.");
     }
-    printk(KERN_CONT "\n");
+    EC_PAL_INFO("\n");
 }
 
 /****************************************************************************/
@@ -616,6 +618,7 @@ void ec_datagram_output_stats(
         ec_datagram_t *datagram
         )
 {
+#ifdef __KERNEL__
     if (jiffies - datagram->stats_output_jiffies > HZ) {
         datagram->stats_output_jiffies = jiffies;
 
@@ -627,6 +630,20 @@ void ec_datagram_output_stats(
             datagram->skip_count = 0;
         }
     }
+#else
+    unsigned long now = ec_pal_get_jiffies();
+    if (now - datagram->stats_output_jiffies > 1000) { /* 1 second in milliseconds */
+        datagram->stats_output_jiffies = now;
+
+        if (datagram->skip_count) {
+            EC_PAL_WARN("Datagram %p (%s) was SKIPPED %u time%s.\n",
+                    datagram, datagram->name,
+                    datagram->skip_count,
+                    datagram->skip_count == 1 ? "" : "s");
+            datagram->skip_count = 0;
+        }
+    }
+#endif
 }
 
 /****************************************************************************/
