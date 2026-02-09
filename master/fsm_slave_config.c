@@ -589,7 +589,7 @@ void ec_fsm_slave_config_state_mbox_sync(
     if (datagram->working_counter == 0) {
         unsigned long diff = datagram->jiffies_received - fsm->jiffies_start;
 
-        if (diff >= HZ) {
+        if (diff >= ec_pal_hz()) {
             slave->error_flag = 1;
             fsm->state = ec_fsm_slave_config_state_error;
             EC_SLAVE_ERR(slave, "Timeout while configuring"
@@ -597,7 +597,7 @@ void ec_fsm_slave_config_state_mbox_sync(
             return;
         } else {
             EC_SLAVE_DBG(slave, 1, "Resending after %u ms...\n",
-                    (unsigned int) diff * 1000 / HZ);
+                    (unsigned int) diff * 1000 / ec_pal_hz());
         }
 
         // send configuration datagram again
@@ -1425,7 +1425,7 @@ void ec_fsm_slave_config_state_dc_cycle(
 
     EC_SLAVE_DBG(slave, 1, "Checking for synchrony.\n");
 
-    fsm->jiffies_start = jiffies;
+    fsm->jiffies_start = ec_pal_jiffies();
     ec_datagram_fprd(datagram, slave->station_address, 0x092c, 4);
     fsm->retries = EC_FSM_RETRIES;
     fsm->state = ec_fsm_slave_config_state_dc_sync_check;
@@ -1473,7 +1473,7 @@ void ec_fsm_slave_config_state_dc_sync_check(
     }
 
     abs_sync_diff = EC_READ_U32(datagram->data) & 0x7fffffff;
-    diff_ms = (datagram->jiffies_received - fsm->jiffies_start) * 1000 / HZ;
+    diff_ms = (datagram->jiffies_received - fsm->jiffies_start) * 1000 / ec_pal_hz();
 
     if (abs_sync_diff > EC_DC_MAX_SYNC_DIFF_NS) {
 
@@ -1638,7 +1638,7 @@ void ec_fsm_slave_config_enter_wait_safeop(
         ec_datagram_fprd(fsm->datagram, fsm->slave->station_address,
                 0x0600, 1);
 
-        fsm->jiffies_start = jiffies;
+        fsm->jiffies_start = ec_pal_jiffies();
     }
     else {
         ec_fsm_slave_config_enter_safeop(fsm);
@@ -1653,9 +1653,9 @@ void ec_fsm_slave_config_state_wait_safeop(
         ec_fsm_slave_config_t *fsm /**< slave state machine */
         )
 {
-    unsigned long diff = jiffies - fsm->jiffies_start;
+    unsigned long diff = ec_pal_jiffies() - fsm->jiffies_start;
 
-    if (diff * 1000 / HZ < fsm->wait_ms) {
+    if (diff * 1000 / ec_pal_hz() < fsm->wait_ms) {
         return;
     }
 
