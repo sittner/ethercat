@@ -56,11 +56,14 @@ The following components have been implemented and are present in the codebase:
 | Top-level Makefile.am | `Makefile.am` | ✅ Modified | Added userspace subdirectory |
 | Userspace Directory | `userspace/` | ✅ Created | Complete directory structure |
 | Userspace Makefile | `userspace/Makefile.am` | ✅ Created | Build rules for libethercat_master.la |
-| Userspace PAL | `userspace/pal_user.c` | ✅ Created | Userspace PAL implementation (stubs) |
+| Userspace PAL | `userspace/pal_user.c` | ✅ Implemented | Full implementation with transport integration |
 | Userspace API Header | `userspace/include/ecrt_user.h` | ✅ Created | ecrt_master_init/cleanup/idle API |
 | Userspace API Implementation | `userspace/ecrt_user.c` | ✅ Created | Stub implementations |
 | Master Daemon | `userspace/ethercat_master.c` | ✅ Created | Standalone daemon with CLI options |
 | First Core File Migration | `master/datagram.c` | ✅ Started | Uses `ec_pal_malloc`, `ec_pal_free` |
+| Transport Interface | `userspace/transport/ec_transport.h` | ✅ Implemented | Transport abstraction with send/recv/link/MAC operations |
+| Transport Registry | `userspace/transport/transport.c` | ✅ Implemented | Transport type registration and lifecycle management |
+| Raw socket transport | `userspace/transport/transport_raw.c` | ✅ Implemented | Full AF_PACKET implementation with EtherCAT ethertype |
 
 ### ❌ Components NOT Yet Implemented
 
@@ -69,9 +72,6 @@ The following components are planned but not yet implemented:
 | Component | Planned Location | Status | Phase |
 |-----------|------------------|--------|-------|
 | Device Abstraction Header | `master/pal_device.h` | ❌ Not created | Phase 2 |
-| Transport Interface | `userspace/transport/ec_transport.h` | ❌ Not created | Phase 2 |
-| Transport Registry | `userspace/transport/transport.c` | ❌ Not created | Phase 2 |
-| Raw socket transport | `userspace/transport/transport_raw.c` | ❌ Not created | Phase 2 |
 | XDP transport | `userspace/transport/transport_xdp.c` | ❌ Not created | Phase 6 |
 | Unix socket control interface | `userspace/control_socket.c` | ❌ Not created | Phase 4 |
 | EoE TUN/TAP implementation | `userspace/eoe_tun.c` | ❌ Not created | Phase 5 |
@@ -84,19 +84,23 @@ The migration is divided into six phases. Current progress for each phase:
 
 | Phase | Description | Est. Duration | Progress | Status |
 |-------|-------------|---------------|----------|--------|
-| **Phase 1** | PAL Foundation | 2-3 weeks | ~95% | ✅ Nearly Complete |
-| **Phase 2** | Transport Layer | 2-3 weeks | 0% | 🟡 Starting |
-| **Phase 3** | Core Migration | 4-5 weeks | ~5% | ⚪ Not Started |
-| **Phase 4** | Userspace API & Control | 2-3 weeks | ~20% | 🟡 Partial (daemon done) |
+| **Phase 1** | PAL Foundation | 2-3 weeks | 100% | ✅ Complete |
+| **Phase 2** | Transport Layer | 2-3 weeks | 100% | ✅ Complete |
+| **Phase 3** | Core Migration | 4-5 weeks | ~5% | 🟡 Starting |
+| **Phase 4** | Userspace API & Control | 2-3 weeks | ~30% | 🟡 Partial (daemon functional) |
 | **Phase 5** | Advanced Features | 3-4 weeks | 0% | ⚪ Not Started |
 | **Phase 6** | XDP Transport & Polish | 2-3 weeks | 0% | ⚪ Not Started |
 
-**Overall Progress:** ~15% complete
+**Overall Progress:** ~35% complete
 
-**Current Focus:** Phase 2 - Implementing transport layer (raw socket) to enable actual network I/O.
+**Current Focus:** Phase 3 - Core Migration. Migrating master/*.c files to use PAL abstractions.
 
 ### Recent Milestones
 
+- ✅ **2026-02-09**: Transport layer complete - raw socket implementation working (PR #13)
+- ✅ **2026-02-09**: Master init wiring complete - transport integrated with ecrt_master_init() (PR #14)
+- ✅ **2026-02-09**: `ethercat_master` daemon runs successfully, displays link state and MAC address
+- ✅ **2026-02-09**: Clean shutdown on Ctrl+C with proper transport cleanup
 - ✅ **2026-02-09**: `ethercat_master` daemon runs and fails gracefully with "Function not implemented"
 - ✅ **2026-02-09**: Kernel + userspace builds working simultaneously
 - ✅ **2026-02-09**: `globals.h` / `globals_int.h` split to fix C++ tool build
