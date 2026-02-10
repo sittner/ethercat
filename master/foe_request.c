@@ -26,9 +26,11 @@
 
 /****************************************************************************/
 
+#ifdef __KERNEL__
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
+#endif
 
 #include "foe_request.h"
 #include "foe.h"

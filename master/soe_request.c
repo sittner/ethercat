@@ -25,7 +25,9 @@
 
 /****************************************************************************/
 
+#ifdef __KERNEL__
 #include <linux/module.h>
+#endif
 
 #include "soe_request.h"
 #include "globals_int.h"

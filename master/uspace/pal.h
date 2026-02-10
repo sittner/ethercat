@@ -282,8 +282,31 @@ typedef struct {
 #endif
 
 /****************************************************************************/
+/* Module macros (no-op in userspace) */
+/****************************************************************************/
+
+#define EXPORT_SYMBOL(sym)
+#define MODULE_AUTHOR(author)
+#define MODULE_DESCRIPTION(desc)
+#define MODULE_LICENSE(license)
+#define MODULE_VERSION(version)
+
+/****************************************************************************/
+/* Min/max macros */
+/****************************************************************************/
+
+#ifndef min
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
+#ifndef max
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#endif
+
+/****************************************************************************/
 
 #include <stdint.h>
+#include <stdbool.h>
 
 /* Kernel-compatible integer types for userspace */
 typedef uint8_t  u8;

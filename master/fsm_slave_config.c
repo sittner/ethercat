@@ -25,8 +25,6 @@
 
 /****************************************************************************/
 
-#include <asm/div64.h>
-
 #include "globals_int.h"
 #include "master.h"
 #include "mailbox.h"
