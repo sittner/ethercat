@@ -56,9 +56,7 @@ SHARED_SOURCES = \
 	soe_errors.c \
 	coe_emerg_ring.c
 
-if ENABLE_EOE
-SHARED_SOURCES += fsm_eoe.c
-endif
+# Note: fsm_eoe.c is NOT included - EOE requires kernel network device support
 
 # Userspace-specific sources (in current directory)
 USPACE_SOURCES = \
@@ -81,6 +79,9 @@ AM_CFLAGS = \
 	-I$(top_srcdir)/master \
 	-I$(top_srcdir)/include \
 	-Wall
+
+# Undefine EC_EOE for userspace - EOE requires kernel network device support
+AM_CPPFLAGS = -UEC_EOE
 
 # Libraries needed for userspace
 libethercat_master_la_LIBADD = -lpthread

@@ -298,7 +298,11 @@ size_t ecrt_soe_request_data_size(const ec_soe_request_t *req)
 
 /****************************************************************************/
 
-ec_request_state_t ecrt_soe_request_state(const ec_soe_request_t *req)
+ec_request_state_t ecrt_soe_request_state(
+#ifdef __KERNEL__
+        const
+#endif
+        ec_soe_request_t *req)
 {
    return ec_request_state_translation_table[req->state];
 }
