@@ -29,10 +29,15 @@
 #ifndef __EC_EOE_REQUEST_H__
 #define __EC_EOE_REQUEST_H__
 
-#include <linux/list.h>
-#include <linux/etherdevice.h> // ETH_ALEN
-
+#include "pal.h"
 #include "globals.h"
+
+/* ETH_ALEN definition */
+#ifdef __KERNEL__
+#include <linux/etherdevice.h>
+#else
+#define ETH_ALEN 6
+#endif
 
 /****************************************************************************/
 

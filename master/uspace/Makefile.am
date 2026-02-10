@@ -32,7 +32,8 @@ SHARED_SOURCES = \
 	pdo_entry.c \
 	pdo_list.c \
 	sdo.c \
-	sdo_entry.c
+	sdo_entry.c \
+	fsm_master.c
 
 # Userspace-specific sources (in current directory)
 USPACE_SOURCES = \

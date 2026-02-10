@@ -29,7 +29,7 @@
 #include "master.h"
 #include "mailbox.h"
 #include "slave_config.h"
-#ifdef EC_EOE
+#if defined(EC_EOE) && defined(__KERNEL__)
 #include "ethernet.h"
 #endif
 

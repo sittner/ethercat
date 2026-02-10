@@ -55,9 +55,9 @@
 #include <uapi/linux/sched/types.h> // struct sched_param
 #include <linux/sched/types.h> // sched_setscheduler
 #endif
-#endif
 #include "ethernet.h"
-#endif
+#endif /* __KERNEL__ */
+#endif /* EC_EOE */
 
 #ifdef __KERNEL__
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0) || \

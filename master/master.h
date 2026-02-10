@@ -38,7 +38,11 @@
 #include "pal.h"
 #include "device.h"
 #include "domain.h"
+#ifdef EC_EOE
+#ifdef __KERNEL__
 #include "ethernet.h"
+#endif
+#endif
 #include "fsm_master.h"
 
 /****************************************************************************/
@@ -270,7 +274,7 @@ unsigned int ec_master_domain_count(const ec_master_t *);
 ec_domain_t *ec_master_find_domain(ec_master_t *, unsigned int);
 const ec_domain_t *ec_master_find_domain_const(const ec_master_t *,
         unsigned int);
-#ifdef EC_EOE
+#if defined(EC_EOE) && defined(__KERNEL__)
 uint16_t ec_master_eoe_handler_count(const ec_master_t *);
 const ec_eoe_t *ec_master_get_eoe_handler_const(const ec_master_t *, uint16_t);
 #endif

@@ -29,9 +29,14 @@
 #ifndef __EC_SDO_REQUEST_H__
 #define __EC_SDO_REQUEST_H__
 
-#include <linux/list.h>
-
+#include "pal.h"
 #include "globals.h"
+
+/* Temporarily undefine errno macro to allow it as a field name */
+#ifdef errno
+#define EC_SDO_REQUEST_SAVED_ERRNO errno
+#undef errno
+#endif
 
 /****************************************************************************/
 
@@ -71,5 +76,11 @@ int ec_sdo_request_copy_data(ec_sdo_request_t *, const uint8_t *, size_t);
 int ec_sdo_request_timed_out(const ec_sdo_request_t *);
 
 /****************************************************************************/
+
+/* Restore errno macro if it was defined */
+#ifdef EC_SDO_REQUEST_SAVED_ERRNO
+#define errno EC_SDO_REQUEST_SAVED_ERRNO
+#undef EC_SDO_REQUEST_SAVED_ERRNO
+#endif
 
 #endif
