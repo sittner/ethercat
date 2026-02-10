@@ -63,6 +63,10 @@
 #endif
 
 #include "master.h"
+#include "kernel/cdev.h"
+#ifdef EC_RTDM
+#include "kernel/rtdm.h"
+#endif
 
 /****************************************************************************/
 
@@ -3296,8 +3300,10 @@ int ecrt_master_reset(ec_master_t *master)
 
 static void sc_reset_task_kicker(struct irq_work *work)
 {
+    ec_master_plat_t *plat =
+        container_of(work, ec_master_plat_t, sc_reset_work_kicker);
     struct ec_master *master =
-        container_of(work, struct ec_master, sc_reset_work_kicker);
+        container_of(plat, struct ec_master, plat);
     schedule_work(&master->plat.sc_reset_work);
 }
 
@@ -3305,8 +3311,10 @@ static void sc_reset_task_kicker(struct irq_work *work)
 
 static void sc_reset_task(struct work_struct *work)
 {
+    ec_master_plat_t *plat =
+        container_of(work, ec_master_plat_t, sc_reset_work);
     struct ec_master *master =
-        container_of(work, struct ec_master, sc_reset_work);
+        container_of(plat, struct ec_master, plat);
 
     ec_master_lock(master);
     ecrt_master_reset(master);

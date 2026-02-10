@@ -97,6 +97,7 @@
 #define ec_master_lock_interruptible(m) sem_wait(&(m)->plat.master_sem)  /* No interrupts in userspace */
 #define ec_device_lock(m)               sem_wait(&(m)->plat.device_sem)
 #define ec_device_unlock(m)             sem_post(&(m)->plat.device_sem)
+#define ec_device_lock_interruptible(m) sem_wait(&(m)->plat.device_sem)  /* No interrupts in userspace */
 #define ec_scan_lock(m)                 sem_wait(&(m)->plat.scan_sem)
 #define ec_scan_unlock(m)               sem_post(&(m)->plat.scan_sem)
 #define ec_config_lock(m)               sem_wait(&(m)->plat.config_sem)

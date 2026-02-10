@@ -224,7 +224,7 @@ void ec_slave_clear(ec_slave_t *slave /**< EtherCAT slave */)
     }
 #endif
 
-    wake_up_all(&slave->master->request_queue);
+    wake_up_all(&slave->master->plat.request_queue);
 
     if (slave->config) {
         ec_slave_config_detach(slave->config);

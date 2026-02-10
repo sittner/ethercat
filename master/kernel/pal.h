@@ -97,6 +97,7 @@
 #define ec_master_lock_interruptible(m) down_interruptible(&(m)->plat.master_sem)
 #define ec_device_lock(m)               down(&(m)->plat.device_sem)
 #define ec_device_unlock(m)             up(&(m)->plat.device_sem)
+#define ec_device_lock_interruptible(m) down_interruptible(&(m)->plat.device_sem)
 #define ec_scan_lock(m)                 down(&(m)->plat.scan_sem)
 #define ec_scan_unlock(m)               up(&(m)->plat.scan_sem)
 #define ec_config_lock(m)               down(&(m)->plat.config_sem)
@@ -215,9 +216,26 @@ typedef struct {
 #include <linux/rtmutex.h>
 #include <linux/workqueue.h>
 #include <linux/irq_work.h>
+#include <linux/cdev.h>
 
+/* Forward declaration */
+struct ec_master;
+
+/** EtherCAT master character device. */
+struct ec_cdev {
+    struct ec_master *master; /**< Master owning the device. */
+    struct cdev cdev;         /**< Character device. */
+};
 typedef struct ec_cdev ec_cdev_t;
+
 #ifdef EC_RTDM
+struct rtdm_device;
+
+/** EtherCAT RTDM device. */
+struct ec_rtdm_dev {
+    struct ec_master *master;    /**< Master pointer. */
+    struct rtdm_device *dev;     /**< RTDM device. */
+};
 typedef struct ec_rtdm_dev ec_rtdm_dev_t;
 #endif
 

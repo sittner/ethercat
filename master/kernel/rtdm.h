@@ -25,24 +25,13 @@
 #ifndef __EC_RTDM_H__
 #define __EC_RTDM_H__
 
-#include "../../include/ecrt.h" /* ec_master_t */
+/* Forward declarations */
+struct ec_master;
+typedef struct ec_rtdm_dev ec_rtdm_dev_t;
 
 /****************************************************************************/
 
-struct rtdm_device;
-
-/****************************************************************************/
-
-/** EtherCAT RTDM device.
- */
-typedef struct ec_rtdm_dev {
-    ec_master_t *master; /**< Master pointer. */
-    struct rtdm_device *dev; /**< RTDM device. */
-} ec_rtdm_dev_t;
-
-/****************************************************************************/
-
-int ec_rtdm_dev_init(ec_rtdm_dev_t *, ec_master_t *);
+int ec_rtdm_dev_init(ec_rtdm_dev_t *, struct ec_master *);
 void ec_rtdm_dev_clear(ec_rtdm_dev_t *);
 
 /****************************************************************************/
