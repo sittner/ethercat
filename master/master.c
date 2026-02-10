@@ -538,10 +538,10 @@ void ec_master_clear_config(
         ec_master_t *master /**< EtherCAT master. */
         )
 {
-    down(&master->master_sem);
+    ec_master_lock(master);
     ec_master_clear_domains(master);
     ec_master_clear_slave_configs(master);
-    up(&master->master_sem);
+    ec_master_unlock(master);
 }
 
 /****************************************************************************/
@@ -686,9 +686,9 @@ void ec_master_leave_idle_phase(ec_master_t *master /**< EtherCAT master */)
 #endif
     ec_master_thread_stop(master);
 
-    down(&master->master_sem);
+    ec_master_lock(master);
     ec_master_clear_slaves(master);
-    up(&master->master_sem);
+    ec_master_unlock(master);
 
     ec_fsm_master_reset(&master->fsm);
 }
@@ -708,9 +708,9 @@ int ec_master_enter_operation_phase(
 
     EC_MASTER_DBG(master, 1, "IDLE -> OPERATION.\n");
 
-    down(&master->config_sem);
+    ec_config_lock(master);
     if (master->config_busy) {
-        up(&master->config_sem);
+        ec_config_unlock(master);
 
         // wait for slave configuration to complete
         ret = wait_event_interruptible(master->config_queue,
@@ -724,15 +724,15 @@ int ec_master_enter_operation_phase(
         EC_MASTER_DBG(master, 1, "Waiting for pending slave"
                 " configuration returned.\n");
     } else {
-        up(&master->config_sem);
+        ec_config_unlock(master);
     }
 
-    down(&master->scan_sem);
+    ec_scan_lock(master);
     master->allow_scan = 0; // 'lock' the slave list
     if (!master->scan_busy) {
-        up(&master->scan_sem);
+        ec_scan_unlock(master);
     } else {
-        up(&master->scan_sem);
+        ec_scan_unlock(master);
 
         // wait for slave scan to complete
         ret = wait_event_interruptible(master->scan_queue,
@@ -980,9 +980,9 @@ void ec_master_queue_datagram_ext(
         ec_datagram_t *datagram /**< datagram */
         )
 {
-    down(&master->ext_queue_sem);
+    ec_ext_queue_lock(master);
     list_add_tail(&datagram->ext_queue, &master->ext_datagram_queue);
-    up(&master->ext_queue_sem);
+    ec_ext_queue_unlock(master);
 }
 
 /****************************************************************************/
@@ -1546,7 +1546,7 @@ static int ec_master_idle_thread(void *priv_data)
         rt_mutex_unlock(&master->io_mutex);
 
         // execute master & slave state machines
-        if (down_interruptible(&master->master_sem)) {
+        if (ec_master_lock_interruptible(master)) {
             break;
         }
 
@@ -1554,7 +1554,7 @@ static int ec_master_idle_thread(void *priv_data)
 
         ec_master_exec_slave_fsms(master);
 
-        up(&master->master_sem);
+        ec_master_unlock(master);
 
         // queue and send
         if (ec_rt_lock_interruptible(&master->io_mutex))
@@ -1610,7 +1610,7 @@ static int ec_master_operation_thread(void *priv_data)
             ec_master_output_stats(master);
 
             // execute master & slave state machines
-            if (down_interruptible(&master->master_sem)) {
+            if (ec_master_lock_interruptible(master)) {
                 break;
             }
 
@@ -1622,7 +1622,7 @@ static int ec_master_operation_thread(void *priv_data)
 
             ec_master_exec_slave_fsms(master);
 
-            up(&master->master_sem);
+            ec_master_unlock(master);
         }
 
 #ifdef EC_USE_HRTIMER
@@ -2257,7 +2257,7 @@ ec_domain_t *ecrt_master_create_domain_err(
         return ERR_PTR(-ENOMEM);
     }
 
-    down(&master->master_sem);
+    ec_master_lock(master);
 
     if (list_empty(&master->domains)) {
         index = 0;
@@ -2269,7 +2269,7 @@ ec_domain_t *ecrt_master_create_domain_err(
     ec_domain_init(domain, master, index);
     list_add_tail(&domain->list, &master->domains);
 
-    up(&master->master_sem);
+    ec_master_unlock(master);
 
     EC_MASTER_DBG(master, 1, "Created domain %u.\n", domain->index);
 
@@ -2304,21 +2304,21 @@ int ecrt_master_activate(ec_master_t *master)
         return 0;
     }
 
-    down(&master->master_sem);
+    ec_master_lock(master);
 
     // finish all domains
     domain_offset = 0;
     list_for_each_entry(domain, &master->domains, list) {
         ret = ec_domain_finish(domain, domain_offset);
         if (ret < 0) {
-            up(&master->master_sem);
+            ec_master_unlock(master);
             EC_MASTER_ERR(master, "Failed to finish domain 0x%p!\n", domain);
             return ret;
         }
         domain_offset += domain->data_size;
     }
 
-    up(&master->master_sem);
+    ec_master_unlock(master);
 
     // restart EoE process and master thread with new locking
 
@@ -2535,7 +2535,7 @@ int ecrt_master_send_ext(ec_master_t *master)
 {
     ec_datagram_t *datagram, *next;
 
-    if (down_trylock(&master->ext_queue_sem))
+    if (ec_pal_sem_trydown(&master->ext_queue_sem))
         return -EAGAIN;
 
     list_for_each_entry_safe(datagram, next, &master->ext_datagram_queue,
@@ -2543,7 +2543,7 @@ int ecrt_master_send_ext(ec_master_t *master)
         list_del_init(&datagram->ext_queue);
         ec_master_queue_datagram(master, datagram);
     }
-    up(&master->ext_queue_sem);
+    ec_ext_queue_unlock(master);
 
     return ecrt_master_send(master);
 }
@@ -2594,14 +2594,14 @@ ec_slave_config_t *ecrt_master_slave_config_err(ec_master_t *master,
         ec_slave_config_init(sc, master,
                 alias, position, vendor_id, product_code);
 
-        down(&master->master_sem);
+        ec_master_lock(master);
 
         // try to find the addressed slave
         ec_slave_config_attach(sc);
         ec_slave_config_load_default_sync_config(sc);
         list_add_tail(&sc->list, &master->configs);
 
-        up(&master->master_sem);
+        ec_master_unlock(master);
     }
 
     return sc;
@@ -2674,7 +2674,7 @@ int ecrt_master_get_slave(ec_master_t *master, uint16_t slave_position,
     unsigned int i;
     int ret = 0;
 
-    if (down_interruptible(&master->master_sem)) {
+    if (ec_master_lock_interruptible(master)) {
         return -EINTR;
     }
 
@@ -2722,7 +2722,7 @@ int ecrt_master_get_slave(ec_master_t *master, uint16_t slave_position,
     }
 
 out_get_slave:
-    up(&master->master_sem);
+    ec_master_unlock(master);
 
     return ret;
 }
@@ -2903,13 +2903,13 @@ int ecrt_master_sdo_download(ec_master_t *master, uint16_t slave_position,
     request.data_size = data_size;
     ecrt_sdo_request_write(&request);
 
-    if (down_interruptible(&master->master_sem)) {
+    if (ec_master_lock_interruptible(master)) {
         ec_sdo_request_clear(&request);
         return -EINTR;
     }
 
     if (!(slave = ec_master_find_slave(master, 0, slave_position))) {
-        up(&master->master_sem);
+        ec_master_unlock(master);
         EC_MASTER_ERR(master, "Slave %u does not exist!\n", slave_position);
         ec_sdo_request_clear(&request);
         return -EINVAL;
@@ -2920,21 +2920,21 @@ int ecrt_master_sdo_download(ec_master_t *master, uint16_t slave_position,
     // schedule request.
     list_add_tail(&request.list, &slave->sdo_requests);
 
-    up(&master->master_sem);
+    ec_master_unlock(master);
 
     // wait for processing through FSM
     if (wait_event_interruptible(master->request_queue,
                 request.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
-        down(&master->master_sem);
+        ec_master_lock(master);
         if (request.state == EC_INT_REQUEST_QUEUED) {
             list_del(&request.list);
-            up(&master->master_sem);
+            ec_master_unlock(master);
             ec_sdo_request_clear(&request);
             return -EINTR;
         }
         // request already processing: interrupt not possible.
-        up(&master->master_sem);
+        ec_master_unlock(master);
     }
 
     // wait until master FSM has finished processing
@@ -2983,13 +2983,13 @@ int ecrt_master_sdo_download_complete(ec_master_t *master,
     request.data_size = data_size;
     ecrt_sdo_request_write(&request);
 
-    if (down_interruptible(&master->master_sem)) {
+    if (ec_master_lock_interruptible(master)) {
         ec_sdo_request_clear(&request);
         return -EINTR;
     }
 
     if (!(slave = ec_master_find_slave(master, 0, slave_position))) {
-        up(&master->master_sem);
+        ec_master_unlock(master);
         EC_MASTER_ERR(master, "Slave %u does not exist!\n", slave_position);
         ec_sdo_request_clear(&request);
         return -EINVAL;
@@ -3001,21 +3001,21 @@ int ecrt_master_sdo_download_complete(ec_master_t *master,
     // schedule request.
     list_add_tail(&request.list, &slave->sdo_requests);
 
-    up(&master->master_sem);
+    ec_master_unlock(master);
 
     // wait for processing through FSM
     if (wait_event_interruptible(master->request_queue,
                 request.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
-        down(&master->master_sem);
+        ec_master_lock(master);
         if (request.state == EC_INT_REQUEST_QUEUED) {
             list_del(&request.list);
-            up(&master->master_sem);
+            ec_master_unlock(master);
             ec_sdo_request_clear(&request);
             return -EINTR;
         }
         // request already processing: interrupt not possible.
-        up(&master->master_sem);
+        ec_master_unlock(master);
     }
 
     // wait until master FSM has finished processing
@@ -3056,13 +3056,13 @@ int ecrt_master_sdo_upload(ec_master_t *master, uint16_t slave_position,
     ecrt_sdo_request_index(&request, index, subindex);
     ecrt_sdo_request_read(&request);
 
-    if (down_interruptible(&master->master_sem)) {
+    if (ec_master_lock_interruptible(master)) {
         ec_sdo_request_clear(&request);
         return -EINTR;
     }
 
     if (!(slave = ec_master_find_slave(master, 0, slave_position))) {
-        up(&master->master_sem);
+        ec_master_unlock(master);
         ec_sdo_request_clear(&request);
         EC_MASTER_ERR(master, "Slave %u does not exist!\n", slave_position);
         return -EINVAL;
@@ -3073,21 +3073,21 @@ int ecrt_master_sdo_upload(ec_master_t *master, uint16_t slave_position,
     // schedule request.
     list_add_tail(&request.list, &slave->sdo_requests);
 
-    up(&master->master_sem);
+    ec_master_unlock(master);
 
     // wait for processing through FSM
     if (wait_event_interruptible(master->request_queue,
                 request.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
-        down(&master->master_sem);
+        ec_master_lock(master);
         if (request.state == EC_INT_REQUEST_QUEUED) {
             list_del(&request.list);
-            up(&master->master_sem);
+            ec_master_unlock(master);
             ec_sdo_request_clear(&request);
             return -EINTR;
         }
         // request already processing: interrupt not possible.
-        up(&master->master_sem);
+        ec_master_unlock(master);
     }
 
     // wait until master FSM has finished processing
@@ -3147,13 +3147,13 @@ int ecrt_master_write_idn(ec_master_t *master, uint16_t slave_position,
     request.data_size = data_size;
     ec_soe_request_write(&request);
 
-    if (down_interruptible(&master->master_sem)) {
+    if (ec_master_lock_interruptible(master)) {
         ec_soe_request_clear(&request);
         return -EINTR;
     }
 
     if (!(slave = ec_master_find_slave(master, 0, slave_position))) {
-        up(&master->master_sem);
+        ec_master_unlock(master);
         EC_MASTER_ERR(master, "Slave %u does not exist!\n",
                 slave_position);
         ec_soe_request_clear(&request);
@@ -3165,21 +3165,21 @@ int ecrt_master_write_idn(ec_master_t *master, uint16_t slave_position,
     // schedule SoE write request.
     list_add_tail(&request.list, &slave->soe_requests);
 
-    up(&master->master_sem);
+    ec_master_unlock(master);
 
     // wait for processing through FSM
     if (wait_event_interruptible(master->request_queue,
                 request.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
-        down(&master->master_sem);
+        ec_master_lock(master);
         if (request.state == EC_INT_REQUEST_QUEUED) {
             // abort request
             list_del(&request.list);
-            up(&master->master_sem);
+            ec_master_unlock(master);
             ec_soe_request_clear(&request);
             return -EINTR;
         }
-        up(&master->master_sem);
+        ec_master_unlock(master);
     }
 
     // wait until master FSM has finished processing
@@ -3214,13 +3214,13 @@ int ecrt_master_read_idn(ec_master_t *master, uint16_t slave_position,
     ec_soe_request_set_idn(&request, idn);
     ec_soe_request_read(&request);
 
-    if (down_interruptible(&master->master_sem)) {
+    if (ec_master_lock_interruptible(master)) {
         ec_soe_request_clear(&request);
         return -EINTR;
     }
 
     if (!(slave = ec_master_find_slave(master, 0, slave_position))) {
-        up(&master->master_sem);
+        ec_master_unlock(master);
         ec_soe_request_clear(&request);
         EC_MASTER_ERR(master, "Slave %u does not exist!\n", slave_position);
         return -EINVAL;
@@ -3231,21 +3231,21 @@ int ecrt_master_read_idn(ec_master_t *master, uint16_t slave_position,
     // schedule request.
     list_add_tail(&request.list, &slave->soe_requests);
 
-    up(&master->master_sem);
+    ec_master_unlock(master);
 
     // wait for processing through FSM
     if (wait_event_interruptible(master->request_queue,
                 request.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
-        down(&master->master_sem);
+        ec_master_lock(master);
         if (request.state == EC_INT_REQUEST_QUEUED) {
             list_del(&request.list);
-            up(&master->master_sem);
+            ec_master_unlock(master);
             ec_soe_request_clear(&request);
             return -EINTR;
         }
         // request already processing: interrupt not possible.
-        up(&master->master_sem);
+        ec_master_unlock(master);
     }
 
     // wait until master FSM has finished processing
@@ -3308,9 +3308,9 @@ static void sc_reset_task(struct work_struct *work)
     struct ec_master *master =
         container_of(work, struct ec_master, sc_reset_work);
 
-    down(&master->master_sem);
+    ec_master_lock(master);
     ecrt_master_reset(master);
-    up(&master->master_sem);
+    ec_master_unlock(master);
 }
 
 /****************************************************************************/

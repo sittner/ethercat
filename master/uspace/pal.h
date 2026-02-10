@@ -86,21 +86,23 @@
 #define ec_pal_sem_down(sem)        sem_wait(sem)
 #define ec_pal_sem_up(sem)          sem_post(sem)
 #define ec_pal_sem_trydown(sem)     sem_trywait(sem)
+#define ec_pal_sem_down_interruptible(sem) sem_wait(sem)  /* No interrupts in userspace */
 
 /****************************************************************************/
 /* Master locking (convenience macros for master semaphores) */
 /****************************************************************************/
 
-#define ec_master_lock(m)           sem_wait(&(m)->master_sem)
-#define ec_master_unlock(m)         sem_post(&(m)->master_sem)
-#define ec_device_lock(m)           sem_wait(&(m)->device_sem)
-#define ec_device_unlock(m)         sem_post(&(m)->device_sem)
-#define ec_scan_lock(m)             sem_wait(&(m)->scan_sem)
-#define ec_scan_unlock(m)           sem_post(&(m)->scan_sem)
-#define ec_config_lock(m)           sem_wait(&(m)->config_sem)
-#define ec_config_unlock(m)         sem_post(&(m)->config_sem)
-#define ec_ext_queue_lock(m)        sem_wait(&(m)->ext_queue_sem)
-#define ec_ext_queue_unlock(m)      sem_post(&(m)->ext_queue_sem)
+#define ec_master_lock(m)               sem_wait(&(m)->master_sem)
+#define ec_master_unlock(m)             sem_post(&(m)->master_sem)
+#define ec_master_lock_interruptible(m) sem_wait(&(m)->master_sem)  /* No interrupts in userspace */
+#define ec_device_lock(m)               sem_wait(&(m)->device_sem)
+#define ec_device_unlock(m)             sem_post(&(m)->device_sem)
+#define ec_scan_lock(m)                 sem_wait(&(m)->scan_sem)
+#define ec_scan_unlock(m)               sem_post(&(m)->scan_sem)
+#define ec_config_lock(m)               sem_wait(&(m)->config_sem)
+#define ec_config_unlock(m)             sem_post(&(m)->config_sem)
+#define ec_ext_queue_lock(m)            sem_wait(&(m)->ext_queue_sem)
+#define ec_ext_queue_unlock(m)          sem_post(&(m)->ext_queue_sem)
 
 /****************************************************************************/
 /* Time functions */
