@@ -1025,7 +1025,7 @@ static ATTRIBUTES int ec_ioctl_slave_sii_write(
     up(&master->master_sem);
 
     // wait for processing through FSM
-    if (wait_event_interruptible(master->request_queue,
+    if (wait_event_interruptible(master->plat.request_queue,
                 request.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
         down(&master->master_sem);
@@ -1040,7 +1040,7 @@ static ATTRIBUTES int ec_ioctl_slave_sii_write(
     }
 
     // wait until master FSM has finished processing
-    wait_event(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
+    wait_event(master->plat.request_queue, request.state != EC_INT_REQUEST_BUSY);
 
     kfree(words);
 
@@ -1102,7 +1102,7 @@ static ATTRIBUTES int ec_ioctl_slave_reg_read(
     up(&master->master_sem);
 
     // wait for processing through FSM
-    if (wait_event_interruptible(master->request_queue,
+    if (wait_event_interruptible(master->plat.request_queue,
                 request.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
         down(&master->master_sem);
@@ -1117,7 +1117,7 @@ static ATTRIBUTES int ec_ioctl_slave_reg_read(
     }
 
     // wait until master FSM has finished processing
-    wait_event(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
+    wait_event(master->plat.request_queue, request.state != EC_INT_REQUEST_BUSY);
 
     if (request.state == EC_INT_REQUEST_SUCCESS) {
         if (copy_to_user((void __user *) io.data, request.data, io.size)) {
@@ -1195,7 +1195,7 @@ static ATTRIBUTES int ec_ioctl_slave_reg_write(
     up(&master->master_sem);
 
     // wait for processing through FSM
-    if (wait_event_interruptible(master->request_queue,
+    if (wait_event_interruptible(master->plat.request_queue,
                 request.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
         down(&master->master_sem);
@@ -1210,7 +1210,7 @@ static ATTRIBUTES int ec_ioctl_slave_reg_write(
     }
 
     // wait until master FSM has finished processing
-    wait_event(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
+    wait_event(master->plat.request_queue, request.state != EC_INT_REQUEST_BUSY);
 
     ec_reg_request_clear(&request);
 
@@ -1769,7 +1769,7 @@ static ATTRIBUTES int ec_ioctl_slave_eoe_ip_param(
     up(&master->master_sem);
 
     // wait for processing through FSM
-    if (wait_event_interruptible(master->request_queue,
+    if (wait_event_interruptible(master->plat.request_queue,
                 req.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
         down(&master->master_sem);
@@ -1783,7 +1783,7 @@ static ATTRIBUTES int ec_ioctl_slave_eoe_ip_param(
     }
 
     // wait until master FSM has finished processing
-    wait_event(master->request_queue, req.state != EC_INT_REQUEST_BUSY);
+    wait_event(master->plat.request_queue, req.state != EC_INT_REQUEST_BUSY);
 
     io.result = req.result;
 
@@ -2378,9 +2378,9 @@ static ATTRIBUTES int ec_ioctl_reset(
 {
 #ifdef EC_IOCTL_RTDM
     /* Xenomai/LXRT is like NMI context, so we do a two-stage schedule. */
-    irq_work_queue(&master->sc_reset_work_kicker);
+    irq_work_queue(&master->plat.sc_reset_work_kicker);
 #else
-    schedule_work(&master->sc_reset_work);
+    schedule_work(&master->plat.sc_reset_work);
 #endif
     return 0;
 }
@@ -4632,7 +4632,7 @@ static ATTRIBUTES int ec_ioctl_slave_foe_read(
     up(&master->master_sem);
 
     // wait for processing through FSM
-    if (wait_event_interruptible(master->request_queue,
+    if (wait_event_interruptible(master->plat.request_queue,
                 request.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
         down(&master->master_sem);
@@ -4647,7 +4647,7 @@ static ATTRIBUTES int ec_ioctl_slave_foe_read(
     }
 
     // wait until master FSM has finished processing
-    wait_event(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
+    wait_event(master->plat.request_queue, request.state != EC_INT_REQUEST_BUSY);
 
     io.result = request.result;
     io.error_code = request.error_code;
@@ -4736,7 +4736,7 @@ static ATTRIBUTES int ec_ioctl_slave_foe_write(
     up(&master->master_sem);
 
     // wait for processing through FSM
-    if (wait_event_interruptible(master->request_queue,
+    if (wait_event_interruptible(master->plat.request_queue,
                 request.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
         down(&master->master_sem);
@@ -4751,7 +4751,7 @@ static ATTRIBUTES int ec_ioctl_slave_foe_write(
     }
 
     // wait until master FSM has finished processing
-    wait_event(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
+    wait_event(master->plat.request_queue, request.state != EC_INT_REQUEST_BUSY);
 
     io.result = request.result;
     io.error_code = request.error_code;

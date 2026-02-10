@@ -30,23 +30,14 @@
 #define __EC_MASTER_H__
 
 #include <linux/version.h>
-#include <linux/irq_work.h>
 #include <linux/list.h>
 #include <linux/timer.h>
-#include <linux/wait.h>
-#include <linux/kthread.h>
-#include <linux/rtmutex.h>
-#include <linux/workqueue.h>
 
+#include "pal.h"
 #include "device.h"
 #include "domain.h"
 #include "ethernet.h"
 #include "fsm_master.h"
-#include "cdev.h"
-
-#ifdef EC_RTDM
-#include "rtdm.h"
-#endif
 
 /****************************************************************************/
 
@@ -188,15 +179,6 @@ struct ec_master {
     unsigned int index; /**< Index. */
     unsigned int reserved; /**< \a True, if the master is in use. */
 
-    ec_cdev_t cdev; /**< Master character device. */
-    struct device *class_device; /**< Master class device. */
-
-#ifdef EC_RTDM
-    ec_rtdm_dev_t rtdm_dev; /**< RTDM device. */
-#endif
-
-    struct semaphore master_sem; /**< Master semaphore. */
-
     ec_device_t devices[EC_MAX_NUM_DEVICES]; /**< EtherCAT devices. */
     const uint8_t *macs[EC_MAX_NUM_DEVICES]; /**< Device MAC addresses. */
 #if EC_MAX_NUM_DEVICES > 1
@@ -204,7 +186,6 @@ struct ec_master {
                                 ec_master_num_devices(), because it may be
                                 optimized! */
 #endif
-    struct semaphore device_sem; /**< Device semaphore. */
     ec_device_stats_t device_stats; /**< Device statistics. */
 
     ec_fsm_master_t fsm; /**< Master state machine. */
@@ -239,24 +220,14 @@ struct ec_master {
     unsigned int scan_busy; /**< Current scan state. */
     unsigned int scan_index; /**< Index of slave currently scanned. */
     unsigned int allow_scan; /**< \a True, if slave scanning is allowed. */
-    struct semaphore scan_sem; /**< Semaphore protecting the \a scan_busy
-                                 variable and the \a allow_scan flag. */
-    wait_queue_head_t scan_queue; /**< Queue for processes that wait for
-                                    slave scanning. */
 
     unsigned int config_busy; /**< State of slave configuration. */
-    struct semaphore config_sem; /**< Semaphore protecting the \a config_busy
-                                   variable and the allow_config flag. */
-    wait_queue_head_t config_queue; /**< Queue for processes that wait for
-                                      slave configuration. */
 
     struct list_head datagram_queue; /**< Datagram queue. */
     uint8_t datagram_index; /**< Current datagram index. */
 
     struct list_head ext_datagram_queue; /**< Queue for non-application
                                            datagrams. */
-    struct semaphore ext_queue_sem; /**< Semaphore protecting the \a
-                                      ext_datagram_queue. */
 
     ec_datagram_t ext_datagram_ring[EC_EXT_RING_SIZE]; /**< External datagram
                                                          ring. */
@@ -276,14 +247,9 @@ struct ec_master {
     unsigned int run_on_cpu;  /**< bind kernel threads to this cpu */
     ec_stats_t stats; /**< Cyclic statistics. */
 
-    struct task_struct *thread; /**< Master thread. */
-
 #ifdef EC_EOE
-    struct task_struct *eoe_thread; /**< EoE thread. */
     struct list_head eoe_handlers; /**< Ethernet over EtherCAT handlers. */
 #endif
-
-    struct rt_mutex io_mutex;  /**< Mutex used in \a IDLE and \a OP phase. */
 
     void (*send_cb)(void *); /**< Current send datagrams callback. */
     void (*receive_cb)(void *); /**< Current receive datagrams callback. */
@@ -298,11 +264,7 @@ struct ec_master {
     struct list_head emerg_reg_requests; /**< Emergency register access
                                            requests. */
 
-    wait_queue_head_t request_queue; /**< Wait queue for external requests
-                                       from user space. */
-    struct work_struct sc_reset_work; /**< Task to reset slave configuration. */
-    struct irq_work sc_reset_work_kicker; /**< NMI-Safe kicker to trigger
-                                            reset task above. */
+    ec_master_plat_t plat; /**< Platform-specific data. */
 };
 
 /****************************************************************************/

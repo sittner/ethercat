@@ -172,7 +172,7 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     master->index = index;
     master->reserved = 0;
 
-    sema_init(&master->master_sem, 1);
+    sema_init(&master->plat.master_sem, 1);
 
     for (dev_idx = EC_DEVICE_MAIN; dev_idx < EC_MAX_NUM_DEVICES; dev_idx++) {
         master->macs[dev_idx] = NULL;
@@ -191,7 +191,7 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
 
     ec_master_clear_device_stats(master);
 
-    sema_init(&master->device_sem, 1);
+    sema_init(&master->plat.device_sem, 1);
 
     master->phase = EC_ORPHANED;
     master->active = 0;
@@ -211,18 +211,18 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     master->scan_busy = 0;
     master->scan_index = 0;
     master->allow_scan = 1;
-    sema_init(&master->scan_sem, 1);
-    init_waitqueue_head(&master->scan_queue);
+    sema_init(&master->plat.scan_sem, 1);
+    init_waitqueue_head(&master->plat.scan_queue);
 
     master->config_busy = 0;
-    sema_init(&master->config_sem, 1);
-    init_waitqueue_head(&master->config_queue);
+    sema_init(&master->plat.config_sem, 1);
+    init_waitqueue_head(&master->plat.config_queue);
 
     INIT_LIST_HEAD(&master->datagram_queue);
     master->datagram_index = 0;
 
     INIT_LIST_HEAD(&master->ext_datagram_queue);
-    sema_init(&master->ext_queue_sem, 1);
+    sema_init(&master->plat.ext_queue_sem, 1);
 
     master->ext_ring_idx_rt = 0;
     master->ext_ring_idx_fsm = 0;
@@ -248,14 +248,14 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     master->stats.unmatched = 0;
     master->stats.output_jiffies = 0;
 
-    master->thread = NULL;
+    master->plat.thread = NULL;
 
 #ifdef EC_EOE
-    master->eoe_thread = NULL;
+    master->plat.eoe_thread = NULL;
     INIT_LIST_HEAD(&master->eoe_handlers);
 #endif
 
-    rt_mutex_init(&master->io_mutex);
+    rt_mutex_init(&master->plat.io_mutex);
     master->send_cb = NULL;
     master->receive_cb = NULL;
     master->cb_data = NULL;
@@ -266,7 +266,7 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     INIT_LIST_HEAD(&master->sii_requests);
     INIT_LIST_HEAD(&master->emerg_reg_requests);
 
-    init_waitqueue_head(&master->request_queue);
+    init_waitqueue_head(&master->plat.request_queue);
 
     // init devices
     for (dev_idx = EC_DEVICE_MAIN; dev_idx < ec_master_num_devices(master);
@@ -339,26 +339,26 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     master->dc_ref_config = NULL;
     master->dc_ref_clock = NULL;
 
-    INIT_WORK(&master->sc_reset_work, sc_reset_task);
-    init_irq_work(&master->sc_reset_work_kicker, sc_reset_task_kicker);
+    INIT_WORK(&master->plat.sc_reset_work, sc_reset_task);
+    init_irq_work(&master->plat.sc_reset_work_kicker, sc_reset_task_kicker);
 
     // init character device
-    ret = ec_cdev_init(&master->cdev, master, device_number);
+    ret = ec_cdev_init(&master->plat.cdev, master, device_number);
     if (ret)
         goto out_clear_sync_mon;
 
-    master->class_device = device_create(class, NULL,
+    master->plat.class_device = device_create(class, NULL,
             MKDEV(MAJOR(device_number), master->index), NULL,
             "EtherCAT%u", master->index);
-    if (IS_ERR(master->class_device)) {
+    if (IS_ERR(master->plat.class_device)) {
         EC_MASTER_ERR(master, "Failed to create class device!\n");
-        ret = PTR_ERR(master->class_device);
+        ret = PTR_ERR(master->plat.class_device);
         goto out_clear_cdev;
     }
 
 #ifdef EC_RTDM
     // init RTDM device
-    ret = ec_rtdm_dev_init(&master->rtdm_dev, master);
+    ret = ec_rtdm_dev_init(&master->plat.rtdm_dev, master);
     if (ret) {
         goto out_unregister_class_device;
     }
@@ -368,10 +368,10 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
 
 #ifdef EC_RTDM
 out_unregister_class_device:
-    device_unregister(master->class_device);
+    device_unregister(master->plat.class_device);
 #endif
 out_clear_cdev:
-    ec_cdev_clear(&master->cdev);
+    ec_cdev_clear(&master->plat.cdev);
 out_clear_sync_mon:
     ec_datagram_clear(&master->sync_mon_datagram);
 out_clear_sync:
@@ -402,15 +402,15 @@ void ec_master_clear(
     unsigned int dev_idx, i;
 
 #ifdef EC_RTDM
-    ec_rtdm_dev_clear(&master->rtdm_dev);
+    ec_rtdm_dev_clear(&master->plat.rtdm_dev);
 #endif
 
-    device_unregister(master->class_device);
+    device_unregister(master->plat.class_device);
 
-    ec_cdev_clear(&master->cdev);
+    ec_cdev_clear(&master->plat.cdev);
 
-    irq_work_sync(&master->sc_reset_work_kicker);
-    cancel_work_sync(&master->sc_reset_work);
+    irq_work_sync(&master->plat.sc_reset_work_kicker);
+    cancel_work_sync(&master->plat.sc_reset_work);
 
 #ifdef EC_EOE
     ec_master_clear_eoe_handlers(master);
@@ -494,7 +494,7 @@ void ec_master_clear_slaves(ec_master_t *master)
         EC_MASTER_WARN(master, "Discarding SII request, slave %u about"
                 " to be deleted.\n", request->slave->ring_position);
         request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&master->request_queue);
+        wake_up_all(&master->plat.request_queue);
     }
 
     master->fsm_slave = NULL;
@@ -553,10 +553,10 @@ void ec_master_internal_send_cb(
         )
 {
     ec_master_t *master = (ec_master_t *) cb_data;
-    if (ec_rt_lock_interruptible(&master->io_mutex))
+    if (ec_rt_lock_interruptible(&master->plat.io_mutex))
         return;
     ecrt_master_send_ext(master);
-    rt_mutex_unlock(&master->io_mutex);
+    rt_mutex_unlock(&master->plat.io_mutex);
 }
 
 /****************************************************************************/
@@ -568,10 +568,10 @@ void ec_master_internal_receive_cb(
         )
 {
     ec_master_t *master = (ec_master_t *) cb_data;
-    if (ec_rt_lock_interruptible(&master->io_mutex))
+    if (ec_rt_lock_interruptible(&master->plat.io_mutex))
         return;
     ecrt_master_receive(master);
-    rt_mutex_unlock(&master->io_mutex);
+    rt_mutex_unlock(&master->plat.io_mutex);
 }
 
 /****************************************************************************/
@@ -588,20 +588,20 @@ int ec_master_thread_start(
         )
 {
     EC_MASTER_INFO(master, "Starting %s thread.\n", name);
-    master->thread = kthread_create(thread_func, master, name);
-    if (IS_ERR(master->thread)) {
-        int err = (int) PTR_ERR(master->thread);
+    master->plat.thread = kthread_create(thread_func, master, name);
+    if (IS_ERR(master->plat.thread)) {
+        int err = (int) PTR_ERR(master->plat.thread);
         EC_MASTER_ERR(master, "Failed to start master thread (error %i)!\n",
                 err);
-        master->thread = NULL;
+        master->plat.thread = NULL;
         return err;
     }
     if (0xffffffff != master->run_on_cpu) {
         EC_MASTER_INFO(master, " binding thread to cpu %u\n",master->run_on_cpu);
-        kthread_bind(master->thread,master->run_on_cpu);
+        kthread_bind(master->plat.thread,master->run_on_cpu);
     }
     /* Ignoring return value of wake_up_process */
-    (void) wake_up_process(master->thread);
+    (void) wake_up_process(master->plat.thread);
 
     return 0;
 }
@@ -616,15 +616,15 @@ void ec_master_thread_stop(
 {
     unsigned long sleep_jiffies;
 
-    if (!master->thread) {
+    if (!master->plat.thread) {
         EC_MASTER_WARN(master, "%s(): Already finished!\n", __func__);
         return;
     }
 
     EC_MASTER_DBG(master, 1, "Stopping master thread.\n");
 
-    kthread_stop(master->thread);
-    master->thread = NULL;
+    kthread_stop(master->plat.thread);
+    master->plat.thread = NULL;
     EC_MASTER_INFO(master, "Master thread exited.\n");
 
     if (master->fsm_datagram.state != EC_DATAGRAM_SENT) {
@@ -713,7 +713,7 @@ int ec_master_enter_operation_phase(
         ec_config_unlock(master);
 
         // wait for slave configuration to complete
-        ret = wait_event_interruptible(master->config_queue,
+        ret = wait_event_interruptible(master->plat.config_queue,
                     !master->config_busy);
         if (ret) {
             EC_MASTER_INFO(master, "Finishing slave configuration"
@@ -735,7 +735,7 @@ int ec_master_enter_operation_phase(
         ec_scan_unlock(master);
 
         // wait for slave scan to complete
-        ret = wait_event_interruptible(master->scan_queue,
+        ret = wait_event_interruptible(master->plat.scan_queue,
                 !master->scan_busy);
         if (ret) {
             EC_MASTER_INFO(master, "Waiting for slave scan"
@@ -1540,10 +1540,10 @@ static int ec_master_idle_thread(void *priv_data)
         ec_datagram_output_stats(&master->fsm_datagram);
 
         // receive
-        if (ec_rt_lock_interruptible(&master->io_mutex))
+        if (ec_rt_lock_interruptible(&master->plat.io_mutex))
             break;
         ecrt_master_receive(master);
-        rt_mutex_unlock(&master->io_mutex);
+        rt_mutex_unlock(&master->plat.io_mutex);
 
         // execute master & slave state machines
         if (ec_master_lock_interruptible(master)) {
@@ -1557,7 +1557,7 @@ static int ec_master_idle_thread(void *priv_data)
         ec_master_unlock(master);
 
         // queue and send
-        if (ec_rt_lock_interruptible(&master->io_mutex))
+        if (ec_rt_lock_interruptible(&master->plat.io_mutex))
             break;
         if (fsm_exec) {
             ec_master_queue_datagram(master, &master->fsm_datagram);
@@ -1567,7 +1567,7 @@ static int ec_master_idle_thread(void *priv_data)
         sent_bytes = master->devices[EC_DEVICE_MAIN].tx_skb[
             master->devices[EC_DEVICE_MAIN].tx_ring_index]->len;
 #endif
-        rt_mutex_unlock(&master->io_mutex);
+        rt_mutex_unlock(&master->plat.io_mutex);
 
         if (ec_fsm_master_idle(&master->fsm)) {
 #ifdef EC_USE_HRTIMER
@@ -1665,7 +1665,7 @@ static inline void set_normal_priority(struct task_struct *p, int nice)
  */
 void ec_master_eoe_start(ec_master_t *master /**< EtherCAT master */)
 {
-    if (master->eoe_thread) {
+    if (master->plat.eoe_thread) {
         EC_MASTER_WARN(master, "EoE already running!\n");
         return;
     }
@@ -1680,17 +1680,17 @@ void ec_master_eoe_start(ec_master_t *master /**< EtherCAT master */)
     }
 
     EC_MASTER_INFO(master, "Starting EoE thread.\n");
-    master->eoe_thread = kthread_run(ec_master_eoe_thread, master,
+    master->plat.eoe_thread = kthread_run(ec_master_eoe_thread, master,
             "EtherCAT-EoE");
-    if (IS_ERR(master->eoe_thread)) {
-        int err = (int) PTR_ERR(master->eoe_thread);
+    if (IS_ERR(master->plat.eoe_thread)) {
+        int err = (int) PTR_ERR(master->plat.eoe_thread);
         EC_MASTER_ERR(master, "Failed to start EoE thread (error %i)!\n",
                 err);
-        master->eoe_thread = NULL;
+        master->plat.eoe_thread = NULL;
         return;
     }
 
-    set_normal_priority(master->eoe_thread, 0);
+    set_normal_priority(master->plat.eoe_thread, 0);
 }
 
 /****************************************************************************/
@@ -1699,11 +1699,11 @@ void ec_master_eoe_start(ec_master_t *master /**< EtherCAT master */)
  */
 void ec_master_eoe_stop(ec_master_t *master /**< EtherCAT master */)
 {
-    if (master->eoe_thread) {
+    if (master->plat.eoe_thread) {
         EC_MASTER_INFO(master, "Stopping EoE thread.\n");
 
-        kthread_stop(master->eoe_thread);
-        master->eoe_thread = NULL;
+        kthread_stop(master->plat.eoe_thread);
+        master->plat.eoe_thread = NULL;
         EC_MASTER_INFO(master, "EoE thread exited.\n");
     }
 }
@@ -2324,7 +2324,7 @@ int ecrt_master_activate(ec_master_t *master)
 
     ec_master_thread_stop(master);
 #ifdef EC_EOE
-    eoe_was_running = master->eoe_thread != NULL;
+    eoe_was_running = master->plat.eoe_thread != NULL;
     ec_master_eoe_stop(master);
 #endif
 
@@ -2379,7 +2379,7 @@ int ecrt_master_deactivate(ec_master_t *master)
 
     ec_master_thread_stop(master);
 #ifdef EC_EOE
-    eoe_was_running = master->eoe_thread != NULL;
+    eoe_was_running = master->plat.eoe_thread != NULL;
     ec_master_eoe_stop(master);
 #endif
 
@@ -2923,7 +2923,7 @@ int ecrt_master_sdo_download(ec_master_t *master, uint16_t slave_position,
     ec_master_unlock(master);
 
     // wait for processing through FSM
-    if (wait_event_interruptible(master->request_queue,
+    if (wait_event_interruptible(master->plat.request_queue,
                 request.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
         ec_master_lock(master);
@@ -2938,7 +2938,7 @@ int ecrt_master_sdo_download(ec_master_t *master, uint16_t slave_position,
     }
 
     // wait until master FSM has finished processing
-    wait_event(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
+    wait_event(master->plat.request_queue, request.state != EC_INT_REQUEST_BUSY);
 
     *abort_code = request.abort_code;
 
@@ -3004,7 +3004,7 @@ int ecrt_master_sdo_download_complete(ec_master_t *master,
     ec_master_unlock(master);
 
     // wait for processing through FSM
-    if (wait_event_interruptible(master->request_queue,
+    if (wait_event_interruptible(master->plat.request_queue,
                 request.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
         ec_master_lock(master);
@@ -3019,7 +3019,7 @@ int ecrt_master_sdo_download_complete(ec_master_t *master,
     }
 
     // wait until master FSM has finished processing
-    wait_event(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
+    wait_event(master->plat.request_queue, request.state != EC_INT_REQUEST_BUSY);
 
     *abort_code = request.abort_code;
 
@@ -3076,7 +3076,7 @@ int ecrt_master_sdo_upload(ec_master_t *master, uint16_t slave_position,
     ec_master_unlock(master);
 
     // wait for processing through FSM
-    if (wait_event_interruptible(master->request_queue,
+    if (wait_event_interruptible(master->plat.request_queue,
                 request.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
         ec_master_lock(master);
@@ -3091,7 +3091,7 @@ int ecrt_master_sdo_upload(ec_master_t *master, uint16_t slave_position,
     }
 
     // wait until master FSM has finished processing
-    wait_event(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
+    wait_event(master->plat.request_queue, request.state != EC_INT_REQUEST_BUSY);
 
     *abort_code = request.abort_code;
 
@@ -3168,7 +3168,7 @@ int ecrt_master_write_idn(ec_master_t *master, uint16_t slave_position,
     ec_master_unlock(master);
 
     // wait for processing through FSM
-    if (wait_event_interruptible(master->request_queue,
+    if (wait_event_interruptible(master->plat.request_queue,
                 request.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
         ec_master_lock(master);
@@ -3183,7 +3183,7 @@ int ecrt_master_write_idn(ec_master_t *master, uint16_t slave_position,
     }
 
     // wait until master FSM has finished processing
-    wait_event(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
+    wait_event(master->plat.request_queue, request.state != EC_INT_REQUEST_BUSY);
 
     if (error_code) {
         *error_code = request.error_code;
@@ -3234,7 +3234,7 @@ int ecrt_master_read_idn(ec_master_t *master, uint16_t slave_position,
     ec_master_unlock(master);
 
     // wait for processing through FSM
-    if (wait_event_interruptible(master->request_queue,
+    if (wait_event_interruptible(master->plat.request_queue,
                 request.state != EC_INT_REQUEST_QUEUED)) {
         // interrupted by signal
         ec_master_lock(master);
@@ -3249,7 +3249,7 @@ int ecrt_master_read_idn(ec_master_t *master, uint16_t slave_position,
     }
 
     // wait until master FSM has finished processing
-    wait_event(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
+    wait_event(master->plat.request_queue, request.state != EC_INT_REQUEST_BUSY);
 
     if (error_code) {
         *error_code = request.error_code;
@@ -3298,7 +3298,7 @@ static void sc_reset_task_kicker(struct irq_work *work)
 {
     struct ec_master *master =
         container_of(work, struct ec_master, sc_reset_work_kicker);
-    schedule_work(&master->sc_reset_work);
+    schedule_work(&master->plat.sc_reset_work);
 }
 
 /****************************************************************************/

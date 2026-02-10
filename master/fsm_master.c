@@ -377,7 +377,7 @@ void ec_fsm_master_state_broadcast(
             if (!count) {
                 // no slaves present -> finish state machine.
                 master->scan_busy = 0;
-                wake_up_interruptible(&master->scan_queue);
+                wake_up_interruptible(&master->plat.scan_queue);
                 ec_fsm_master_restart(fsm);
                 return;
             }
@@ -388,7 +388,7 @@ void ec_fsm_master_state_broadcast(
                 EC_MASTER_ERR(master, "Failed to allocate %u bytes"
                         " of slave memory!\n", size);
                 master->scan_busy = 0;
-                wake_up_interruptible(&master->scan_queue);
+                wake_up_interruptible(&master->plat.scan_queue);
                 ec_fsm_master_restart(fsm);
                 return;
             }
@@ -859,7 +859,7 @@ void ec_fsm_master_state_clear_addresses(
         ec_datagram_print_state(datagram);
         master->scan_busy = 0;
         master->scan_index = master->slave_count;
-        wake_up_interruptible(&master->scan_queue);
+        wake_up_interruptible(&master->plat.scan_queue);
         ec_fsm_master_restart(fsm);
         return;
     }
@@ -903,7 +903,7 @@ void ec_fsm_master_state_dc_measure_delays(
         ec_datagram_print_state(datagram);
         master->scan_busy = 0;
         master->scan_index = master->slave_count;
-        wake_up_interruptible(&master->scan_queue);
+        wake_up_interruptible(&master->plat.scan_queue);
         ec_fsm_master_restart(fsm);
         return;
     }
@@ -987,7 +987,7 @@ void ec_fsm_master_state_scan_slave(
 
     master->scan_busy = 0;
     master->scan_index = master->slave_count;
-    wake_up_interruptible(&master->scan_queue);
+    wake_up_interruptible(&master->plat.scan_queue);
 
     ec_master_calc_dc(master);
 
@@ -1029,7 +1029,7 @@ void ec_fsm_master_state_configure_slave(
 
     // configuration finished
     master->config_busy = 0;
-    wake_up_interruptible(&master->config_queue);
+    wake_up_interruptible(&master->plat.config_queue);
 
     if (!ec_fsm_slave_config_success(&fsm->fsm_slave_config)) {
         // TODO: mark slave_config as failed.

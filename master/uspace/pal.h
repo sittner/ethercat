@@ -92,18 +92,18 @@
 /* Master locking (convenience macros for master semaphores) */
 /****************************************************************************/
 
-#define ec_master_lock(m)               sem_wait(&(m)->master_sem)
-#define ec_master_unlock(m)             sem_post(&(m)->master_sem)
-#define ec_master_lock_interruptible(m) sem_wait(&(m)->master_sem)  /* No interrupts in userspace */
-#define ec_device_lock(m)               sem_wait(&(m)->device_sem)
-#define ec_device_unlock(m)             sem_post(&(m)->device_sem)
-#define ec_scan_lock(m)                 sem_wait(&(m)->scan_sem)
-#define ec_scan_unlock(m)               sem_post(&(m)->scan_sem)
-#define ec_config_lock(m)               sem_wait(&(m)->config_sem)
-#define ec_config_unlock(m)             sem_post(&(m)->config_sem)
-#define ec_ext_queue_lock(m)            sem_wait(&(m)->ext_queue_sem)
-#define ec_ext_queue_unlock(m)          sem_post(&(m)->ext_queue_sem)
-#define ec_ext_queue_trylock(m)         sem_trywait(&(m)->ext_queue_sem)
+#define ec_master_lock(m)               sem_wait(&(m)->plat.master_sem)
+#define ec_master_unlock(m)             sem_post(&(m)->plat.master_sem)
+#define ec_master_lock_interruptible(m) sem_wait(&(m)->plat.master_sem)  /* No interrupts in userspace */
+#define ec_device_lock(m)               sem_wait(&(m)->plat.device_sem)
+#define ec_device_unlock(m)             sem_post(&(m)->plat.device_sem)
+#define ec_scan_lock(m)                 sem_wait(&(m)->plat.scan_sem)
+#define ec_scan_unlock(m)               sem_post(&(m)->plat.scan_sem)
+#define ec_config_lock(m)               sem_wait(&(m)->plat.config_sem)
+#define ec_config_unlock(m)             sem_post(&(m)->plat.config_sem)
+#define ec_ext_queue_lock(m)            sem_wait(&(m)->plat.ext_queue_sem)
+#define ec_ext_queue_unlock(m)          sem_post(&(m)->plat.ext_queue_sem)
+#define ec_ext_queue_trylock(m)         sem_trywait(&(m)->plat.ext_queue_sem)
 
 /****************************************************************************/
 /* Time functions */
@@ -179,8 +179,22 @@ typedef struct {
 
 /** Userspace-specific master fields. */
 typedef struct {
-    /* TODO: Platform-specific master fields will be added in future phases */
-    int placeholder;  /* Temporary placeholder to avoid empty struct */
+    sem_t master_sem;                   /**< Master semaphore. */
+    sem_t device_sem;                   /**< Device semaphore. */
+    sem_t scan_sem;                     /**< Scan semaphore. */
+    sem_t config_sem;                   /**< Configuration semaphore. */
+    sem_t ext_queue_sem;                /**< External queue semaphore. */
+
+    pthread_t thread;                   /**< Master thread. */
+    pthread_mutex_t io_mutex;           /**< Mutex for I/O operations. */
+
+    pthread_cond_t scan_cond;           /**< Condition for scan state changes. */
+    pthread_cond_t config_cond;         /**< Condition for config state changes. */
+    pthread_cond_t request_cond;        /**< Condition for external requests. */
+
+#ifdef EC_EOE
+    pthread_t eoe_thread;               /**< EoE thread. */
+#endif
 } ec_master_plat_t;
 
 /****************************************************************************/
