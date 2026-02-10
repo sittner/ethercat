@@ -38,6 +38,7 @@
 #include "datagram.h"
 #include "ecrt_user.h"
 #include "ecrt.h"  /* For EC_WRITE_U8, EC_WRITE_U16 macros */
+#include "transport/ec_transport.h"
 
 /****************************************************************************/
 
@@ -47,6 +48,7 @@ static ec_master_t *masters[EC_MAX_MASTERS];
 
 /* Forward declarations for userspace-specific implementations */
 void ec_device_set_interface(ec_device_t *device, const char *interface);
+void ec_device_attach(ec_device_t *device, ec_transport_t *transport);
 
 /* Userspace implementations of kernel master functions */
 
@@ -205,10 +207,10 @@ int ecrt_master_init(unsigned int master_index,
                      const char *interface)
 {
     ec_master_t *master;
+    ec_transport_t *transport;
+    ec_transport_type_t transport_type;
     int ret;
     unsigned int i;
-
-    (void)device_type;  /* For future XDP support */
 
     if (master_index >= EC_MAX_MASTERS) {
         EC_PAL_ERR("Master index %u out of range (max %u)\n", 
@@ -221,9 +223,39 @@ int ecrt_master_init(unsigned int master_index,
         return -EBUSY;
     }
 
+    /* Map device type to transport type */
+    switch (device_type) {
+    case EC_PAL_DEVICE_RAW:
+        transport_type = EC_TRANSPORT_RAW;
+        break;
+    case EC_PAL_DEVICE_XDP:
+        transport_type = EC_TRANSPORT_XDP;
+        break;
+    default:
+        transport_type = EC_TRANSPORT_RAW;
+        break;
+    }
+
+    /* Create transport */
+    transport = ec_transport_create(transport_type);
+    if (!transport) {
+        EC_PAL_ERR("Failed to create transport\n");
+        return -ENOMEM;
+    }
+
+    /* Open transport on interface */
+    ret = ec_transport_open(transport, interface);
+    if (ret < 0) {
+        EC_PAL_ERR("Failed to open transport on %s: %d\n", interface, ret);
+        ec_transport_destroy(transport);
+        return ret;
+    }
+
     master = ec_pal_zalloc(sizeof(ec_master_t));
     if (!master) {
         EC_PAL_ERR("Failed to allocate master\n");
+        ec_transport_close(transport);
+        ec_transport_destroy(transport);
         return -ENOMEM;
     }
 
@@ -256,8 +288,11 @@ int ecrt_master_init(unsigned int master_index,
     ret = ec_device_init(&master->devices[EC_DEVICE_MAIN], master);
     if (ret < 0) {
         EC_PAL_ERR("Failed to init device: %d\n", ret);
-        goto err_free;
+        goto err_free_transport;
     }
+
+    /* Attach transport to device */
+    ec_device_attach(&master->devices[EC_DEVICE_MAIN], transport);
 
     /* Set interface name */
     ec_device_set_interface(&master->devices[EC_DEVICE_MAIN], interface);
@@ -311,7 +346,9 @@ err_fsm:
         ec_datagram_clear(&master->ext_datagram_ring[i]);
 err_device:
     ec_device_clear(&master->devices[EC_DEVICE_MAIN]);
-err_free:
+err_free_transport:
+    ec_transport_close(transport);
+    ec_transport_destroy(transport);
     ec_pal_free(master);
     return ret;
 }
