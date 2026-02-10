@@ -154,14 +154,14 @@ static ATTRIBUTES int ec_ioctl_master(
             dev_idx < ec_master_num_devices(master); dev_idx++) {
         ec_device_t *device = &master->devices[dev_idx];
 
-        if (device->dev) {
-            memcpy(io.devices[dev_idx].address, device->dev->dev_addr,
+        if (device->plat.dev) {
+            memcpy(io.devices[dev_idx].address, device->plat.dev->dev_addr,
                     ETH_ALEN);
         } else {
             memcpy(io.devices[dev_idx].address, master->macs[dev_idx],
                     ETH_ALEN);
         }
-        io.devices[dev_idx].attached = device->dev ? 1 : 0;
+        io.devices[dev_idx].attached = device->plat.dev ? 1 : 0;
         io.devices[dev_idx].link_state = device->link_state ? 1 : 0;
         io.devices[dev_idx].tx_count = device->tx_count;
         io.devices[dev_idx].rx_count = device->rx_count;

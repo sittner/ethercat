@@ -139,4 +139,30 @@ typedef struct {
 
 /****************************************************************************/
 
+#include <stdint.h>
+
+/* Forward declarations */
+struct ec_master;
+
+/* Forward declaration for transport */
+typedef struct ec_transport ec_transport_t;
+
+/****************************************************************************/
+/* Platform-specific types */
+/****************************************************************************/
+
+/** Userspace-specific device fields. */
+typedef struct {
+    ec_transport_t *transport;           /**< Transport layer. */
+    uint64_t jiffies_poll;               /**< Time of last poll (ms). */
+} ec_device_plat_t;
+
+/** Userspace-specific master fields. */
+typedef struct {
+    /* TODO: Platform-specific master fields will be added in future phases */
+    int placeholder;  /* Temporary placeholder to avoid empty struct */
+} ec_master_plat_t;
+
+/****************************************************************************/
+
 #endif /* __EC_PAL_USERSPACE_H__ */
