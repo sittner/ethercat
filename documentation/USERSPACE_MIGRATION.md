@@ -281,7 +281,7 @@ The socket server runs in a separate thread within the master, handling CLI requ
 ### Userspace-Specific API Extensions
 
 ```c
-/* userspace/include/ecrt_user.h */
+/* master/uspace/ecrt_user.h */
 
 /**
  * Initialize a master instance (replaces kernel module loading)
@@ -779,10 +779,10 @@ ec_pal_device_register_custom(master, &my_custom_ops, "eth0");
 
 For Ethernet over EtherCAT (EoE) in userspace, we use TUN/TAP devices to create virtual network interfaces. The kernel module uses `net_device`, but in userspace we leverage `/dev/net/tun` for equivalent functionality.
 
-**Implementation (`userspace/eoe_tun.c`):**
+**Implementation (`master/uspace/eoe_tun.c`):**
 
 ```c
-// userspace/eoe_tun.c
+// master/uspace/eoe_tun.c
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1149,7 +1149,7 @@ if test "x$enable_userspace" = "xyes"; then
     AM_CONDITIONAL([HAVE_LIBBPF], [test "x$enable_xdp" = "xyes"])
 
     dnl Add userspace subdirectory
-    AC_CONFIG_FILES([userspace/Makefile])
+    AC_CONFIG_FILES([master/uspace/Makefile])
     AC_CONFIG_FILES([tests/Makefile])
 fi
 ```
@@ -1286,11 +1286,11 @@ TESTS = $(check_PROGRAMS)
 AM_CFLAGS = \
     -I$(top_srcdir)/include \
     -I$(top_srcdir)/master \
-    -I$(top_srcdir)/userspace/transport \
+    -I$(top_srcdir)/master/uspace/transport \
     -I$(srcdir)
 
 LDADD = \
-    $(top_builddir)/userspace/libethercat.la \
+    $(top_builddir)/master/uspace/libethercat.la \
     $(PTHREAD_LIBS)
 
 test_pal_SOURCES = unit/test_pal.c
@@ -1312,7 +1312,9 @@ endif
 
 ## Platform Abstraction Layer (PAL)
 
-### master/pal.h
+### PAL Interface (pal.h)
+
+The PAL is implemented separately in `master/kernel/pal.h` and `master/uspace/pal.h`:
 
 ```c
 /*****************************************************************************
