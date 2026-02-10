@@ -315,9 +315,9 @@ void ec_device_poll(
     if (ec_pal_time_after(now, device->plat.last_link_check + ec_pal_hz())) {
         link_state = ec_transport_get_link_state(device->plat.transport);
         if (link_state >= 0) {
-            int link_up = (link_state != 0) ? 1 : 0;
+            int link_up = (link_state != 0);
             
-            /* Log link state changes (skip initial state) */
+            /* Log link state changes (skip initial state). */
             if (device->plat.last_link_state >= 0 && 
                 link_up != device->plat.last_link_state) {
                 if (link_up) {
