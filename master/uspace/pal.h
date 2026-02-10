@@ -118,6 +118,7 @@ extern volatile int ec_pal_running;
 static inline int ec_pal_sem_down_interruptible_impl(sem_t *sem) {
     int ret;
     while ((ret = sem_trywait(sem)) == -1) {
+        /* Check if semaphore is just unavailable (count is zero) */
         if (errno == EAGAIN) {
             /* Semaphore not available - check if we should exit */
             if (!ec_pal_is_running()) {
@@ -126,7 +127,7 @@ static inline int ec_pal_sem_down_interruptible_impl(sem_t *sem) {
             /* Brief sleep to avoid busy-wait, allows signal delivery */
             usleep(1000);  /* 1ms */
         } else {
-            /* Other error occurred */
+            /* Real error occurred (e.g., EINVAL) */
             return -errno;
         }
     }
@@ -191,13 +192,14 @@ static inline void ec_pal_wake_up_all(ec_pal_wait_queue_t *wq) {
         struct timespec __ts; \
         pthread_mutex_lock(&(wq)->mutex); \
         while (!(cond) && ec_pal_is_running()) { \
-            clock_gettime(CLOCK_REALTIME, &__ts); \
+            clock_gettime(CLOCK_MONOTONIC, &__ts); \
             __ts.tv_nsec += EC_PAL_WAIT_TIMEOUT_NS; \
             if (__ts.tv_nsec >= NSEC_PER_SEC) { \
                 __ts.tv_sec++; \
                 __ts.tv_nsec -= NSEC_PER_SEC; \
             } \
-            pthread_cond_timedwait(&(wq)->cond, &(wq)->mutex, &__ts); \
+            /* Ignore timeout errors - we're polling anyway */ \
+            (void)pthread_cond_timedwait(&(wq)->cond, &(wq)->mutex, &__ts); \
         } \
         if (!ec_pal_is_running()) __ret = -EINTR; \
         pthread_mutex_unlock(&(wq)->mutex); \
