@@ -41,7 +41,7 @@ libtool
 master/*.o.d
 master/kernel/*.o.d
 master/uspace/*.la
-master/uspace/ethercat_master
+master/uspace/ec_master
 
 # Kernel build artifacts in master/kernel/
 master/kernel/*.o

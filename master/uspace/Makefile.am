@@ -70,16 +70,16 @@ EXTRA_DIST = \
 	transport/ec_transport.h
 
 # Userspace master daemon
-bin_PROGRAMS = ethercat_master
+bin_PROGRAMS = ec_master
 
-ethercat_master_SOURCES = ethercat_master.c
+ec_master_SOURCES = ethercat_master.c
 
-ethercat_master_CFLAGS = \
+ec_master_CFLAGS = \
 	-I$(top_srcdir)/include \
 	-I$(srcdir) \
 	-Wall
 
-ethercat_master_LDADD = \
+ec_master_LDADD = \
 	libethercat_master.la
 
 #-----------------------------------------------------------------------------

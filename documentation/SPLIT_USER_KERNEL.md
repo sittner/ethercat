@@ -602,9 +602,9 @@ libethercat_master_la_SOURCES = \
     $(USPACE_SOURCES)
 
 # Daemon
-bin_PROGRAMS = ethercat_master
-ethercat_master_SOURCES = ethercat_master.c
-ethercat_master_LDADD = libethercat_master.la
+bin_PROGRAMS = ec_master
+ec_master_SOURCES = ethercat_master.c
+ec_master_LDADD = libethercat_master.la
 ```
 
 ---
@@ -617,7 +617,7 @@ ethercat_master_LDADD = libethercat_master.la
 - [ ] Kernel module loads successfully
 - [ ] Existing kernel functionality works
 - [ ] Userspace library compiles
-- [ ] `ethercat_master` daemon runs
+- [ ] `ec_master` daemon runs
 - [ ] No `#ifdef __KERNEL__` in shared code (goal)
 
 ### Final Verification
