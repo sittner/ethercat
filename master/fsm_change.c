@@ -226,7 +226,7 @@ void ec_fsm_change_state_check(ec_fsm_change_t *fsm
     }
 
     if (datagram->working_counter == 0) {
-        if (datagram->jiffies_received - fsm->jiffies_start >= 3 * HZ) {
+        if (datagram->jiffies_received - fsm->jiffies_start >= 3 * ec_pal_hz()) {
             char state_str[EC_STATE_STRING_SIZE];
             ec_state_string(fsm->requested_state, state_str, 0);
             fsm->state = ec_fsm_change_state_error;
@@ -338,7 +338,7 @@ void ec_fsm_change_state_status(ec_fsm_change_t *fsm
 
     timeout_ms = ec_fsm_change_timeout_ms(fsm);
     if (datagram->jiffies_received - fsm->jiffies_start >=
-            timeout_ms * HZ / 1000) {
+            timeout_ms * ec_pal_hz() / 1000) {
         // timeout while checking
         char state_str[EC_STATE_STRING_SIZE];
         ec_state_string(fsm->requested_state, state_str, 0);
@@ -574,7 +574,7 @@ void ec_fsm_change_state_check_ack(ec_fsm_change_t *fsm
 
     timeout_ms = ec_fsm_change_timeout_ms(fsm);
     if (datagram->jiffies_received - fsm->jiffies_start >=
-            timeout_ms * HZ / 1000) {
+            timeout_ms * ec_pal_hz() / 1000) {
         // timeout while checking
         char state_str[EC_STATE_STRING_SIZE];
         ec_state_string(slave->current_state, state_str, 0);

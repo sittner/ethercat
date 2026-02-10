@@ -124,6 +124,7 @@
 #define EC_PAL_ERR(fmt, args...)    printk(KERN_ERR "EtherCAT ERROR: " fmt, ##args)
 #define EC_PAL_WARN(fmt, args...)   printk(KERN_WARNING "EtherCAT WARNING: " fmt, ##args)
 #define EC_PAL_DBG(fmt, args...)    printk(KERN_DEBUG "EtherCAT DEBUG: " fmt, ##args)
+#define EC_PAL_PRINT(fmt, args...)  printk(KERN_CONT fmt, ##args)
 
 /****************************************************************************/
 /* Atomics */

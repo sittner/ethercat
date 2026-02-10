@@ -130,6 +130,7 @@ static inline unsigned long ec_pal_get_jiffies(void) {
 #define EC_PAL_ERR(fmt, args...)    fprintf(stderr, "EtherCAT ERROR: " fmt, ##args)
 #define EC_PAL_WARN(fmt, args...)   fprintf(stderr, "EtherCAT WARNING: " fmt, ##args)
 #define EC_PAL_DBG(fmt, args...)    printf("EtherCAT DEBUG: " fmt, ##args)
+#define EC_PAL_PRINT(fmt, args...)  printf(fmt, ##args)
 
 /****************************************************************************/
 /* Atomics (using C11 stdatomic) */

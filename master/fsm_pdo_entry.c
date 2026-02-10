@@ -93,11 +93,11 @@ void ec_fsm_pdo_entry_print(
         const ec_fsm_pdo_entry_t *fsm /**< PDO mapping state machine. */
         )
 {
-    printk(KERN_CONT "Currently mapped PDO entries: ");
+    EC_PRINT("Currently mapped PDO entries: ");
     ec_pdo_print_entries(fsm->cur_pdo);
-    printk(KERN_CONT ". Entries to map: ");
+    EC_PRINT(". Entries to map: ");
     ec_pdo_print_entries(fsm->source_pdo);
-    printk(KERN_CONT "\n");
+    EC_PRINT("\n");
 }
 
 /****************************************************************************/
@@ -297,7 +297,7 @@ void ec_fsm_pdo_entry_read_state_entry(
         pdo_entry_info = EC_READ_U32(fsm->request.data);
 
         if (!(pdo_entry = (ec_pdo_entry_t *)
-                    kmalloc(sizeof(ec_pdo_entry_t), GFP_KERNEL))) {
+                    ec_pal_malloc(sizeof(ec_pdo_entry_t)))) {
             EC_SLAVE_ERR(fsm->slave, "Failed to allocate PDO entry.\n");
             fsm->state = ec_fsm_pdo_entry_state_error;
             return;
@@ -311,7 +311,7 @@ void ec_fsm_pdo_entry_read_state_entry(
         if (!pdo_entry->index && !pdo_entry->subindex) {
             if (ec_pdo_entry_set_name(pdo_entry, "Gap")) {
                 ec_pdo_entry_clear(pdo_entry);
-                kfree(pdo_entry);
+                ec_pal_free(pdo_entry);
                 fsm->state = ec_fsm_pdo_entry_state_error;
                 return;
             }

@@ -105,11 +105,11 @@ void ec_fsm_pdo_print(
         const ec_fsm_pdo_t *fsm /**< PDO configuration state machine. */
         )
 {
-    printk(KERN_CONT "Currently assigned PDOs: ");
+    EC_PRINT("Currently assigned PDOs: ");
     ec_pdo_list_print(&fsm->sync->pdos);
-    printk(KERN_CONT ". PDOs to assign: ");
+    EC_PRINT(". PDOs to assign: ");
     ec_pdo_list_print(&fsm->pdos);
-    printk(KERN_CONT "\n");
+    EC_PRINT("\n");
 }
 
 /****************************************************************************/
@@ -330,7 +330,7 @@ void ec_fsm_pdo_read_state_pdo(
     }
 
     if (!(fsm->pdo = (ec_pdo_t *)
-                kmalloc(sizeof(ec_pdo_t), GFP_KERNEL))) {
+                ec_pal_malloc(sizeof(ec_pdo_t)))) {
         EC_SLAVE_ERR(fsm->slave, "Failed to allocate PDO.\n");
         ec_fsm_pdo_read_action_next_sync(fsm, datagram);
         return;
@@ -544,11 +544,11 @@ void ec_fsm_pdo_conf_action_check_mapping(
         EC_SLAVE_WARN(fsm->slave, "Slave does not support"
                 " changing the PDO mapping!\n");
         EC_SLAVE_WARN(fsm->slave, "");
-        printk(KERN_CONT "Currently mapped PDO entries: ");
+        EC_PRINT("Currently mapped PDO entries: ");
         ec_pdo_print_entries(&fsm->slave_pdo);
-        printk(KERN_CONT ". Entries to map: ");
+        EC_PRINT(". Entries to map: ");
         ec_pdo_print_entries(fsm->pdo);
-        printk(KERN_CONT "\n");
+        EC_PRINT("\n");
     }
 
     ec_fsm_pdo_conf_action_next_pdo_mapping(fsm, datagram);
