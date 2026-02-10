@@ -37,6 +37,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <pthread.h>
 #include <semaphore.h>
 #include <unistd.h>
@@ -116,6 +117,10 @@ static inline void ec_pal_wake_up_all(ec_pal_wait_queue_t *wq) {
     pthread_cond_broadcast(&wq->cond);
     pthread_mutex_unlock(&wq->mutex);
 }
+
+/* Convenience aliases matching kernel naming */
+#define wake_up_all(wq)         ec_pal_wake_up_all(wq)
+#define wake_up(wq)             ec_pal_wake_up(wq)
 
 /* For wait_event, caller must handle the condition check loop */
 #define ec_pal_wait_event(wq, cond) \
