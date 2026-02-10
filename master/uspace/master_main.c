@@ -52,6 +52,9 @@ void ec_device_attach(ec_device_t *device, ec_transport_t *transport);
 
 /* Userspace implementations of kernel master functions */
 
+/** Datagram timeout in microseconds (userspace). */
+#define EC_DATAGRAM_TIMEOUT_US 10000
+
 /* FSM states */
 typedef enum {
     EC_FSM_MASTER_START,
@@ -59,7 +62,12 @@ typedef enum {
     EC_FSM_MASTER_WAIT_BROADCAST
 } ec_fsm_master_state_t;
 
-/* FSM state variables */
+/* FSM state variables
+ * NOTE: Using static variables creates a singleton FSM that prevents
+ * multiple master instances. This is acceptable for the current minimal
+ * implementation but should be moved into ec_fsm_master_t structure
+ * if multi-master support is needed.
+ */
 static ec_fsm_master_state_t fsm_state = EC_FSM_MASTER_START;
 static unsigned long last_scan_jiffies = 0;
 static unsigned int last_slave_count = 0xFFFFFFFF;  /* Sentinel value */
@@ -131,12 +139,8 @@ int ec_fsm_master_exec(
             fsm_state = EC_FSM_MASTER_START;
         } else if (datagram->state == EC_DATAGRAM_TIMED_OUT ||
                    datagram->state == EC_DATAGRAM_ERROR) {
-            /* Timeout or error - retry */
-            if (last_slave_count != 0 && last_slave_count != 0xFFFFFFFF) {
-                EC_MASTER_INFO(master, "0 slave(s) responding on main device.\n");
-                last_slave_count = 0;
-            } else if (last_slave_count == 0xFFFFFFFF) {
-                /* First scan, report 0 slaves */
+            /* Timeout or error - report 0 slaves if count changed */
+            if (last_slave_count != 0) {
                 EC_MASTER_INFO(master, "0 slave(s) responding on main device.\n");
                 last_slave_count = 0;
             }
@@ -357,8 +361,7 @@ void ec_master_check_timeouts(
 {
     ec_datagram_t *datagram;
     unsigned long now = ec_pal_jiffies();
-    /* Use a reasonable timeout: 10ms (10000 microseconds) */
-    unsigned long timeout_jiffies = (10000UL * ec_pal_hz()) / 1000000UL;
+    unsigned long timeout_jiffies = (EC_DATAGRAM_TIMEOUT_US * ec_pal_hz()) / 1000000UL;
     
     /* Ensure minimum timeout of 1 jiffy */
     if (timeout_jiffies < 1) {
