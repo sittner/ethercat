@@ -88,6 +88,19 @@
 #define ec_pal_mutex_trylock(mutex) (pthread_mutex_trylock(mutex) == 0)
 
 /****************************************************************************/
+/* Global Running Flag (for signal handling) */
+/****************************************************************************/
+
+/** Global running flag - set by signal handler to indicate shutdown. */
+extern volatile int ec_pal_running;
+
+/** Initialize/set the running flag. */
+#define ec_pal_set_running(val) (ec_pal_running = (val))
+
+/** Check if application should keep running. */
+#define ec_pal_is_running() (ec_pal_running)
+
+/****************************************************************************/
 /* Semaphores */
 /****************************************************************************/
 
@@ -96,7 +109,36 @@
 #define ec_pal_sem_down(sem)        sem_wait(sem)
 #define ec_pal_sem_up(sem)          sem_post(sem)
 #define ec_pal_sem_trydown(sem)     sem_trywait(sem)
-#define ec_pal_sem_down_interruptible(sem) sem_wait(sem)  /* No interrupts in userspace */
+
+/** Signal-aware semaphore down operation.
+ * 
+ * Uses sem_trywait in a loop with periodic checks of the running flag.
+ * Returns -EINTR if the running flag is cleared (e.g., by signal handler).
+ */
+static inline int ec_pal_sem_down_interruptible_impl(sem_t *sem) {
+    int ret;
+    while ((ret = sem_trywait(sem)) == -1) {
+        if (errno == EAGAIN) {
+            /* Semaphore not available - check if we should exit */
+            if (!ec_pal_is_running()) {
+                return -EINTR;
+            }
+            /* Brief sleep to avoid busy-wait, allows signal delivery */
+            usleep(1000);  /* 1ms */
+        } else if (errno == EINTR) {
+            /* Interrupted by signal */
+            if (!ec_pal_is_running()) {
+                return -EINTR;
+            }
+            /* Continue waiting */
+        } else {
+            return -errno;
+        }
+    }
+    return 0;
+}
+
+#define ec_pal_sem_down_interruptible(sem) ec_pal_sem_down_interruptible_impl(sem)
 
 /****************************************************************************/
 /* Wait queues (using condition variables) */
@@ -139,16 +181,43 @@ static inline void ec_pal_wake_up_all(ec_pal_wait_queue_t *wq) {
         pthread_mutex_unlock(&(wq)->mutex); \
     } while (0)
 
+/** Signal-aware wait_event operation.
+ * 
+ * Uses pthread_cond_timedwait with periodic timeouts to check the running flag.
+ * Returns -EINTR if the running flag is cleared (e.g., by signal handler).
+ */
+#define ec_pal_wait_event_interruptible(wq, cond) \
+    ({ \
+        int __ret = 0; \
+        struct timespec __ts; \
+        pthread_mutex_lock(&(wq)->mutex); \
+        while (!(cond) && ec_pal_is_running()) { \
+            clock_gettime(CLOCK_REALTIME, &__ts); \
+            __ts.tv_nsec += 10000000; /* 10ms timeout */ \
+            if (__ts.tv_nsec >= 1000000000) { \
+                __ts.tv_sec++; \
+                __ts.tv_nsec -= 1000000000; \
+            } \
+            pthread_cond_timedwait(&(wq)->cond, &(wq)->mutex, &__ts); \
+        } \
+        if (!ec_pal_is_running()) __ret = -EINTR; \
+        pthread_mutex_unlock(&(wq)->mutex); \
+        __ret; \
+    })
+
+/* Map kernel wait_event_interruptible to PAL implementation */
+#define wait_event_interruptible(wq, cond) ec_pal_wait_event_interruptible(&(wq), cond)
+
 /****************************************************************************/
 /* Master locking (convenience macros for master semaphores) */
 /****************************************************************************/
 
 #define ec_master_lock(m)               sem_wait(&(m)->plat.master_sem)
 #define ec_master_unlock(m)             sem_post(&(m)->plat.master_sem)
-#define ec_master_lock_interruptible(m) sem_wait(&(m)->plat.master_sem)  /* No interrupts in userspace */
+#define ec_master_lock_interruptible(m) ec_pal_sem_down_interruptible(&(m)->plat.master_sem)
 #define ec_device_lock(m)               sem_wait(&(m)->plat.device_sem)
 #define ec_device_unlock(m)             sem_post(&(m)->plat.device_sem)
-#define ec_device_lock_interruptible(m) sem_wait(&(m)->plat.device_sem)  /* No interrupts in userspace */
+#define ec_device_lock_interruptible(m) ec_pal_sem_down_interruptible(&(m)->plat.device_sem)
 #define ec_scan_lock(m)                 sem_wait(&(m)->plat.scan_sem)
 #define ec_scan_unlock(m)               sem_post(&(m)->plat.scan_sem)
 #define ec_config_lock(m)               sem_wait(&(m)->plat.config_sem)

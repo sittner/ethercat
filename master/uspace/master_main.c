@@ -554,8 +554,6 @@ int ecrt_master_process_control(unsigned int master_index)
 
 /****************************************************************************/
 
-static volatile int running = 1;
-
 static struct option long_options[] = {
     {"interface",  required_argument, 0, 'i'},
     {"transport",  required_argument, 0, 't'},
@@ -568,7 +566,7 @@ static struct option long_options[] = {
 static void signal_handler(int sig)
 {
     (void)sig;
-    running = 0;
+    ec_pal_set_running(0);
 }
 
 static void print_usage(const char *prog)
@@ -649,6 +647,9 @@ int main(int argc, char *argv[])
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
+    /* Initialize running flag */
+    ec_pal_set_running(1);
+
     if (verbose) {
         printf("EtherCAT Master Userspace Daemon\n");
         printf("Interface: %s\n", interface);
@@ -677,7 +678,7 @@ int main(int argc, char *argv[])
     }
 
     /* Main loop: run idle processing */
-    while (running) {
+    while (ec_pal_is_running()) {
         /* Process idle state machine (bus scanning, etc.) */
         ecrt_master_idle(0);
 
