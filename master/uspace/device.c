@@ -394,3 +394,22 @@ void ec_device_update_stats(
 }
 
 /****************************************************************************/
+
+/** Sets the network interface for the device.
+ *
+ * \param device EtherCAT device
+ * \param interface Network interface name (e.g., "eth0")
+ */
+void ec_device_set_interface(
+        ec_device_t *device,
+        const char *interface
+        )
+{
+    ec_transport_t *transport = device->plat.transport;
+    if (transport && interface) {
+        strncpy(transport->ifname, interface, IFNAMSIZ - 1);
+        transport->ifname[IFNAMSIZ - 1] = '\0';
+    }
+}
+
+/****************************************************************************/
