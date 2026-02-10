@@ -162,6 +162,18 @@ static inline unsigned long ec_pal_get_jiffies(void) {
 #define ec_pal_hz()                 1000  /* 1000 ms = 1 second */
 #define ec_pal_time_after(a, b)     ((long)((b) - (a)) < 0)
 
+/* Time conversion macros (identity in userspace since jiffies are already ms) */
+#define msecs_to_jiffies(ms)        (ms)
+#define jiffies_to_msecs(j)         (j)
+
+/* 64-bit division (userspace can use native division) */
+#define do_div(n, base) ({ \
+    uint32_t __rem; \
+    __rem = (n) % (base); \
+    (n) = (n) / (base); \
+    __rem; \
+})
+
 /****************************************************************************/
 /* Logging */
 /****************************************************************************/

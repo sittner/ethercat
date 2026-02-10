@@ -60,106 +60,6 @@ void ec_device_attach(ec_device_t *device, ec_transport_t *transport);
 /** Datagram timeout in microseconds (userspace). */
 #define EC_DATAGRAM_TIMEOUT_US 10000
 
-/* FSM states */
-typedef enum {
-    EC_FSM_MASTER_START,
-    EC_FSM_MASTER_BROADCAST,
-    EC_FSM_MASTER_WAIT_BROADCAST
-} ec_fsm_master_state_t;
-
-/* FSM state variables
- * NOTE: Using static variables creates a singleton FSM that prevents
- * multiple master instances. This is acceptable for the current minimal
- * implementation but should be moved into ec_fsm_master_t structure
- * if multi-master support is needed.
- */
-static ec_fsm_master_state_t fsm_state = EC_FSM_MASTER_START;
-static unsigned long last_scan_jiffies = 0;
-static unsigned int last_slave_count = 0xFFFFFFFF;  /* Sentinel value */
-
-/* FSM functions for userspace */
-void ec_fsm_master_init(
-        ec_fsm_master_t *fsm,
-        ec_master_t *master,
-        ec_datagram_t *datagram
-        )
-{
-    fsm->master = master;
-    fsm->datagram = datagram;
-    fsm->idle = 1;
-    /* Reset FSM state */
-    fsm_state = EC_FSM_MASTER_START;
-    last_scan_jiffies = 0;
-    last_slave_count = 0xFFFFFFFF;  /* Sentinel value */
-}
-
-void ec_fsm_master_clear(
-        ec_fsm_master_t *fsm
-        )
-{
-    (void)fsm;
-    /* Reset state variables */
-    fsm_state = EC_FSM_MASTER_START;
-    last_scan_jiffies = 0;
-    last_slave_count = 0xFFFFFFFF;  /* Sentinel value */
-}
-
-int ec_fsm_master_exec(
-        ec_fsm_master_t *fsm
-        )
-{
-    ec_datagram_t *datagram = fsm->datagram;
-    ec_master_t *master = fsm->master;
-    unsigned long now = ec_pal_jiffies();
-    
-    switch (fsm_state) {
-    case EC_FSM_MASTER_START:
-        /* Start a broadcast read every ~1 second */
-        if (last_scan_jiffies != 0 && now - last_scan_jiffies < ec_pal_hz()) {
-            return 0;  /* Not time yet */
-        }
-        last_scan_jiffies = now;
-        
-        /* Prepare BRD datagram to read AL Status (0x0130) from all slaves */
-        ec_datagram_brd(datagram, 0x0130, 2);  /* AL Status is 2 bytes */
-        fsm_state = EC_FSM_MASTER_BROADCAST;
-        return 1;  /* Datagram ready to send */
-        
-    case EC_FSM_MASTER_BROADCAST:
-        /* Datagram was queued, wait for it to be sent */
-        fsm_state = EC_FSM_MASTER_WAIT_BROADCAST;
-        return 0;
-        
-    case EC_FSM_MASTER_WAIT_BROADCAST:
-        /* Check if datagram was received */
-        if (datagram->state == EC_DATAGRAM_RECEIVED) {
-            unsigned int slave_count = datagram->working_counter;
-            
-            if (slave_count != last_slave_count) {
-                EC_MASTER_INFO(master, "%u slave(s) responding on main device.\n",
-                               slave_count);
-                last_slave_count = slave_count;
-            }
-            
-            fsm_state = EC_FSM_MASTER_START;
-        } else if (datagram->state == EC_DATAGRAM_TIMED_OUT ||
-                   datagram->state == EC_DATAGRAM_ERROR) {
-            /* Timeout or error - report 0 slaves if count changed */
-            if (last_slave_count != 0) {
-                EC_MASTER_INFO(master, "0 slave(s) responding on main device.\n");
-                last_slave_count = 0;
-            }
-            fsm_state = EC_FSM_MASTER_START;
-        }
-        /* Still waiting */
-        return 0;
-        
-    default:
-        fsm_state = EC_FSM_MASTER_START;
-        return 0;
-    }
-}
-
 /** Internal sending callback (userspace).
  */
 void ec_master_internal_send_cb(
@@ -659,6 +559,7 @@ static volatile int running = 1;
 static struct option long_options[] = {
     {"interface",  required_argument, 0, 'i'},
     {"transport",  required_argument, 0, 't'},
+    {"debug",      required_argument, 0, 'd'},
     {"verbose",    no_argument,       0, 'v'},
     {"help",       no_argument,       0, 'h'},
     {0, 0, 0, 0}
@@ -683,6 +584,7 @@ static void print_usage(const char *prog)
     printf("Options:\n");
     printf("  -i, --interface IFACE   Network interface (required, e.g., eth0)\n");
     printf("  -t, --transport TYPE    Transport type: raw, xdp (default: raw)\n");
+    printf("  -d, --debug LEVEL       Debug level (0-2, default: 1)\n");
     printf("  -v, --verbose           Verbose output\n");
     printf("  -h, --help              Show this help\n");
     printf("\n");
@@ -697,18 +599,22 @@ int main(int argc, char *argv[])
     const char *interface = NULL;
     const char *transport = "raw";
     int verbose = 0;
+    int debug_level = 1;
     int opt;
     ec_pal_device_type_t device_type;
     int ret;
 
     /* Parse command line arguments */
-    while ((opt = getopt_long(argc, argv, "i:t:vh", long_options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "i:t:d:vh", long_options, NULL)) != -1) {
         switch (opt) {
         case 'i':
             interface = optarg;
             break;
         case 't':
             transport = optarg;
+            break;
+        case 'd':
+            debug_level = atoi(optarg);
             break;
         case 'v':
             verbose = 1;
@@ -747,6 +653,7 @@ int main(int argc, char *argv[])
         printf("EtherCAT Master Userspace Daemon\n");
         printf("Interface: %s\n", interface);
         printf("Transport: %s\n", transport);
+        printf("Debug level: %d\n", debug_level);
         printf("\n");
         printf("Initializing master...\n");
     }
@@ -756,6 +663,11 @@ int main(int argc, char *argv[])
     if (ret < 0) {
         fprintf(stderr, "Failed to initialize master: %s\n", strerror(-ret));
         return 1;
+    }
+
+    /* Set debug level */
+    if (masters[0]) {
+        masters[0]->debug_level = debug_level;
     }
 
     if (verbose) {
@@ -770,7 +682,7 @@ int main(int argc, char *argv[])
         ecrt_master_idle(0);
 
         /* Sleep briefly to avoid busy-waiting */
-        usleep(1000);  /* 1ms - responsive for CTRL+C */
+        usleep(10000);  /* 10ms idle cycle */
     }
 
     if (verbose) {
