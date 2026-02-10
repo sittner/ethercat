@@ -93,6 +93,16 @@
 #define ec_pal_sem_down_interruptible(sem) down_interruptible(sem)
 
 /****************************************************************************/
+/* Wait queues */
+/****************************************************************************/
+
+#define ec_pal_wait_queue_t              wait_queue_head_t
+#define ec_pal_wait_queue_init(wq)       init_waitqueue_head(wq)
+#define ec_pal_wake_up(wq)               wake_up_interruptible(wq)
+#define ec_pal_wake_up_all(wq)           wake_up_all(wq)
+#define ec_pal_wait_event(wq, cond)      wait_event_interruptible(wq, cond)
+
+/****************************************************************************/
 /* Master locking (convenience macros for master semaphores) */
 /****************************************************************************/
 
@@ -309,6 +319,7 @@ typedef struct {
 
 #ifdef EC_EOE
     struct task_struct *eoe_thread;     /**< EoE thread. */
+    wait_queue_head_t eoe_queue;        /**< Wait queue for EoE. */
 #endif
 
     struct irq_work sc_reset_work_kicker; /**< IRQ work for slave config reset. */

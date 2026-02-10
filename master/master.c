@@ -216,11 +216,11 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     master->scan_index = 0;
     master->allow_scan = 1;
     sema_init(&master->plat.scan_sem, 1);
-    init_waitqueue_head(&master->plat.scan_queue);
+    ec_pal_wait_queue_init(&master->plat.scan_queue);
 
     master->config_busy = 0;
     sema_init(&master->plat.config_sem, 1);
-    init_waitqueue_head(&master->plat.config_queue);
+    ec_pal_wait_queue_init(&master->plat.config_queue);
 
     INIT_LIST_HEAD(&master->datagram_queue);
     master->datagram_index = 0;
@@ -270,7 +270,7 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     INIT_LIST_HEAD(&master->sii_requests);
     INIT_LIST_HEAD(&master->emerg_reg_requests);
 
-    init_waitqueue_head(&master->plat.request_queue);
+    ec_pal_wait_queue_init(&master->plat.request_queue);
 
     // init devices
     for (dev_idx = EC_DEVICE_MAIN; dev_idx < ec_master_num_devices(master);
@@ -498,7 +498,7 @@ void ec_master_clear_slaves(ec_master_t *master)
         EC_MASTER_WARN(master, "Discarding SII request, slave %u about"
                 " to be deleted.\n", request->slave->ring_position);
         request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&master->plat.request_queue);
+        ec_pal_wake_up_all(&master->plat.request_queue);
     }
 
     master->fsm_slave = NULL;
