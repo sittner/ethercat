@@ -42,7 +42,11 @@
 #include <linux/delay.h>
 #include <linux/jiffies.h>
 #include <linux/time.h>
+#include <linux/timex.h>
 #include <linux/atomic.h>
+#include <linux/list.h>
+#include <linux/kobject.h>
+#include <linux/err.h>
 
 /****************************************************************************/
 /* Memory allocation */
@@ -126,6 +130,48 @@
 #define EC_PAL_WARN(fmt, args...)   printk(KERN_WARNING "EtherCAT WARNING: " fmt, ##args)
 #define EC_PAL_DBG(fmt, args...)    printk(KERN_DEBUG "EtherCAT DEBUG: " fmt, ##args)
 #define EC_PAL_PRINT(fmt, args...)  printk(KERN_CONT fmt, ##args)
+
+/* Slave-specific logging macros */
+#define EC_SLAVE_INFO(slave, fmt, args...) \
+    printk(KERN_INFO "EtherCAT %u-%u: " fmt, slave->master->index, \
+            slave->ring_position, ##args)
+
+#define EC_SLAVE_ERR(slave, fmt, args...) \
+    printk(KERN_ERR "EtherCAT ERROR %u-%u: " fmt, slave->master->index, \
+            slave->ring_position, ##args)
+
+#define EC_SLAVE_WARN(slave, fmt, args...) \
+    printk(KERN_WARNING "EtherCAT WARNING %u-%u: " fmt, \
+            slave->master->index, slave->ring_position, ##args)
+
+#define EC_SLAVE_DBG(slave, level, fmt, args...) \
+    do { \
+        if (slave->master->debug_level >= level) { \
+            printk(KERN_DEBUG "EtherCAT DEBUG %u-%u: " fmt, \
+                    slave->master->index, slave->ring_position, ##args); \
+        } \
+    } while (0)
+
+/* Slave configuration-specific logging macros */
+#define EC_CONFIG_INFO(sc, fmt, args...) \
+    printk(KERN_INFO "EtherCAT %u %u:%u: " fmt, sc->master->index, \
+            sc->alias, sc->position, ##args)
+
+#define EC_CONFIG_ERR(sc, fmt, args...) \
+    printk(KERN_ERR "EtherCAT ERROR %u %u:%u: " fmt, sc->master->index, \
+            sc->alias, sc->position, ##args)
+
+#define EC_CONFIG_WARN(sc, fmt, args...) \
+    printk(KERN_WARNING "EtherCAT WARNING %u %u:%u: " fmt, \
+            sc->master->index, sc->alias, sc->position, ##args)
+
+#define EC_CONFIG_DBG(sc, level, fmt, args...) \
+    do { \
+        if (sc->master->debug_level >= level) { \
+            printk(KERN_DEBUG "EtherCAT DEBUG %u %u:%u: " fmt, \
+                    sc->master->index, sc->alias, sc->position, ##args); \
+        } \
+    } while (0)
 
 /****************************************************************************/
 /* Atomics */

@@ -26,17 +26,11 @@
 
 /****************************************************************************/
 
-#ifdef __KERNEL__
-#include <linux/module.h>
-#include <linux/delay.h>
-#endif
-
-#include "globals_int.h"
 #include "pal.h"
+#include "globals_int.h"
 #include "datagram.h"
 #include "master.h"
 #include "slave_config.h"
-
 #include "slave.h"
 
 /****************************************************************************/

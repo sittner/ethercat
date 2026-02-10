@@ -26,19 +26,9 @@
 
 /****************************************************************************/
 
-#ifdef __KERNEL__
-#include <linux/slab.h>
-#else
-#include <errno.h>
-#include <string.h>
-#endif
-
 #include "pal.h"
 #include "datagram.h"
 #include "globals_int.h"
-#ifdef __KERNEL__
-#include "master.h"
-#endif
 
 /****************************************************************************/
 

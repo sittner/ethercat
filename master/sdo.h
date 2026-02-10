@@ -29,12 +29,7 @@
 #ifndef __EC_SDO_H__
 #define __EC_SDO_H__
 
-#ifdef __KERNEL__
-#include <linux/list.h>
-#else
-#include "uspace/list.h"
-#endif
-
+#include "pal.h"
 #include "globals.h"
 #include "sdo_entry.h"
 

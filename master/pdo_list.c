@@ -26,24 +26,8 @@
 
 /****************************************************************************/
 
-#ifdef __KERNEL__
-#include <linux/module.h>
-#else
-#include <errno.h>
-#include <string.h>
-#define ERR_PTR(err) ((void*)(long)(err))
-#define PTR_ERR(ptr) ((long)(ptr))
-#define IS_ERR(ptr) ((unsigned long)(ptr) > (unsigned long)(-1000))
-#endif
-
-#include "globals_int.h"
 #include "pal.h"
-#include "pdo.h"
-#ifdef __KERNEL__
-#include "slave_config.h"
-#include "master.h"
-#endif
-
+#include "globals_int.h"
 #include "pdo_list.h"
 
 /****************************************************************************/
