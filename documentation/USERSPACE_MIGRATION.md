@@ -38,7 +38,7 @@ This document describes the migration of the IgH EtherCAT Master to support both
 
 ## Implementation State
 
-**Last Updated:** February 9, 2026
+**Last Updated:** February 10, 2026
 
 This section tracks the actual implementation progress of the userspace migration on the `xdp+kernal` branch. It is updated as components are completed.
 
@@ -48,60 +48,65 @@ The following components have been implemented and are present in the codebase:
 
 | Component | File | Status | Details |
 |-----------|------|--------|---------|
-| PAL Header Interface | `master/pal.h` | ✅ Implemented | Platform abstraction layer interface with kernel/userspace macros |
-| PAL Kernel Implementation | `master/pal_kernel.c` | ✅ Implemented | Kernel-side PAL implementation |
+| PAL Header Interface | `master/kernel/pal.h`, `master/uspace/pal.h` | ✅ Implemented | Separate PAL for kernel and userspace |
+| Kernel PAL | `master/kernel/pal.h` + kernel sources | ✅ Implemented | Full kernel PAL with device, cdev, module, ioctl |
+| Userspace PAL | `master/uspace/pal.h` | ✅ Implemented | Memory, logging, time, locking abstractions |
+| Shared Code Migration | `master/*.c`, `master/*.h` | ✅ Implemented | All ~35 shared files converted to PAL |
+| `ec_master_plat_t` | `master/master.h` | ✅ Implemented | Platform-specific master fields isolated |
+| `ec_device_plat_t` | `master/device.h` | ✅ Implemented | Platform-specific device fields isolated |
 | Internal Globals Header | `master/globals_int.h` | ✅ Implemented | Internal master definitions with PAL logging |
-| Kbuild Integration | `master/Kbuild.in` | ✅ Modified | Added `pal_kernel.o` to kernel build |
+| Kbuild Integration | `master/kernel/Kbuild.in` | ✅ Implemented | Kernel build in kernel/ subdirectory |
+| Userspace Build | `master/uspace/Makefile.am` | ✅ Implemented | Userspace build compiles successfully |
 | Configure.ac | `configure.ac` | ✅ Modified | Added `--enable-userspace` option |
 | Top-level Makefile.am | `Makefile.am` | ✅ Modified | Added userspace subdirectory |
-| Userspace Directory | `userspace/` | ✅ Created | Complete directory structure |
-| Userspace Makefile | `userspace/Makefile.am` | ✅ Created | Build rules for libethercat_master.la |
-| Userspace PAL | `userspace/pal_user.c` | ✅ Implemented | Full implementation with transport integration |
-| Userspace API Header | `userspace/include/ecrt_user.h` | ✅ Created | ecrt_master_init/cleanup/idle API |
-| Userspace API Implementation | `userspace/ecrt_user.c` | ✅ Created | Stub implementations |
-| Master Daemon | `userspace/ethercat_master.c` | ✅ Created | Standalone daemon with CLI options |
-| First Core File Migration | `master/datagram.c` | ✅ Started | Uses `ec_pal_malloc`, `ec_pal_free` |
-| Transport Interface | `userspace/transport/ec_transport.h` | ✅ Implemented | Transport abstraction with send/recv/link/MAC operations |
-| Transport Registry | `userspace/transport/transport.c` | ✅ Implemented | Transport type registration and lifecycle management |
-| Raw socket transport | `userspace/transport/transport_raw.c` | ✅ Implemented | Full AF_PACKET implementation with EtherCAT ethertype |
+| Userspace API Header | `master/uspace/ecrt_user.h` | ✅ Created | ecrt_master_init/cleanup/idle API |
+| Master Daemon | `master/uspace/ethercat_master.c` | ✅ Implemented | Standalone daemon (to be renamed `ec_master`) |
+| Transport Interface | `master/uspace/transport/ec_transport.h` | ✅ Implemented | Transport abstraction with send/recv/link/MAC operations |
+| Transport Registry | `master/uspace/transport/transport.c` | ✅ Implemented | Transport type registration and lifecycle management |
 
 ### ❌ Components NOT Yet Implemented
 
 The following components are planned but not yet implemented:
 
-| Component | Planned Location | Status | Phase |
-|-----------|------------------|--------|-------|
-| Device Abstraction Header | `master/pal_device.h` | ❌ Not created | Phase 2 |
-| XDP transport | `userspace/transport/transport_xdp.c` | ❌ Not created | Phase 6 |
-| Unix socket control interface | `userspace/control_socket.c` | ❌ Not created | Phase 4 |
-| EoE TUN/TAP implementation | `userspace/eoe_tun.c` | ❌ Not created | Phase 5 |
+| Component | Planned Location | Status | Details |
+|-----------|------------------|--------|---------|
+| Raw Socket Transport | `master/uspace/device.c` | ❌ Stubs only | Need AF_PACKET implementation |
+| XDP Transport | `master/uspace/device.c` or separate | ❌ Not started | Phase 6 |
+| Unix socket control | `master/uspace/control_socket.c` | ❌ Not created | For CLI tool communication |
+| EoE TUN/TAP | `master/uspace/eoe_tun.c` | ❌ Not created | Phase 5 |
 | Test infrastructure | `tests/` directory | ❌ Not created | All phases |
-| Other master/*.c migrations | `master.c`, `slave.c`, `domain.c`, etc. | ❌ Not started | Phase 3 |
 
 ### Phase Progress Summary
 
 The migration is divided into six phases. Current progress for each phase:
 
-| Phase | Description | Est. Duration | Progress | Status |
-|-------|-------------|---------------|----------|--------|
-| **Phase 1** | PAL Foundation | 2-3 weeks | 100% | ✅ Complete |
-| **Phase 2** | Transport Layer | 2-3 weeks | 100% | ✅ Complete |
-| **Phase 3** | Core Migration | 4-5 weeks | ~5% | 🟡 Starting |
-| **Phase 4** | Userspace API & Control | 2-3 weeks | ~30% | 🟡 Partial (daemon functional) |
-| **Phase 5** | Advanced Features | 3-4 weeks | 0% | ⚪ Not Started |
-| **Phase 6** | XDP Transport & Polish | 2-3 weeks | 0% | ⚪ Not Started |
+| Phase | Description | Progress | Status |
+|-------|-------------|----------|--------|
+| **Phase 1** | PAL Foundation | 100% | ✅ Complete |
+| **Phase 2** | Transport Layer | 10% | 🟡 Stubs only, need raw socket impl |
+| **Phase 3** | Core Migration | 100% | ✅ Complete - all shared files converted |
+| **Phase 4** | Userspace API & Control | 40% | 🟡 Daemon works, no control socket |
+| **Phase 5** | Advanced Features (EoE, DC) | 0% | ⚪ Not Started |
+| **Phase 6** | XDP Transport & Polish | 0% | ⚪ Not Started |
 
-**Overall Progress:** ~35% complete
+**Overall Progress:** ~50% complete
 
-**Current Focus:** Phase 3 - Core Migration. Migrating master/*.c files to use PAL abstractions.
+**Current Focus:** Phase 2 - Transport Layer. Implement raw socket transport in `master/uspace/device.c` to enable actual packet send/receive.
 
 ### Recent Milestones
 
+- ✅ **2026-02-10**: Directory restructured to `master/kernel/` and `master/uspace/`
+- ✅ **2026-02-10**: All shared code (~35 files) converted to PAL abstractions
+- ✅ **2026-02-10**: `ec_master_plat_t` implemented for master platform isolation
+- ✅ **2026-02-10**: `ec_device_plat_t` implemented for device platform isolation
+- ✅ **2026-02-10**: Removed `#ifdef __KERNEL__` from shared code
+- ✅ **2026-02-10**: Both kernel and userspace builds compile successfully
+- ✅ **2026-02-10**: Kernel module tested and working with hardware
+- ✅ **2026-02-10**: Executable being renamed from `ethercat_master` to `ec_master`
 - ✅ **2026-02-09**: Transport layer complete - raw socket implementation working (PR #13)
 - ✅ **2026-02-09**: Master init wiring complete - transport integrated with ecrt_master_init() (PR #14)
 - ✅ **2026-02-09**: `ec_master` daemon runs successfully, displays link state and MAC address
 - ✅ **2026-02-09**: Clean shutdown on Ctrl+C with proper transport cleanup
-- ✅ **2026-02-09**: `ec_master` daemon runs and fails gracefully with "Function not implemented"
 - ✅ **2026-02-09**: Kernel + userspace builds working simultaneously
 - ✅ **2026-02-09**: `globals.h` / `globals_int.h` split to fix C++ tool build
 - ✅ **2026-02-09**: PAL header with C++ atomic compatibility
@@ -276,7 +281,7 @@ The socket server runs in a separate thread within the master, handling CLI requ
 ### Userspace-Specific API Extensions
 
 ```c
-/* userspace/include/ecrt_user.h */
+/* master/uspace/ecrt_user.h */
 
 /**
  * Initialize a master instance (replaces kernel module loading)
@@ -333,10 +338,10 @@ For users who want a kernel-module-like experience without writing custom applic
 - Useful for testing, configuration, and slave commissioning
 - Can run as a system service for always-available master
 
-**Implementation (`userspace/ethercat_master.c`):**
+**Implementation (`master/uspace/ethercat_master.c`):**
 
 ```c
-// userspace/ethercat_master.c
+// master/uspace/ethercat_master.c
 
 /**
  * EtherCAT Master Demonstrator
@@ -654,7 +659,7 @@ The key innovation is a **Platform Abstraction Layer (PAL)** that allows the sam
          ┌────────────────────┴────────────────────┐
          ▼                                         ▼
 ┌─────────────────────┐                 ┌─────────────────────┐
-│ master/pal_kernel.c │                 │ master/pal_user.c   │
+│ master/kernel/pal.h │                 │ master/uspace/pal.h │
 │  kmalloc, spinlock, │                 │ malloc, pthread,    │
 │  jiffies, printk    │                 │ clock_gettime       │
 └─────────────────────┘                 └─────────────────────┘
@@ -774,10 +779,10 @@ ec_pal_device_register_custom(master, &my_custom_ops, "eth0");
 
 For Ethernet over EtherCAT (EoE) in userspace, we use TUN/TAP devices to create virtual network interfaces. The kernel module uses `net_device`, but in userspace we leverage `/dev/net/tun` for equivalent functionality.
 
-**Implementation (`userspace/eoe_tun.c`):**
+**Implementation (`master/uspace/eoe_tun.c`):**
 
 ```c
-// userspace/eoe_tun.c
+// master/uspace/eoe_tun.c
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1013,46 +1018,38 @@ ethercat/
 ├── configure.ac              # Modified: add --enable-userspace
 ├── Makefile.am               # Modified: add userspace subdirectory
 ├── master/
-│   ├── Kbuild.in             # Modified: add pal_kernel.o
 │   ├── Makefile.am           # Modified: add userspace library rules
-│   ├── pal.h                 # NEW: Platform Abstraction Layer interface
-│   ├── pal_device.h          # NEW: Device abstraction interface
-│   ├── pal_kernel.c          # NEW: Kernel PAL implementation
-│   ├── pal_user.c            # NEW: Userspace PAL implementation
-│   ├── master.c              # Modified: add PAL calls
-│   ├── slave.c               # Modified: add PAL calls
-│   ├── domain.c              # Modified: add PAL calls
-│   ├── datagram.c            # Modified: add PAL calls
-│   ├── device.c              # Kernel-only (not shared)
-│   ├── cdev.c                # Kernel-only (not shared)
-│   ├── module.c              # Kernel-only (not shared)
-│   ├── ioctl.c               # Kernel-only (not shared)
-│   └── ...                   # Other existing files (shared)
-├── userspace/                # NEW: Userspace-specific code
-│   ├── Makefile.am
-│   ├── ethercat_master.c     # NEW: Standalone master daemon
-│   ├── ecrt_user.c           # NEW: Userspace API implementation
-│   ├── pal_user.c            # NEW: Userspace PAL implementation
-│   ├── control_socket.c      # NEW: Unix socket for CLI
-│   ├── eoe_tun.c             # NEW: TUN/TAP for EoE
-│   ├── transport/
-│   │   ├── transport.c       # Transport registry and lifecycle
-│   │   ├── transport_raw.c   # AF_PACKET (SOCK_RAW) implementation
-│   │   └── transport_xdp.c   # AF_XDP implementation (optional)
-│   ├── include/
-│   │   └── ecrt_user.h       # Userspace-specific API extensions
-│   └── examples/
-│       └── basic_example.c
+│   ├── *.c, *.h              # Shared code (PAL abstractions)
+│   ├── kernel/               # Kernel-only code
+│   │   ├── Kbuild.in         # Kernel build rules
+│   │   ├── pal.h             # Kernel PAL implementation
+│   │   ├── device.c          # Kernel device (sk_buff, net_device)
+│   │   ├── cdev.c            # Character device
+│   │   ├── module.c          # Kernel module init/exit
+│   │   ├── ioctl.c           # Kernel ioctl handling
+│   │   ├── debug.c           # Kernel debug network interface
+│   │   └── rtdm*.c           # RTDM (Xenomai/RTAI) specific
+│   └── uspace/               # Userspace-only code
+│       ├── Makefile.am       # Userspace build rules
+│       ├── pal.h             # Userspace PAL implementation
+│       ├── device.c          # Userspace device (raw socket/XDP) - STUBS
+│       ├── ecrt_user.h       # Userspace-specific API extensions
+│       ├── ethercat_master.c # Standalone daemon (being renamed to ec_master)
+│       └── transport/
+│           ├── ec_transport.h  # Transport abstraction interface
+│           ├── transport.c     # Transport registry and lifecycle
+│           ├── transport_raw.c # AF_PACKET (SOCK_RAW) implementation
+│           └── transport_xdp.c # AF_XDP implementation (planned)
 ├── tools/
 │   ├── ...
-├── tests/                    # NEW: Test infrastructure
+├── tests/                    # Planned: Test infrastructure
 │   ├── Makefile.am
 │   ├── ec_test.h             # Lightweight test framework
 │   ├── unit/
 │   │   ├── test_pal.c        # PAL function tests
 │   │   ├── test_transport.c  # Transport layer tests
 │   │   └── test_datagram.c   # Datagram handling tests
-│   └── performance/          # NEW: Performance benchmarks
+│   └── performance/          # Planned: Performance benchmarks
 │       ├── bench_latency.c   # TX+RX latency measurement
 │       ├── bench_jitter.c    # Timing jitter distribution
 │       └── bench_cpu.c       # CPU utilization measurement
@@ -1062,32 +1059,32 @@ ethercat/
 
 ### Files NOT Shared (Kernel-Only)
 
-These files contain kernel-specific code that cannot be abstracted:
+These files are located in `master/kernel/` and contain kernel-specific code that cannot be abstracted:
 
 | File | Reason |
 |------|--------|
-| `device.c` | Uses `sk_buff`, `net_device`, kernel networking stack |
-| `cdev.c` | Character device implementation |
-| `module.c` | Kernel module init/exit, sysfs |
-| `ioctl.c` | Kernel ioctl handling |
-| `debug.c` | Kernel debug network interface |
-| `rtdm*.c` | RTDM (Xenomai/RTAI) specific |
+| `kernel/device.c` | Uses `sk_buff`, `net_device`, kernel networking stack |
+| `kernel/cdev.c` | Character device implementation |
+| `kernel/module.c` | Kernel module init/exit, sysfs |
+| `kernel/ioctl.c` | Kernel ioctl handling |
+| `kernel/debug.c` | Kernel debug network interface |
+| `kernel/rtdm*.c` | RTDM (Xenomai/RTAI) specific |
 
 ### Files Shared (With PAL Modifications)
 
-These files will use PAL macros and compile for both kernel and userspace:
+These files are located in `master/` and use PAL macros to compile for both kernel and userspace:
 
-| File | PAL Usage |
-|------|-----------|
-| `master.c` | Memory, locks, time, logging |
-| `slave.c` | Memory, lists, logging |
-| `domain.c` | Memory, locks |
-| `datagram.c` | Memory, time |
-| `fsm_*.c` | Time, logging |
-| `mailbox.c` | Memory |
-| `coe_emerg_ring.c` | Memory, locks |
-| `pdo*.c`, `sdo*.c` | Memory, lists |
-| `ethernet.c` (EoE) | Memory, uses TUN/TAP in userspace |
+| File | PAL Usage | Status |
+|------|-----------|--------|
+| `master.c` | Memory, locks, time, logging | ✅ Converted |
+| `slave.c` | Memory, lists, logging | ✅ Converted |
+| `domain.c` | Memory, locks | ✅ Converted |
+| `datagram.c` | Memory, time | ✅ Converted |
+| `fsm_*.c` | Time, logging | ✅ Converted |
+| `mailbox.c` | Memory | ✅ Converted |
+| `coe_emerg_ring.c` | Memory, locks | ✅ Converted |
+| `pdo*.c`, `sdo*.c` | Memory, lists | ✅ Converted |
+| `ethernet.c` (EoE) | Memory, uses TUN/TAP in userspace | ✅ Converted |
 
 ---
 
@@ -1152,140 +1149,97 @@ if test "x$enable_userspace" = "xyes"; then
     AM_CONDITIONAL([HAVE_LIBBPF], [test "x$enable_xdp" = "xyes"])
 
     dnl Add userspace subdirectory
-    AC_CONFIG_FILES([userspace/Makefile])
+    AC_CONFIG_FILES([master/uspace/Makefile])
     AC_CONFIG_FILES([tests/Makefile])
 fi
 ```
 
-### master/Kbuild.in Additions
+### master/kernel/Kbuild.in
+
+Kernel build now happens in `master/kernel/` subdirectory:
 
 ```makefile
-# Add PAL kernel implementation to kernel module
+# Kernel module build (master/kernel/Kbuild.in)
+obj-m := ec_master.o
+
 ec_master-objs := \
 	cdev.o \
-	coe_emerg_ring.o \
-	datagram.o \
-	datagram_pair.o \
 	device.o \
-	domain.o \
-	flag.o \
-	fmmu_config.o \
-	foe_request.o \
-	fsm_change.o \
-	fsm_coe.o \
-	fsm_foe.o \
-	fsm_master.o \
-	fsm_pdo.o \
-	fsm_pdo_entry.o \
-	fsm_sii.o \
-	fsm_slave.o \
-	fsm_slave_config.o \
-	fsm_slave_scan.o \
-	fsm_soe.o \
 	ioctl.o \
-	mailbox.o \
-	master.o \
 	module.o \
-	pal_kernel.o \
-	pdo.o \
-	pdo_entry.o \
-	pdo_list.o \
-	reg_request.o \
-	sdo.o \
-	sdo_entry.o \
-	sdo_request.o \
-	slave.o \
-	slave_config.o \
-	soe_errors.o \
-	soe_request.o \
-	sync.o \
-	sync_config.o \
-	voe_handler.o
+	debug.o \
+	../coe_emerg_ring.o \
+	../datagram.o \
+	../datagram_pair.o \
+	../domain.o \
+	../flag.o \
+	../fmmu_config.o \
+	../foe_request.o \
+	../fsm_change.o \
+	../fsm_coe.o \
+	../fsm_foe.o \
+	../fsm_master.o \
+	../fsm_pdo.o \
+	../fsm_pdo_entry.o \
+	../fsm_sii.o \
+	../fsm_slave.o \
+	../fsm_slave_config.o \
+	../fsm_slave_scan.o \
+	../fsm_soe.o \
+	../mailbox.o \
+	../master.o \
+	../pdo.o \
+	../pdo_entry.o \
+	../pdo_list.o \
+	../reg_request.o \
+	../sdo.o \
+	../sdo_entry.o \
+	../sdo_request.o \
+	../slave.o \
+	../slave_config.o \
+	../soe_errors.o \
+	../soe_request.o \
+	../sync.o \
+	../sync_config.o \
+	../voe_handler.o
+
+# Include path for kernel PAL header
+ccflags-y := -I$(src) -I$(src)/..
 ```
 
-### master/Makefile.am Additions
+### master/uspace/Makefile.am
 
-```makefile
-# Existing kernel module handling via Kbuild stays unchanged
-EXTRA_DIST = Kbuild.in $(wildcard *.h)
-
-if BUILD_USERSPACE
-# Userspace convenience library (linked into final libethercat.so)
-noinst_LTLIBRARIES = libecmaster.la
-
-# Shared source files (compiled for userspace)
-libecmaster_la_SOURCES = \
-    coe_emerg_ring.c \
-    datagram.c \
-    datagram_pair.c \
-    domain.c \
-    flag.c \
-    fmmu_config.c \
-    foe_request.c \
-    fsm_change.c \
-    fsm_coe.c \
-    fsm_foe.c \
-    fsm_master.c \
-    fsm_pdo.c \
-    fsm_pdo_entry.c \
-    fsm_sii.c \
-    fsm_slave.c \
-    fsm_slave_config.c \
-    fsm_slave_scan.c \
-    fsm_soe.c \
-    mailbox.c \
-    master.c \
-    pdo.c \
-    pdo_entry.c \
-    pdo_list.c \
-    reg_request.c \
-    sdo.c \
-    sdo_entry.c \
-    sdo_request.c \
-    slave.c \
-    slave_config.c \
-    soe_errors.c \
-    soe_request.c \
-    sync.c \
-    sync_config.c \
-    voe_handler.c \
-    pal_user.c
-
-if ENABLE_EOE
-libecmaster_la_SOURCES += eoe_request.c ethernet.c fsm_eoe.c
-endif
-
-libecmaster_la_CFLAGS = \
-    -DECRT_USERSPACE \
-    -I$(top_srcdir)/include \
-    $(PTHREAD_CFLAGS)
-
-libecmaster_la_LIBADD = $(PTHREAD_LIBS)
-endif
-```
-
-### userspace/Makefile.am
+Userspace build now happens in `master/uspace/` subdirectory:
 
 ```makefile
 if BUILD_USERSPACE
 
 lib_LTLIBRARIES = libethercat.la
 
+# Shared source files from parent directory
+SHARED_SOURCES = \
+    ../datagram.c \
+    ../pdo.c \
+    ../pdo_entry.c \
+    ../pdo_list.c \
+    ../sdo.c \
+    ../sdo_entry.c
+
 libethercat_la_SOURCES = \
+    $(SHARED_SOURCES) \
     ecrt_user.c \
-    control_socket.c \
+    device.c \
     transport/transport.c \
     transport/transport_raw.c
 
 libethercat_la_CFLAGS = \
     -I$(top_srcdir)/include \
-    -I$(srcdir)/include \
+    -I$(srcdir)/.. \
+    -I$(srcdir) \
     -I$(srcdir)/transport \
     $(PTHREAD_CFLAGS)
 
-libethercat_la_LIBADD = \
-    $(top_builddir)/master/libecmaster.la \
-    $(PTHREAD_LIBS)
+libethercat_la_LIBADD = $(PTHREAD_LIBS)
 
 libethercat_la_LDFLAGS = -version-info 1:0:0
 
@@ -1296,10 +1250,17 @@ libethercat_la_CFLAGS += $(LIBBPF_CFLAGS) -DHAVE_XDP
 libethercat_la_LIBADD += $(LIBBPF_LIBS)
 endif
 
-# EoE TUN/TAP support
-if ENABLE_EOE
-libethercat_la_SOURCES += eoe_tun.c
+# Standalone daemon (to be renamed to ec_master)
+bin_PROGRAMS = ethercat_master
+
+ethercat_master_SOURCES = ethercat_master.c
+ethercat_master_CFLAGS = \
+    -I$(top_srcdir)/include \
+    -I$(srcdir)
+ethercat_master_LDADD = libethercat.la
+
 endif
+```
 
 # Install headers
 userspacetransportincludedir = $(includedir)/ethercat
@@ -1325,11 +1286,11 @@ TESTS = $(check_PROGRAMS)
 AM_CFLAGS = \
     -I$(top_srcdir)/include \
     -I$(top_srcdir)/master \
-    -I$(top_srcdir)/userspace/transport \
+    -I$(top_srcdir)/master/uspace/transport \
     -I$(srcdir)
 
 LDADD = \
-    $(top_builddir)/userspace/libethercat.la \
+    $(top_builddir)/master/uspace/libethercat.la \
     $(PTHREAD_LIBS)
 
 test_pal_SOURCES = unit/test_pal.c
@@ -1351,7 +1312,9 @@ endif
 
 ## Platform Abstraction Layer (PAL)
 
-### master/pal.h
+### PAL Interface (pal.h)
+
+The PAL is implemented separately in `master/kernel/pal.h` and `master/uspace/pal.h`:
 
 ```c
 /*****************************************************************************
@@ -1619,14 +1582,14 @@ ec_pal_spin_lock(&lock);
 
 | Task | Description | Est. |
 |------|-------------|------|
-| 1.1 | Create `master/pal.h` interface | 2d |
-| 1.2 | Create `master/pal_device.h` interface | 1d |
-| 1.3 | Create `master/pal_kernel.c` (wraps existing APIs) | 2d |
-| 1.4 | Create `master/pal_user.c` | 3d |
+| 1.1 | Create `master/kernel/pal.h` and `master/uspace/pal.h` | 2d |
+| 1.2 | Create `master/device.h` with platform abstraction | 1d |
+| 1.3 | Implement kernel PAL in `master/kernel/pal.h` | 2d |
+| 1.4 | Implement userspace PAL in `master/uspace/pal.h` | 3d |
 | 1.5 | Update `configure.ac` with `--enable-userspace` | 1d |
 | 1.6 | Update `master/Makefile.am` with userspace rules | 1d |
-| 1.7 | Update `master/Kbuild.in` to include `pal_kernel.o` | 0.5d |
-| 1.8 | Create `userspace/` directory structure | 1d |
+| 1.7 | Update `master/kernel/Kbuild.in` for kernel build | 0.5d |
+| 1.8 | Create `master/uspace/` directory structure | 1d |
 | 1.9 | Verify kernel build unchanged (`make modules`) | 1d |
 | 1.10 | Create basic test infrastructure (`tests/`) | 2d |
 
@@ -1641,7 +1604,7 @@ ec_pal_spin_lock(&lock);
 
 | Task | Description | Est. |
 |------|-------------|------|
-| 2.1 | Create `userspace/transport/ec_transport.h` | 1d |
+| 2.1 | Create `master/uspace/transport/ec_transport.h` | 1d |
 | 2.2 | Implement `transport.c` (registry, lifecycle) | 1d |
 | 2.3 | Implement `transport_raw.c` (AF_PACKET) | 3d |
 | 2.4 | Optional: `transport_xdp.c` skeleton | 2d |
@@ -1678,9 +1641,9 @@ Incrementally refactor `master/*.c` to use PAL macros:
 
 | Task | Description | Est. |
 |------|-------------|------|
-| 4.1 | Implement `userspace/ecrt_user.c` | 3d |
+| 4.1 | Implement `master/uspace/ecrt_user.c` | 3d |
 | 4.2 | Design Unix socket protocol for CLI | 1d |
-| 4.3 | Implement `userspace/control_socket.c` | 3d |
+| 4.3 | Implement `master/uspace/control_socket.c` | 3d |
 | 4.4 | Modify `ethercat` CLI for socket support | 2d |
 | 4.5 | Create basic example application | 1d |
 | 4.6 | Test CLI commands via socket | 2d |
