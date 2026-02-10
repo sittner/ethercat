@@ -22,19 +22,20 @@
 # Userspace master library
 lib_LTLIBRARIES = libethercat_master.la
 
-# Shared master sources (PAL-compatible)
-# These files have been migrated to use the Platform Abstraction Layer
-# and can be compiled for both kernel and userspace
-MASTER_SOURCES = \
-	$(top_srcdir)/master/datagram.c \
-	$(top_srcdir)/master/pdo.c \
-	$(top_srcdir)/master/pdo_entry.c \
-	$(top_srcdir)/master/pdo_list.c \
-	$(top_srcdir)/master/sdo.c \
-	$(top_srcdir)/master/sdo_entry.c
+# Add VPATH to find shared sources in parent directory
+VPATH = $(top_srcdir)/master
 
-# Userspace-specific sources
-USERSPACE_SOURCES = \
+# Shared sources - now just filenames, VPATH finds them in master/
+SHARED_SOURCES = \
+	datagram.c \
+	pdo.c \
+	pdo_entry.c \
+	pdo_list.c \
+	sdo.c \
+	sdo_entry.c
+
+# Userspace-specific sources (in current directory)
+USPACE_SOURCES = \
 	pal.c
 
 # Transport layer sources
@@ -43,16 +44,14 @@ TRANSPORT_SOURCES = \
 	transport/transport_raw.c
 
 libethercat_master_la_SOURCES = \
-	$(USERSPACE_SOURCES) \
-	$(TRANSPORT_SOURCES) \
-	$(MASTER_SOURCES)
+	$(SHARED_SOURCES) \
+	$(USPACE_SOURCES) \
+	$(TRANSPORT_SOURCES)
 
-# Include paths for master headers
-libethercat_master_la_CFLAGS = \
+AM_CFLAGS = \
 	-I$(srcdir) \
 	-I$(top_srcdir)/master \
 	-I$(top_srcdir)/include \
-	-I$(srcdir)/transport \
 	-Wall
 
 # Libraries needed for userspace
