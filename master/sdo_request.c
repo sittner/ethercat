@@ -26,7 +26,6 @@
 /****************************************************************************/
 
 #include <linux/module.h>
-#include <linux/slab.h>
 
 #include "sdo_request.h"
 #include "globals_int.h"
@@ -102,7 +101,7 @@ void ec_sdo_request_clear_data(
         )
 {
     if (req->data) {
-        kfree(req->data);
+        ec_pal_free(req->data);
         req->data = NULL;
     }
 
@@ -128,7 +127,7 @@ int ec_sdo_request_alloc(
 
     ec_sdo_request_clear_data(req);
 
-    if (!(req->data = (uint8_t *) kmalloc(size, GFP_KERNEL))) {
+    if (!(req->data = (uint8_t *) ec_pal_malloc(size))) {
         EC_ERR("Failed to allocate %zu bytes of SDO memory.\n", size);
         return -ENOMEM;
     }

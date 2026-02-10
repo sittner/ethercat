@@ -92,7 +92,7 @@ void ec_domain_clear(ec_domain_t *domain /**< EtherCAT domain */)
     list_for_each_entry_safe(datagram_pair, next_pair,
             &domain->datagram_pairs, list) {
         ec_datagram_pair_clear(datagram_pair);
-        kfree(datagram_pair);
+        ec_pal_free(datagram_pair);
     }
 
     ec_domain_clear_data(domain);
@@ -107,7 +107,7 @@ void ec_domain_clear_data(
         )
 {
     if (domain->data_origin == EC_ORIG_INTERNAL && domain->data) {
-        kfree(domain->data);
+        ec_pal_free(domain->data);
     }
 
     domain->data = NULL;
@@ -154,7 +154,7 @@ int ec_domain_add_datagram_pair(
     ec_datagram_pair_t *datagram_pair;
     int ret;
 
-    if (!(datagram_pair = kmalloc(sizeof(ec_datagram_pair_t), GFP_KERNEL))) {
+    if (!(datagram_pair = ec_pal_malloc(sizeof(ec_datagram_pair_t)))) {
         EC_MASTER_ERR(domain->master,
                 "Failed to allocate domain datagram pair!\n");
         return -ENOMEM;
@@ -163,7 +163,7 @@ int ec_domain_add_datagram_pair(
     ret = ec_datagram_pair_init(datagram_pair, domain, logical_offset, data,
             data_size, used);
     if (ret) {
-        kfree(datagram_pair);
+        ec_pal_free(datagram_pair);
         return ret;
     }
 
@@ -240,7 +240,7 @@ int ec_domain_finish(
 
     if (domain->data_size && domain->data_origin == EC_ORIG_INTERNAL) {
         if (!(domain->data =
-                    (uint8_t *) kmalloc(domain->data_size, GFP_KERNEL))) {
+                    (uint8_t *) ec_pal_malloc(domain->data_size))) {
             EC_MASTER_ERR(domain->master, "Failed to allocate %zu bytes"
                     " internal memory for domain %u!\n",
                     domain->data_size, domain->index);
@@ -623,19 +623,19 @@ int ecrt_domain_process(ec_domain_t *domain)
         }
 #if EC_MAX_NUM_DEVICES > 1
         if (ec_master_num_devices(domain->master) > 1) {
-            printk(KERN_CONT " (");
+            EC_PRINT(" (");
             for (dev_idx = EC_DEVICE_MAIN;
                     dev_idx < ec_master_num_devices(domain->master);
                     dev_idx++) {
-                printk(KERN_CONT "%u", domain->working_counter[dev_idx]);
+                EC_PRINT("%u", domain->working_counter[dev_idx]);
                 if (dev_idx + 1 < ec_master_num_devices(domain->master)) {
-                    printk(KERN_CONT "+");
+                    EC_PRINT("+");
                 }
             }
-            printk(KERN_CONT ")");
+            EC_PRINT(")");
         }
 #endif
-        printk(KERN_CONT ".\n");
+        EC_PRINT(".\n");
 
         domain->working_counter_changes = 0;
     }

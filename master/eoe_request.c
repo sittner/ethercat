@@ -25,10 +25,7 @@
 
 /****************************************************************************/
 
-#include <linux/module.h>
-#include <linux/jiffies.h>
-#include <linux/slab.h>
-
+#include "globals_int.h"
 #include "eoe_request.h"
 
 /****************************************************************************/
