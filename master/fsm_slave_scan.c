@@ -626,11 +626,11 @@ void ec_fsm_slave_scan_state_sii_size(
 alloc_sii:
     if (slave->sii_words) {
         EC_SLAVE_WARN(slave, "Freeing old SII data...\n");
-        kfree(slave->sii_words);
+        ec_pal_free(slave->sii_words);
     }
 
     if (!(slave->sii_words =
-                (uint16_t *) kmalloc(slave->sii_nwords * 2, GFP_KERNEL))) {
+                (uint16_t *) ec_pal_malloc(slave->sii_nwords * 2))) {
         EC_SLAVE_ERR(slave, "Failed to allocate %zu words of SII data.\n",
                slave->sii_nwords);
         slave->sii_nwords = 0;
@@ -727,38 +727,38 @@ void ec_fsm_slave_scan_state_sii_data(ec_fsm_slave_scan_t *fsm
                 slave->master->debug_level >= 1) {
             EC_SLAVE_DBG(slave, 1, "Slave announces to support ");
             if (slave->sii.mailbox_protocols & EC_MBOX_AOE) {
-                printk(KERN_CONT "AoE");
+                EC_PRINT("AoE");
                 need_delim = 1;
             }
             if (slave->sii.mailbox_protocols & EC_MBOX_COE) {
                 if (need_delim) {
-                    printk(KERN_CONT ", ");
+                    EC_PRINT(", ");
                 }
-                printk(KERN_CONT "CoE");
+                EC_PRINT("CoE");
                 need_delim = 1;
             }
             if (slave->sii.mailbox_protocols & EC_MBOX_FOE) {
                 if (need_delim) {
-                    printk(KERN_CONT ", ");
+                    EC_PRINT(", ");
                 }
-                printk(KERN_CONT "FoE");
+                EC_PRINT("FoE");
                 need_delim = 1;
             }
             if (slave->sii.mailbox_protocols & EC_MBOX_SOE) {
                 if (need_delim) {
-                    printk(KERN_CONT ", ");
+                    EC_PRINT(", ");
                 }
-                printk(KERN_CONT "SoE");
+                EC_PRINT("SoE");
                 need_delim = 1;
             }
             if (slave->sii.mailbox_protocols & EC_MBOX_VOE) {
                 if (need_delim) {
-                    printk(KERN_CONT ", ");
+                    EC_PRINT(", ");
                 }
-                printk(KERN_CONT "VoE");
+                EC_PRINT("VoE");
                 need_delim = 1;
             }
-            printk(KERN_CONT ".\n");
+            EC_PRINT(".\n");
         }
         if (slave->sii.mailbox_protocols & ~all) {
             EC_SLAVE_DBG(slave, 1, "Slave announces to support unknown"

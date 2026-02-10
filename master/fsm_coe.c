@@ -607,7 +607,7 @@ void ec_fsm_coe_dict_response(
             continue;
         }
 
-        if (!(sdo = (ec_sdo_t *) kmalloc(sizeof(ec_sdo_t), GFP_KERNEL))) {
+        if (!(sdo = (ec_sdo_t *) ec_pal_malloc(sizeof(ec_sdo_t)))) {
             EC_SLAVE_ERR(slave, "Failed to allocate memory for SDO!\n");
             fsm->state = ec_fsm_coe_error;
             return;
@@ -886,7 +886,7 @@ void ec_fsm_coe_dict_desc_response(
 
     name_size = rec_size - 12;
     if (name_size) {
-        if (!(sdo->name = kmalloc(name_size + 1, GFP_KERNEL))) {
+        if (!(sdo->name = ec_pal_malloc(name_size + 1))) {
             EC_SLAVE_ERR(slave, "Failed to allocate SDO name!\n");
             fsm->state = ec_fsm_coe_error;
             return;
@@ -1125,7 +1125,7 @@ void ec_fsm_coe_dict_entry_response(
         data_size = rec_size - 16;
 
         if (!(entry = (ec_sdo_entry_t *)
-              kmalloc(sizeof(ec_sdo_entry_t), GFP_KERNEL))) {
+              ec_pal_malloc(sizeof(ec_sdo_entry_t)))) {
             EC_SLAVE_ERR(slave, "Failed to allocate entry!\n");
             fsm->state = ec_fsm_coe_error;
             return;
@@ -1148,7 +1148,7 @@ void ec_fsm_coe_dict_entry_response(
 
         if (data_size) {
             uint8_t *desc;
-            if (!(desc = kmalloc(data_size + 1, GFP_KERNEL))) {
+            if (!(desc = ec_pal_malloc(data_size + 1))) {
                 EC_SLAVE_ERR(slave, "Failed to allocate SDO entry name!\n");
                 fsm->state = ec_fsm_coe_error;
                 return;

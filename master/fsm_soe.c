@@ -200,12 +200,12 @@ void ec_fsm_soe_print_error(ec_fsm_soe_t *fsm /**< Finite state machine */)
     EC_SLAVE_ERR(fsm->slave, "");
 
     if (request->dir == EC_DIR_OUTPUT) {
-        printk(KERN_CONT "Writing");
+        EC_PRINT("Writing");
     } else {
-        printk(KERN_CONT "Reading");
+        EC_PRINT("Reading");
     }
 
-    printk(KERN_CONT " IDN 0x%04X failed.\n", request->idn);
+    EC_PRINT(" IDN 0x%04X failed.\n", request->idn);
 }
 
 /*****************************************************************************
@@ -623,7 +623,7 @@ void ec_fsm_soe_write_request(
         return;
     }
 
-    diff_ms = (jiffies - fsm->request->jiffies_sent) * 1000 / HZ;
+    diff_ms = (ec_pal_jiffies() - fsm->request->jiffies_sent) * 1000 / ec_pal_hz();
 
     if (fsm->datagram->working_counter != 1) {
         if (!fsm->datagram->working_counter) {

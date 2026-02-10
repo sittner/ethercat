@@ -75,6 +75,16 @@
 #define EC_DBG(fmt, args...) \
     EC_PAL_DBG(fmt, ##args)
 
+/** Convenience macro for printing without prefix (for log continuations).
+ *
+ * This is for continuing a previous log line without adding a prefix.
+ *
+ * \param fmt format string (like in printf())
+ * \param args arguments (optional)
+ */
+#define EC_PRINT(fmt, args...) \
+    EC_PAL_PRINT(fmt, ##args)
+
 /****************************************************************************/
 
 #endif /* __EC_MASTER_GLOBALS_INT_H__ */
