@@ -52,7 +52,19 @@ void ec_device_attach(ec_device_t *device, ec_transport_t *transport);
 
 /* Userspace implementations of kernel master functions */
 
-/* Stub FSM functions for userspace - will be expanded later */
+/* FSM states */
+typedef enum {
+    EC_FSM_MASTER_START,
+    EC_FSM_MASTER_BROADCAST,
+    EC_FSM_MASTER_WAIT_BROADCAST
+} ec_fsm_master_state_t;
+
+/* FSM state variables */
+static ec_fsm_master_state_t fsm_state = EC_FSM_MASTER_START;
+static unsigned long last_scan_jiffies = 0;
+static unsigned int last_slave_count = 0;
+
+/* FSM functions for userspace */
 void ec_fsm_master_init(
         ec_fsm_master_t *fsm,
         ec_master_t *master,
@@ -62,23 +74,77 @@ void ec_fsm_master_init(
     fsm->master = master;
     fsm->datagram = datagram;
     fsm->idle = 1;
-    /* Full FSM implementation will be added in future PR */
+    /* Reset FSM state */
+    fsm_state = EC_FSM_MASTER_START;
+    last_scan_jiffies = 0;
+    last_slave_count = 0;
 }
 
 void ec_fsm_master_clear(
         ec_fsm_master_t *fsm
         )
 {
-    (void)fsm; /* Stub */
+    (void)fsm;
+    /* Reset state variables */
+    fsm_state = EC_FSM_MASTER_START;
+    last_scan_jiffies = 0;
+    last_slave_count = 0;
 }
 
 int ec_fsm_master_exec(
         ec_fsm_master_t *fsm
         )
 {
-    (void)fsm;
-    /* Stub - returns 0 = no datagram to send */
-    return 0;
+    ec_datagram_t *datagram = fsm->datagram;
+    ec_master_t *master = fsm->master;
+    unsigned long now = ec_pal_jiffies();
+    
+    switch (fsm_state) {
+    case EC_FSM_MASTER_START:
+        /* Start a broadcast read every ~1 second */
+        if (now - last_scan_jiffies < ec_pal_hz()) {
+            return 0;  /* Not time yet */
+        }
+        last_scan_jiffies = now;
+        
+        /* Prepare BRD datagram to read AL Status (0x0130) from all slaves */
+        ec_datagram_brd(datagram, 0x0130, 2);  /* AL Status is 2 bytes */
+        fsm_state = EC_FSM_MASTER_BROADCAST;
+        return 1;  /* Datagram ready to send */
+        
+    case EC_FSM_MASTER_BROADCAST:
+        /* Datagram was queued, wait for it to be sent */
+        fsm_state = EC_FSM_MASTER_WAIT_BROADCAST;
+        return 0;
+        
+    case EC_FSM_MASTER_WAIT_BROADCAST:
+        /* Check if datagram was received */
+        if (datagram->state == EC_DATAGRAM_RECEIVED) {
+            unsigned int slave_count = datagram->working_counter;
+            
+            if (slave_count != last_slave_count) {
+                EC_MASTER_INFO(master, "%u slave(s) responding on main device.\n",
+                               slave_count);
+                last_slave_count = slave_count;
+            }
+            
+            fsm_state = EC_FSM_MASTER_START;
+        } else if (datagram->state == EC_DATAGRAM_TIMED_OUT ||
+                   datagram->state == EC_DATAGRAM_ERROR) {
+            /* Timeout or error - retry */
+            if (last_slave_count != 0) {
+                EC_MASTER_INFO(master, "0 slave(s) responding on main device.\n");
+                last_slave_count = 0;
+            }
+            fsm_state = EC_FSM_MASTER_START;
+        }
+        /* Still waiting */
+        return 0;
+        
+    default:
+        fsm_state = EC_FSM_MASTER_START;
+        return 0;
+    }
 }
 
 /** Internal sending callback (userspace).
@@ -99,6 +165,95 @@ void ec_master_internal_receive_cb(
 {
     ec_master_t *master = (ec_master_t *) cb_data;
     (void)master; /* Currently unused in userspace */
+}
+
+/** Receive and process datagrams (userspace simplified version).
+ *
+ * Parses received EtherCAT frames and updates matching datagrams.
+ */
+void ec_master_receive_datagrams(
+        ec_master_t *master,
+        ec_device_t *device,
+        const uint8_t *frame_data,
+        size_t size
+        )
+{
+    size_t frame_size, data_size;
+    uint8_t datagram_type, datagram_index;
+    unsigned int cmd_follows, matched;
+    const uint8_t *cur_data;
+    ec_datagram_t *datagram;
+
+    /* Check minimum frame size */
+    if (size < EC_FRAME_HEADER_SIZE) {
+        return;
+    }
+
+    cur_data = frame_data;
+
+    /* Check length of entire frame */
+    frame_size = EC_READ_U16(cur_data) & 0x07FF;
+    cur_data += EC_FRAME_HEADER_SIZE;
+
+    if (frame_size > size) {
+        return;
+    }
+
+    cmd_follows = 1;
+    while (cmd_follows) {
+        /* Check if we have enough data for datagram header */
+        if (cur_data - frame_data + EC_DATAGRAM_HEADER_SIZE > size) {
+            break;
+        }
+
+        /* Process datagram header */
+        datagram_type  = EC_READ_U8(cur_data);
+        datagram_index = EC_READ_U8(cur_data + 1);
+        data_size      = EC_READ_U16(cur_data + 6) & 0x07FF;
+        cmd_follows    = EC_READ_U16(cur_data + 6) & 0x8000;
+        cur_data += EC_DATAGRAM_HEADER_SIZE;
+
+        /* Check if we have enough data for payload and footer */
+        if (cur_data - frame_data + data_size + EC_DATAGRAM_FOOTER_SIZE > size) {
+            break;
+        }
+
+        /* Search for matching datagram in the queue */
+        matched = 0;
+        list_for_each_entry(datagram, &master->datagram_queue, queue) {
+            if (datagram->index == datagram_index
+                && datagram->state == EC_DATAGRAM_SENT
+                && datagram->type == datagram_type
+                && datagram->data_size == data_size) {
+                matched = 1;
+                break;
+            }
+        }
+
+        /* No matching datagram was found */
+        if (!matched) {
+            cur_data += data_size + EC_DATAGRAM_FOOTER_SIZE;
+            continue;
+        }
+
+        /* Copy received data into the datagram memory for read operations */
+        if (datagram->type != EC_DATAGRAM_APWR &&
+            datagram->type != EC_DATAGRAM_FPWR &&
+            datagram->type != EC_DATAGRAM_BWR &&
+            datagram->type != EC_DATAGRAM_LWR) {
+            memcpy(datagram->data, cur_data, data_size);
+        }
+        cur_data += data_size;
+
+        /* Set the datagram's working counter */
+        datagram->working_counter = EC_READ_U16(cur_data);
+        cur_data += EC_DATAGRAM_FOOTER_SIZE;
+
+        /* Dequeue the received datagram */
+        datagram->state = EC_DATAGRAM_RECEIVED;
+        datagram->jiffies_received = device->plat.jiffies_poll;
+        list_del_init(&datagram->queue);
+    }
 }
 
 /** Queue datagram for sending.
