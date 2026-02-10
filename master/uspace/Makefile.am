@@ -62,7 +62,8 @@ SHARED_SOURCES = \
 USPACE_SOURCES = \
 	pal.c \
 	device.c \
-	master_main.c
+	master_main.c \
+	utilities.c
 
 # Transport layer sources
 TRANSPORT_SOURCES = \
