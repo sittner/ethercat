@@ -42,6 +42,28 @@ master/*.o.d
 master/kernel/*.o.d
 master/uspace/*.la
 master/uspace/ethercat_master
+
+# Kernel build artifacts in master/kernel/
+master/kernel/*.o
+master/kernel/*.ko
+master/kernel/*.mod
+master/kernel/*.mod.c
+master/kernel/.*.cmd
+master/kernel/modules.order
+master/kernel/Module.symvers
+
+# Kernel build artifacts for shared sources in master/
+master/*.o
+master/.*.cmd
+
+# Userspace build artifacts in master/uspace/
+master/uspace/*.o
+master/uspace/*.lo
+master/uspace/.libs/
+master/uspace/**/.deps/
+master/uspace/transport/*.o
+master/uspace/transport/*.lo
+
 script/ethercat
 script/ethercat.service
 script/ethercatctl
