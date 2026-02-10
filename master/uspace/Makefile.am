@@ -57,7 +57,8 @@ endif
 USPACE_SOURCES = \
 	pal.c \
 	device.c \
-	master_main.c
+	master_main.c \
+	fsm_stubs.c
 
 # Transport layer sources
 TRANSPORT_SOURCES = \
