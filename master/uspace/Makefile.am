@@ -26,6 +26,7 @@ lib_LTLIBRARIES = libethercat_master.la
 VPATH = $(top_srcdir)/master
 
 # Shared sources - now just filenames, VPATH finds them in master/
+# Only truly shared files that have been verified to work in both kernel and userspace
 SHARED_SOURCES = \
 	datagram.c \
 	pdo.c \

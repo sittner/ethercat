@@ -60,7 +60,7 @@ void ec_device_attach(ec_device_t *device, ec_transport_t *transport);
 /** Datagram timeout in microseconds (userspace). */
 #define EC_DATAGRAM_TIMEOUT_US 10000
 
-/* FSM states */
+/* FSM states for userspace simplified FSM */
 typedef enum {
     EC_FSM_MASTER_START,
     EC_FSM_MASTER_BROADCAST,
@@ -77,7 +77,11 @@ static ec_fsm_master_state_t fsm_state = EC_FSM_MASTER_START;
 static unsigned long last_scan_jiffies = 0;
 static unsigned int last_slave_count = 0xFFFFFFFF;  /* Sentinel value */
 
-/* FSM functions for userspace */
+/* Scan interval: 10Hz = 100ms intervals. Since ec_pal_hz() = 1000, 
+ * this gives us 1000/10 = 100 jiffies between scans. */
+#define FSM_SCAN_INTERVAL_JIFFIES   (ec_pal_hz() / 10)
+
+/* Userspace FSM functions - simplified version */
 void ec_fsm_master_init(
         ec_fsm_master_t *fsm,
         ec_master_t *master,
@@ -114,8 +118,9 @@ int ec_fsm_master_exec(
     
     switch (fsm_state) {
     case EC_FSM_MASTER_START:
-        /* Start a broadcast read every ~1 second */
-        if (last_scan_jiffies != 0 && now - last_scan_jiffies < ec_pal_hz()) {
+        /* Start a broadcast read every ~100ms for 10Hz scanning rate */
+        if (last_scan_jiffies != 0 && 
+            now - last_scan_jiffies < FSM_SCAN_INTERVAL_JIFFIES) {
             return 0;  /* Not time yet */
         }
         last_scan_jiffies = now;
@@ -123,6 +128,8 @@ int ec_fsm_master_exec(
         /* Prepare BRD datagram to read AL Status (0x0130) from all slaves */
         ec_datagram_brd(datagram, 0x0130, 2);  /* AL Status is 2 bytes */
         fsm_state = EC_FSM_MASTER_BROADCAST;
+        
+        EC_MASTER_DBG(master, 2, "Scanning bus...\n");
         return 1;  /* Datagram ready to send */
         
     case EC_FSM_MASTER_BROADCAST:
@@ -659,6 +666,7 @@ static volatile int running = 1;
 static struct option long_options[] = {
     {"interface",  required_argument, 0, 'i'},
     {"transport",  required_argument, 0, 't'},
+    {"debug",      required_argument, 0, 'd'},
     {"verbose",    no_argument,       0, 'v'},
     {"help",       no_argument,       0, 'h'},
     {0, 0, 0, 0}
@@ -683,6 +691,7 @@ static void print_usage(const char *prog)
     printf("Options:\n");
     printf("  -i, --interface IFACE   Network interface (required, e.g., eth0)\n");
     printf("  -t, --transport TYPE    Transport type: raw, xdp (default: raw)\n");
+    printf("  -d, --debug LEVEL       Debug level (0-2, default: 1)\n");
     printf("  -v, --verbose           Verbose output\n");
     printf("  -h, --help              Show this help\n");
     printf("\n");
@@ -697,18 +706,22 @@ int main(int argc, char *argv[])
     const char *interface = NULL;
     const char *transport = "raw";
     int verbose = 0;
+    int debug_level = 1;
     int opt;
     ec_pal_device_type_t device_type;
     int ret;
 
     /* Parse command line arguments */
-    while ((opt = getopt_long(argc, argv, "i:t:vh", long_options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "i:t:d:vh", long_options, NULL)) != -1) {
         switch (opt) {
         case 'i':
             interface = optarg;
             break;
         case 't':
             transport = optarg;
+            break;
+        case 'd':
+            debug_level = atoi(optarg);
             break;
         case 'v':
             verbose = 1;
@@ -747,6 +760,7 @@ int main(int argc, char *argv[])
         printf("EtherCAT Master Userspace Daemon\n");
         printf("Interface: %s\n", interface);
         printf("Transport: %s\n", transport);
+        printf("Debug level: %d\n", debug_level);
         printf("\n");
         printf("Initializing master...\n");
     }
@@ -756,6 +770,11 @@ int main(int argc, char *argv[])
     if (ret < 0) {
         fprintf(stderr, "Failed to initialize master: %s\n", strerror(-ret));
         return 1;
+    }
+
+    /* Set debug level */
+    if (masters[0]) {
+        masters[0]->debug_level = debug_level;
     }
 
     if (verbose) {
@@ -770,7 +789,7 @@ int main(int argc, char *argv[])
         ecrt_master_idle(0);
 
         /* Sleep briefly to avoid busy-waiting */
-        usleep(1000);  /* 1ms - responsive for CTRL+C */
+        usleep(10000);  /* 10ms idle cycle */
     }
 
     if (verbose) {
