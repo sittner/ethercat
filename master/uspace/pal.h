@@ -166,7 +166,10 @@ static inline unsigned long ec_pal_get_jiffies(void) {
 #define msecs_to_jiffies(ms)        (ms)
 #define jiffies_to_msecs(j)         (j)
 
-/* 64-bit division (userspace can use native division) */
+/* 64-bit division (userspace can use native division)
+ * NOTE: do_div modifies its first argument (n) in place. 
+ * The first argument must be an lvalue, not an expression.
+ */
 #define do_div(n, base) ({ \
     uint32_t __rem; \
     __rem = (n) % (base); \

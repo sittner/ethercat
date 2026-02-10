@@ -77,6 +77,10 @@ static ec_fsm_master_state_t fsm_state = EC_FSM_MASTER_START;
 static unsigned long last_scan_jiffies = 0;
 static unsigned int last_slave_count = 0xFFFFFFFF;  /* Sentinel value */
 
+/* Scan interval: 10Hz = 100ms intervals. Since ec_pal_hz() = 1000, 
+ * this gives us 1000/10 = 100 jiffies between scans. */
+#define FSM_SCAN_INTERVAL_JIFFIES   (ec_pal_hz() / 10)
+
 /* Userspace FSM functions - simplified version */
 void ec_fsm_master_init(
         ec_fsm_master_t *fsm,
@@ -111,19 +115,12 @@ int ec_fsm_master_exec(
     ec_datagram_t *datagram = fsm->datagram;
     ec_master_t *master = fsm->master;
     unsigned long now = ec_pal_jiffies();
-    unsigned long scan_interval_jiffies;
-    
-    /* Scan at ~10Hz (100ms intervals) to match kernel timing */
-    scan_interval_jiffies = ec_pal_hz() / 10;
-    if (scan_interval_jiffies < 1) {
-        scan_interval_jiffies = 1;
-    }
     
     switch (fsm_state) {
     case EC_FSM_MASTER_START:
         /* Start a broadcast read every ~100ms for 10Hz scanning rate */
         if (last_scan_jiffies != 0 && 
-            now - last_scan_jiffies < scan_interval_jiffies) {
+            now - last_scan_jiffies < FSM_SCAN_INTERVAL_JIFFIES) {
             return 0;  /* Not time yet */
         }
         last_scan_jiffies = now;
