@@ -145,55 +145,55 @@ void ec_slave_config_clear(
     list_for_each_entry_safe(req, next_req, &sc->sdo_configs, list) {
         list_del(&req->list);
         ec_sdo_request_clear(req);
-        kfree(req);
+        ec_pal_free(req);
     }
 
     // free all SDO requests
     list_for_each_entry_safe(req, next_req, &sc->sdo_requests, list) {
         list_del(&req->list);
         ec_sdo_request_clear(req);
-        kfree(req);
+        ec_pal_free(req);
     }
 
     // free all SoE requests
     list_for_each_entry_safe(soe, next_soe, &sc->soe_requests, list) {
         list_del(&soe->list);
         ec_soe_request_clear(soe);
-        kfree(soe);
+        ec_pal_free(soe);
     }
 
     // free all register requests
     list_for_each_entry_safe(reg, next_reg, &sc->reg_requests, list) {
         list_del(&reg->list);
         ec_reg_request_clear(reg);
-        kfree(reg);
+        ec_pal_free(reg);
     }
 
     // free all VoE handlers
     list_for_each_entry_safe(voe, next_voe, &sc->voe_handlers, list) {
         list_del(&voe->list);
         ec_voe_handler_clear(voe);
-        kfree(voe);
+        ec_pal_free(voe);
     }
 
     // free all SoE configurations
     list_for_each_entry_safe(soe, next_soe, &sc->soe_configs, list) {
         list_del(&soe->list);
         ec_soe_request_clear(soe);
-        kfree(soe);
+        ec_pal_free(soe);
     }
 
     // free all flags
     list_for_each_entry_safe(flag, next_flag, &sc->flags, list) {
         list_del(&flag->list);
         ec_flag_clear(flag);
-        kfree(flag);
+        ec_pal_free(flag);
     }
 
     // free all AL timeouts
     list_for_each_entry_safe(timeout, next_timeout, &sc->al_timeouts, list) {
         list_del(&timeout->list);
-        kfree(timeout);
+        ec_pal_free(timeout);
     }
 
     ec_coe_emerg_ring_clear(&sc->emerg_ring);
@@ -237,9 +237,9 @@ int ec_slave_config_prepare_fmmu(
 
     fmmu = &sc->fmmu_configs[sc->used_fmmus++];
 
-    down(&sc->master->master_sem);
+    ec_master_lock(sc->master);
     ec_fmmu_config_init(fmmu, sc, domain, sync_index, dir);
-    up(&sc->master->master_sem);
+    ec_master_unlock(sc->master);
 
     return fmmu->logical_start_address;
 }
@@ -729,18 +729,18 @@ int ecrt_slave_config_pdo_assign_add(ec_slave_config_t *sc,
         return -EINVAL;
     }
 
-    down(&sc->master->master_sem);
+    ec_master_lock(sc->master);
 
     pdo = ec_pdo_list_add_pdo(&sc->sync_configs[sync_index].pdos, pdo_index);
     if (IS_ERR(pdo)) {
-        up(&sc->master->master_sem);
+        ec_master_unlock(sc->master);
         return PTR_ERR(pdo);
     }
     pdo->sync_index = sync_index;
 
     ec_slave_config_load_default_mapping(sc, pdo);
 
-    up(&sc->master->master_sem);
+    ec_master_unlock(sc->master);
     return 0;
 }
 
@@ -757,9 +757,9 @@ int ecrt_slave_config_pdo_assign_clear(ec_slave_config_t *sc,
         return -EINVAL;
     }
 
-    down(&sc->master->master_sem);
+    ec_master_lock(sc->master);
     ec_pdo_list_clear_pdos(&sc->sync_configs[sync_index].pdos);
-    up(&sc->master->master_sem);
+    ec_master_unlock(sc->master);
     return 0;
 }
 
@@ -786,10 +786,10 @@ int ecrt_slave_config_pdo_mapping_add(ec_slave_config_t *sc,
             break;
 
     if (pdo) {
-        down(&sc->master->master_sem);
+        ec_master_lock(sc->master);
         entry = ec_pdo_add_entry(pdo, entry_index, entry_subindex,
                 entry_bit_length);
-        up(&sc->master->master_sem);
+        ec_master_unlock(sc->master);
         if (IS_ERR(entry))
             retval = PTR_ERR(entry);
     } else {
@@ -817,9 +817,9 @@ int ecrt_slave_config_pdo_mapping_clear(ec_slave_config_t *sc,
             break;
 
     if (pdo) {
-        down(&sc->master->master_sem);
+        ec_master_lock(sc->master);
         ec_pdo_clear_entries(pdo);
-        up(&sc->master->master_sem);
+        ec_master_unlock(sc->master);
     } else {
         EC_CONFIG_WARN(sc, "PDO 0x%04X is not assigned.\n", pdo_index);
     }
@@ -1051,7 +1051,7 @@ int ecrt_slave_config_sdo(ec_slave_config_t *sc, uint16_t index,
     }
 
     if (!(req = (ec_sdo_request_t *)
-          kmalloc(sizeof(ec_sdo_request_t), GFP_KERNEL))) {
+          ec_pal_malloc(sizeof(ec_sdo_request_t)))) {
         EC_CONFIG_ERR(sc, "Failed to allocate memory for"
                 " SDO configuration!\n");
         return -ENOMEM;
@@ -1063,13 +1063,13 @@ int ecrt_slave_config_sdo(ec_slave_config_t *sc, uint16_t index,
     ret = ec_sdo_request_copy_data(req, data, size);
     if (ret < 0) {
         ec_sdo_request_clear(req);
-        kfree(req);
+        ec_pal_free(req);
         return ret;
     }
 
-    down(&sc->master->master_sem);
+    ec_master_lock(sc->master);
     list_add_tail(&req->list, &sc->sdo_configs);
-    up(&sc->master->master_sem);
+    ec_master_unlock(sc->master);
     return 0;
 }
 
@@ -1135,7 +1135,7 @@ int ecrt_slave_config_complete_sdo(ec_slave_config_t *sc, uint16_t index,
     }
 
     if (!(req = (ec_sdo_request_t *)
-          kmalloc(sizeof(ec_sdo_request_t), GFP_KERNEL))) {
+          ec_pal_malloc(sizeof(ec_sdo_request_t)))) {
         EC_CONFIG_ERR(sc, "Failed to allocate memory for"
                 " SDO configuration!\n");
         return -ENOMEM;
@@ -1148,13 +1148,13 @@ int ecrt_slave_config_complete_sdo(ec_slave_config_t *sc, uint16_t index,
     ret = ec_sdo_request_copy_data(req, data, size);
     if (ret < 0) {
         ec_sdo_request_clear(req);
-        kfree(req);
+        ec_pal_free(req);
         return ret;
     }
 
-    down(&sc->master->master_sem);
+    ec_master_lock(sc->master);
     list_add_tail(&req->list, &sc->sdo_configs);
-    up(&sc->master->master_sem);
+    ec_master_unlock(sc->master);
     return 0;
 }
 
@@ -1202,7 +1202,7 @@ ec_sdo_request_t *ecrt_slave_config_create_sdo_request_err(
             __func__, sc, index, subindex, size);
 
     if (!(req = (ec_sdo_request_t *)
-                kmalloc(sizeof(ec_sdo_request_t), GFP_KERNEL))) {
+                ec_pal_malloc(sizeof(ec_sdo_request_t)))) {
         EC_CONFIG_ERR(sc, "Failed to allocate SDO request memory!\n");
         return ERR_PTR(-ENOMEM);
     }
@@ -1213,7 +1213,7 @@ ec_sdo_request_t *ecrt_slave_config_create_sdo_request_err(
     ret = ec_sdo_request_alloc(req, size);
     if (ret < 0) {
         ec_sdo_request_clear(req);
-        kfree(req);
+        ec_pal_free(req);
         return ERR_PTR(ret);
     }
 
@@ -1221,9 +1221,9 @@ ec_sdo_request_t *ecrt_slave_config_create_sdo_request_err(
     memset(req->data, 0x00, size);
     req->data_size = size;
 
-    down(&sc->master->master_sem);
+    ec_master_lock(sc->master);
     list_add_tail(&req->list, &sc->sdo_requests);
-    up(&sc->master->master_sem);
+    ec_master_unlock(sc->master);
 
     return req;
 }
@@ -1254,7 +1254,7 @@ ec_soe_request_t *ecrt_slave_config_create_soe_request_err(
             __func__, sc, drive_no, idn, size);
 
     if (!(req = (ec_soe_request_t *)
-                kmalloc(sizeof(ec_soe_request_t), GFP_KERNEL))) {
+                ec_pal_malloc(sizeof(ec_soe_request_t)))) {
         EC_CONFIG_ERR(sc, "Failed to allocate IDN request memory!\n");
         return ERR_PTR(-ENOMEM);
     }
@@ -1265,7 +1265,7 @@ ec_soe_request_t *ecrt_slave_config_create_soe_request_err(
     ret = ec_soe_request_alloc(req, size);
     if (ret < 0) {
         ec_soe_request_clear(req);
-        kfree(req);
+        ec_pal_free(req);
         return ERR_PTR(ret);
     }
 
@@ -1273,9 +1273,9 @@ ec_soe_request_t *ecrt_slave_config_create_soe_request_err(
     memset(req->data, 0x00, size);
     req->data_size = size;
 
-    down(&sc->master->master_sem);
+    ec_master_lock(sc->master);
     list_add_tail(&req->list, &sc->soe_requests);
-    up(&sc->master->master_sem);
+    ec_master_unlock(sc->master);
 
     return req;
 }
@@ -1305,20 +1305,20 @@ ec_reg_request_t *ecrt_slave_config_create_reg_request_err(
             __func__, sc, size);
 
     if (!(reg = (ec_reg_request_t *)
-                kmalloc(sizeof(ec_reg_request_t), GFP_KERNEL))) {
+                ec_pal_malloc(sizeof(ec_reg_request_t)))) {
         EC_CONFIG_ERR(sc, "Failed to allocate register request memory!\n");
         return ERR_PTR(-ENOMEM);
     }
 
     ret = ec_reg_request_init(reg, size);
     if (ret) {
-        kfree(reg);
+        ec_pal_free(reg);
         return ERR_PTR(ret);
     }
 
-    down(&sc->master->master_sem);
+    ec_master_lock(sc->master);
     list_add_tail(&reg->list, &sc->reg_requests);
-    up(&sc->master->master_sem);
+    ec_master_unlock(sc->master);
 
     return reg;
 }
@@ -1347,20 +1347,20 @@ ec_voe_handler_t *ecrt_slave_config_create_voe_handler_err(
     EC_CONFIG_DBG(sc, 1, "%s(sc = 0x%p, size = %zu)\n", __func__, sc, size);
 
     if (!(voe = (ec_voe_handler_t *)
-                kmalloc(sizeof(ec_voe_handler_t), GFP_KERNEL))) {
+                ec_pal_malloc(sizeof(ec_voe_handler_t)))) {
         EC_CONFIG_ERR(sc, "Failed to allocate VoE request memory!\n");
         return ERR_PTR(-ENOMEM);
     }
 
     ret = ec_voe_handler_init(voe, sc, size);
     if (ret < 0) {
-        kfree(voe);
+        ec_pal_free(voe);
         return ERR_PTR(ret);
     }
 
-    down(&sc->master->master_sem);
+    ec_master_lock(sc->master);
     list_add_tail(&voe->list, &sc->voe_handlers);
-    up(&sc->master->master_sem);
+    ec_master_unlock(sc->master);
 
     return voe;
 }
@@ -1425,7 +1425,7 @@ int ecrt_slave_config_idn(ec_slave_config_t *sc, uint8_t drive_no,
     }
 
     if (!(req = (ec_soe_request_t *)
-          kmalloc(sizeof(ec_soe_request_t), GFP_KERNEL))) {
+          ec_pal_malloc(sizeof(ec_soe_request_t)))) {
         EC_CONFIG_ERR(sc, "Failed to allocate memory for"
                 " IDN configuration!\n");
         return -ENOMEM;
@@ -1439,13 +1439,13 @@ int ecrt_slave_config_idn(ec_slave_config_t *sc, uint8_t drive_no,
     ret = ec_soe_request_copy_data(req, data, size);
     if (ret < 0) {
         ec_soe_request_clear(req);
-        kfree(req);
+        ec_pal_free(req);
         return ret;
     }
 
-    down(&sc->master->master_sem);
+    ec_master_lock(sc->master);
     list_add_tail(&req->list, &sc->soe_configs);
-    up(&sc->master->master_sem);
+    ec_master_unlock(sc->master);
     return 0;
 }
 
@@ -1467,20 +1467,20 @@ int ecrt_slave_config_flag(ec_slave_config_t *sc, const char *key,
     else { // new flag
         int ret;
 
-        if (!(flag = (ec_flag_t *) kmalloc(sizeof(ec_flag_t), GFP_KERNEL))) {
+        if (!(flag = (ec_flag_t *) ec_pal_malloc(sizeof(ec_flag_t)))) {
             EC_CONFIG_ERR(sc, "Failed to allocate memory for flag!\n");
             return -ENOMEM;
         }
 
         ret = ec_flag_init(flag, key, value);
         if (ret) {
-            kfree(flag);
+            ec_pal_free(flag);
             return ret;
         }
 
-        down(&sc->master->master_sem);
+        ec_master_lock(sc->master);
         list_add_tail(&flag->list, &sc->flags);
-        up(&sc->master->master_sem);
+        ec_master_unlock(sc->master);
     }
     return 0;
 }
@@ -1577,7 +1577,7 @@ int ecrt_slave_config_state_timeout(ec_slave_config_t *sc,
             if (timeout_ms == 0) {
                 // delete configured value
                 list_del(&timeout->list);
-                kfree(timeout);
+                ec_pal_free(timeout);
                 return 0;
             }
             timeout->timeout_ms = timeout_ms;
@@ -1591,7 +1591,7 @@ int ecrt_slave_config_state_timeout(ec_slave_config_t *sc,
 
     /* no timeout found. create one. */
     if (!(timeout = (ec_al_timeout_t *)
-          kmalloc(sizeof(ec_al_timeout_t), GFP_KERNEL))) {
+          ec_pal_malloc(sizeof(ec_al_timeout_t)))) {
         EC_CONFIG_ERR(sc, "Failed to allocate memory for"
                 " AL timeout configuration!\n");
         return -ENOMEM;
@@ -1601,9 +1601,9 @@ int ecrt_slave_config_state_timeout(ec_slave_config_t *sc,
     timeout->to = to_state;
     timeout->timeout_ms = timeout_ms;
 
-    down(&sc->master->master_sem);
+    ec_master_lock(sc->master);
     list_add_tail(&timeout->list, &sc->al_timeouts);
-    up(&sc->master->master_sem);
+    ec_master_unlock(sc->master);
     return 0;
 }
 
