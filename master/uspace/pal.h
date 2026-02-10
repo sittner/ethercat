@@ -182,6 +182,15 @@ static inline unsigned long ec_pal_get_jiffies(void) {
     __rem; \
 })
 
+/* Min/max macros */
+#ifndef min
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
+#ifndef max
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#endif
+
 /****************************************************************************/
 /* Logging */
 /****************************************************************************/
@@ -285,6 +294,13 @@ typedef struct {
 #ifndef ETH_DATA_LEN
 #define ETH_DATA_LEN    1500 /* Max octets in payload */
 #endif
+
+/* Module exports (no-op in userspace) */
+#define EXPORT_SYMBOL(sym)
+#define MODULE_AUTHOR(author)
+#define MODULE_DESCRIPTION(desc)
+#define MODULE_LICENSE(license)
+#define MODULE_VERSION(version)
 
 /****************************************************************************/
 

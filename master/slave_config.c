@@ -34,14 +34,16 @@
 #include "master.h"
 #include "voe_handler.h"
 #include "flag.h"
+
+#ifdef __KERNEL__
 #include "ioctl.h"
+#include <linux/module.h>
+#include <linux/slab.h>
+#endif
 
 #ifdef EC_EOE
 #include "eoe_request.h"
 #endif
-
-#include <linux/module.h>
-#include <linux/slab.h>
 
 /****************************************************************************/
 

@@ -28,6 +28,7 @@
 
 /****************************************************************************/
 
+#ifdef __KERNEL__
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/string.h>
@@ -37,6 +38,7 @@
 #include <linux/version.h>
 #include <linux/hrtimer.h>
 #include <linux/kthread.h>
+#endif
 
 #include "globals_int.h"
 #include "slave.h"
@@ -46,13 +48,16 @@
 #include "pal.h"
 
 #ifdef EC_EOE
+#ifdef __KERNEL__
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
 #include <uapi/linux/sched/types.h> // struct sched_param
 #include <linux/sched/types.h> // sched_setscheduler
 #endif
+#endif
 #include "ethernet.h"
 #endif
 
+#ifdef __KERNEL__
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0) || \
     (defined(CONFIG_PREEMPT_RT_FULL) && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0))
 #  define ec_rt_lock_interruptible(lock) \
@@ -61,11 +66,15 @@
 #  define ec_rt_lock_interruptible(lock) \
           rt_mutex_lock_interruptible(lock, 0)
 #endif
+#endif
 
 #include "master.h"
+
+#ifdef __KERNEL__
 #include "kernel/cdev.h"
 #ifdef EC_RTDM
 #include "kernel/rtdm.h"
+#endif
 #endif
 
 /****************************************************************************/
@@ -132,8 +141,11 @@ void ec_master_find_dc_ref_clock(ec_master_t *);
 void ec_master_clear_device_stats(ec_master_t *);
 void ec_master_update_device_stats(ec_master_t *);
 void ec_master_nanosleep(const unsigned long);
+
+#ifdef __KERNEL__
 static void sc_reset_task_kicker(struct irq_work *work);
 static void sc_reset_task(struct work_struct *work);
+#endif
 
 /****************************************************************************/
 
@@ -3298,6 +3310,8 @@ int ecrt_master_reset(ec_master_t *master)
 
 /****************************************************************************/
 
+#ifdef __KERNEL__
+
 static void sc_reset_task_kicker(struct irq_work *work)
 {
     ec_master_plat_t *plat =
@@ -3320,6 +3334,8 @@ static void sc_reset_task(struct work_struct *work)
     ecrt_master_reset(master);
     ec_master_unlock(master);
 }
+
+#endif /* __KERNEL__ */
 
 /****************************************************************************/
 
