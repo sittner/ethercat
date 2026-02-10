@@ -229,7 +229,7 @@ void ec_eoe_clear(ec_eoe_t *eoe /**< EoE handler */)
 
     if (eoe->tx_frame) {
         dev_kfree_skb(eoe->tx_frame->skb);
-        kfree(eoe->tx_frame);
+        ec_pal_free(eoe->tx_frame);
     }
 
     if (eoe->rx_skb)
@@ -259,7 +259,7 @@ void ec_eoe_flush(ec_eoe_t *eoe /**< EoE handler */)
     list_for_each_entry_safe(frame, next, &tx_queue, queue) {
         list_del(&frame->queue);
         dev_kfree_skb(frame->skb);
-        kfree(frame);
+        ec_pal_free(frame);
     }
 }
 
@@ -307,14 +307,13 @@ int ec_eoe_send(ec_eoe_t *eoe /**< EoE handler */)
 #if EOE_DEBUG_LEVEL >= 3
     EC_SLAVE_DBG(eoe->slave, 0, "");
     for (i = 0; i < current_size; i++) {
-        printk(KERN_CONT "%02X ",
-                eoe->tx_frame->skb->data[eoe->tx_offset + i]);
+        EC_PRINT("%02X ", eoe->tx_frame->skb->data[eoe->tx_offset + i]);
         if ((i + 1) % 16 == 0) {
-            printk(KERN_CONT "\n");
+            EC_PRINT("\n");
             EC_SLAVE_DBG(eoe->slave, 0, "");
         }
     }
-    printk(KERN_CONT "\n");
+    EC_PRINT("\n");
 #endif
 
     data = ec_slave_mbox_prepare_send(eoe->slave, &eoe->datagram,
@@ -353,12 +352,12 @@ void ec_eoe_run(ec_eoe_t *eoe /**< EoE handler */)
     eoe->state(eoe);
 
     // update statistics
-    if (jiffies - eoe->rate_jiffies > HZ) {
+    if (ec_pal_jiffies() - eoe->rate_jiffies > ec_pal_hz()) {
         eoe->rx_rate = eoe->rx_counter;
         eoe->tx_rate = eoe->tx_counter;
         eoe->rx_counter = 0;
         eoe->tx_counter = 0;
-        eoe->rate_jiffies = jiffies;
+        eoe->rate_jiffies = ec_pal_jiffies();
     }
 
     ec_datagram_output_stats(&eoe->datagram);
@@ -540,13 +539,13 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
 #if EOE_DEBUG_LEVEL >= 3
     EC_SLAVE_DBG(eoe->slave, 0, "");
     for (i = 0; i < rec_size - 4; i++) {
-        printk(KERN_CONT "%02X ", data[i + 4]);
+        EC_PRINT("%02X ", data[i + 4]);
         if ((i + 1) % 16 == 0) {
-            printk(KERN_CONT "\n");
+            EC_PRINT("\n");
             EC_SLAVE_DBG(eoe->slave, 0, "");
         }
     }
-    printk(KERN_CONT "\n");
+    EC_PRINT("\n");
 #endif
 
     data_size = time_appended ? rec_size - 8 : rec_size - 4;
@@ -687,7 +686,7 @@ void ec_eoe_state_tx_start(ec_eoe_t *eoe /**< EoE handler */)
 
     if (ec_eoe_send(eoe)) {
         dev_kfree_skb(eoe->tx_frame->skb);
-        kfree(eoe->tx_frame);
+        ec_pal_free(eoe->tx_frame);
         eoe->tx_frame = NULL;
         eoe->stats.tx_errors++;
         eoe->state = ec_eoe_state_rx_start;
@@ -754,14 +753,14 @@ void ec_eoe_state_tx_sent(ec_eoe_t *eoe /**< EoE handler */)
         eoe->stats.tx_bytes += eoe->tx_frame->skb->len;
         eoe->tx_counter += eoe->tx_frame->skb->len;
         dev_kfree_skb(eoe->tx_frame->skb);
-        kfree(eoe->tx_frame);
+        ec_pal_free(eoe->tx_frame);
         eoe->tx_frame = NULL;
         eoe->state = ec_eoe_state_rx_start;
     }
     else { // send next fragment
         if (ec_eoe_send(eoe)) {
             dev_kfree_skb(eoe->tx_frame->skb);
-            kfree(eoe->tx_frame);
+            ec_pal_free(eoe->tx_frame);
             eoe->tx_frame = NULL;
             eoe->stats.tx_errors++;
 #if EOE_DEBUG_LEVEL >= 1
@@ -843,7 +842,7 @@ int ec_eoedev_tx(struct sk_buff *skb, /**< transmit socket buffer */
     lockdep_assert_held(&netdev_get_tx_queue(dev, 0)->_xmit_lock);
 
     if (!(frame =
-          (ec_eoe_frame_t *) kmalloc(sizeof(ec_eoe_frame_t), GFP_ATOMIC))) {
+          (ec_eoe_frame_t *) ec_pal_malloc_atomic(sizeof(ec_eoe_frame_t)))) {
         if (printk_ratelimit())
             EC_SLAVE_WARN(eoe->slave, "EoE TX: low on mem. frame dropped.\n");
         return 1;
