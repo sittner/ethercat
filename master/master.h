@@ -29,15 +29,15 @@
 #ifndef __EC_MASTER_H__
 #define __EC_MASTER_H__
 
-#include <linux/version.h>
-#include <linux/list.h>
-#include <linux/timer.h>
-
 #include "pal.h"
 #include "device.h"
 #include "domain.h"
-#include "ethernet.h"
 #include "fsm_master.h"
+
+#ifdef EC_EOE
+/* Forward declaration for EoE */
+typedef struct ec_eoe ec_eoe_t;
+#endif
 
 /****************************************************************************/
 
@@ -300,6 +300,7 @@ void ec_master_eoe_stop(ec_master_t *);
 // datagram IO
 void ec_master_receive_datagrams(ec_master_t *, ec_device_t *,
         const uint8_t *, size_t);
+void ec_master_send_datagrams(ec_master_t *, ec_device_index_t);
 void ec_master_queue_datagram(ec_master_t *, ec_datagram_t *);
 void ec_master_queue_datagram_ext(ec_master_t *, ec_datagram_t *);
 

@@ -29,7 +29,7 @@
 #ifndef __EC_ETHERNET_H__
 #define __EC_ETHERNET_H__
 
-#include <linux/list.h>
+#include "pal.h"
 #include <linux/netdevice.h>
 
 #include "globals.h"

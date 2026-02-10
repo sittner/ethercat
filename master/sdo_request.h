@@ -29,9 +29,14 @@
 #ifndef __EC_SDO_REQUEST_H__
 #define __EC_SDO_REQUEST_H__
 
-#include <linux/list.h>
+#include "pal.h"
 
 #include "globals.h"
+
+/* Workaround for errno macro in userspace */
+#ifdef errno
+#undef errno
+#endif
 
 /****************************************************************************/
 

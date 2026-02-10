@@ -251,8 +251,36 @@ typedef struct {
 #define IS_ERR_OR_NULL(ptr) (!(ptr) || IS_ERR(ptr))
 
 /****************************************************************************/
+/* Ethernet constants */
+/****************************************************************************/
+
+#ifndef ETH_ALEN
+#define ETH_ALEN        6    /* Octets in one ethernet address */
+#endif
+
+#ifndef ETH_HLEN
+#define ETH_HLEN        14   /* Total octets in header */
+#endif
+
+#ifndef ETH_DATA_LEN
+#define ETH_DATA_LEN    1500 /* Max octets in payload */
+#endif
+
+/****************************************************************************/
 
 #include <stdint.h>
+
+/* Kernel-compatible integer types */
+#ifndef __KERNEL__
+typedef uint8_t  u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+typedef int8_t   s8;
+typedef int16_t  s16;
+typedef int32_t  s32;
+typedef int64_t  s64;
+#endif
 
 /* Forward declarations */
 struct ec_master;

@@ -407,8 +407,8 @@ void ec_device_set_interface(
 {
     ec_transport_t *transport = device->plat.transport;
     if (transport && interface) {
-        strncpy(transport->ifname, interface, IFNAMSIZ - 1);
-        transport->ifname[IFNAMSIZ - 1] = '\0';
+        strncpy(transport->interface, interface, sizeof(transport->interface) - 1);
+        transport->interface[sizeof(transport->interface) - 1] = '\0';
     }
 }
 
