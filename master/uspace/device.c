@@ -105,6 +105,22 @@ void ec_device_clear(
 
 /****************************************************************************/
 
+/** Set interface name.
+ */
+void ec_device_set_interface(
+        ec_device_t *device, /**< EtherCAT device */
+        const char *interface /**< Network interface name */
+        )
+{
+    ec_transport_t *transport = device->plat.transport;
+    if (transport && interface) {
+        strncpy(transport->ifname, interface, IFNAMSIZ - 1);
+        transport->ifname[IFNAMSIZ - 1] = '\0';
+    }
+}
+
+/****************************************************************************/
+
 /** Attach transport to device.
  * 
  * Associates a transport instance with the device.

@@ -136,6 +136,24 @@ static inline unsigned long ec_pal_get_jiffies(void) {
 #define EC_PAL_DBG(fmt, args...)    printf("EtherCAT DEBUG: " fmt, ##args)
 #define EC_PAL_PRINT(fmt, args...)  printf(fmt, ##args)
 
+/* Master-specific logging macros */
+#define EC_MASTER_INFO(master, fmt, args...) \
+    printf("EtherCAT %u: " fmt, master->index, ##args)
+
+#define EC_MASTER_ERR(master, fmt, args...) \
+    fprintf(stderr, "EtherCAT ERROR %u: " fmt, master->index, ##args)
+
+#define EC_MASTER_WARN(master, fmt, args...) \
+    fprintf(stderr, "EtherCAT WARNING %u: " fmt, master->index, ##args)
+
+#define EC_MASTER_DBG(master, level, fmt, args...) \
+    do { \
+        if (master->debug_level >= level) { \
+            printf("EtherCAT DEBUG %u: " fmt, \
+                    master->index, ##args); \
+        } \
+    } while (0)
+
 /* Slave-specific logging macros */
 #define EC_SLAVE_INFO(slave, fmt, args...) \
     printf("EtherCAT %u-%u: " fmt, slave->master->index, \

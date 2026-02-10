@@ -28,6 +28,7 @@
 
 /****************************************************************************/
 
+#ifdef __KERNEL__
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/string.h>
@@ -37,6 +38,9 @@
 #include <linux/version.h>
 #include <linux/hrtimer.h>
 #include <linux/kthread.h>
+#else
+#include <string.h>
+#endif
 
 #include "globals_int.h"
 #include "slave.h"
@@ -46,13 +50,16 @@
 #include "pal.h"
 
 #ifdef EC_EOE
+#ifdef __KERNEL__
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
 #include <uapi/linux/sched/types.h> // struct sched_param
 #include <linux/sched/types.h> // sched_setscheduler
 #endif
+#endif
 #include "ethernet.h"
 #endif
 
+#ifdef __KERNEL__
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0) || \
     (defined(CONFIG_PREEMPT_RT_FULL) && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0))
 #  define ec_rt_lock_interruptible(lock) \
@@ -67,6 +74,9 @@
 #ifdef EC_RTDM
 #include "kernel/rtdm.h"
 #endif
+#else
+#include "master.h"
+#endif /* __KERNEL__ */
 
 /****************************************************************************/
 
@@ -137,7 +147,8 @@ static void sc_reset_task(struct work_struct *work);
 
 /****************************************************************************/
 
-/** Static variables initializer.
+#ifdef __KERNEL__
+/** Static variables initializer (kernel only).
 */
 void ec_master_init_static(void)
 {
@@ -152,6 +163,7 @@ void ec_master_init_static(void)
         max(EC_SDO_INJECTION_TIMEOUT * ec_pal_hz() / 1000000, 1);
 #endif
 }
+#endif /* __KERNEL__ */
 
 /****************************************************************************/
 
@@ -580,6 +592,7 @@ void ec_master_internal_receive_cb(
 
 /****************************************************************************/
 
+#ifdef __KERNEL__
 /** Starts the master thread.
  *
  * \retval  0 Success.
@@ -639,6 +652,7 @@ void ec_master_thread_stop(
     sleep_jiffies = max(ec_pal_hz() / 100, 1); // 10 ms, at least 1 jiffy
     schedule_timeout(sleep_jiffies);
 }
+#endif /* __KERNEL__ */
 
 /****************************************************************************/
 
@@ -667,7 +681,7 @@ int ec_master_enter_idle_phase(
         master->fsm.slaves_responding[dev_idx] = 0;
     }
 
-    ret = ec_master_thread_start(master, ec_master_idle_thread,
+#ifdef __KERNEL__
             "EtherCAT-IDLE");
     if (ret)
         master->phase = EC_ORPHANED;
@@ -684,6 +698,10 @@ void ec_master_leave_idle_phase(ec_master_t *master /**< EtherCAT master */)
     EC_MASTER_DBG(master, 1, "IDLE -> ORPHANED.\n");
 
     master->phase = EC_ORPHANED;
+
+#ifdef __KERNEL__
+    ec_master_thread_stop(master);
+#endif
 
 #ifdef EC_EOE
     ec_master_eoe_stop(master);
@@ -3325,6 +3343,7 @@ static void sc_reset_task(struct work_struct *work)
 
 /** \cond */
 
+#ifdef __KERNEL__
 EXPORT_SYMBOL(ecrt_master_create_domain);
 EXPORT_SYMBOL(ecrt_master_activate);
 EXPORT_SYMBOL(ecrt_master_deactivate);
@@ -3352,6 +3371,7 @@ EXPORT_SYMBOL(ecrt_master_sdo_upload);
 EXPORT_SYMBOL(ecrt_master_write_idn);
 EXPORT_SYMBOL(ecrt_master_read_idn);
 EXPORT_SYMBOL(ecrt_master_reset);
+#endif /* __KERNEL__ */
 
 /** \endcond */
 

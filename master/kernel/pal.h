@@ -131,6 +131,24 @@
 #define EC_PAL_DBG(fmt, args...)    printk(KERN_DEBUG "EtherCAT DEBUG: " fmt, ##args)
 #define EC_PAL_PRINT(fmt, args...)  printk(KERN_CONT fmt, ##args)
 
+/* Master-specific logging macros */
+#define EC_MASTER_INFO(master, fmt, args...) \
+    printk(KERN_INFO "EtherCAT %u: " fmt, master->index, ##args)
+
+#define EC_MASTER_ERR(master, fmt, args...) \
+    printk(KERN_ERR "EtherCAT ERROR %u: " fmt, master->index, ##args)
+
+#define EC_MASTER_WARN(master, fmt, args...) \
+    printk(KERN_WARNING "EtherCAT WARNING %u: " fmt, master->index, ##args)
+
+#define EC_MASTER_DBG(master, level, fmt, args...) \
+    do { \
+        if (master->debug_level >= level) { \
+            printk(KERN_DEBUG "EtherCAT DEBUG %u: " fmt, \
+                    master->index, ##args); \
+        } \
+    } while (0)
+
 /* Slave-specific logging macros */
 #define EC_SLAVE_INFO(slave, fmt, args...) \
     printk(KERN_INFO "EtherCAT %u-%u: " fmt, slave->master->index, \
