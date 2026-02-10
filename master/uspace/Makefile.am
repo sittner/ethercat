@@ -74,11 +74,12 @@ EXTRA_DIST = \
 # Userspace master daemon
 bin_PROGRAMS = ec_master
 
-ec_master_SOURCES = ec_master.c
+ec_master_SOURCES = master_main.c
 
 ec_master_CFLAGS = \
 	-I$(top_srcdir)/include \
 	-I$(srcdir) \
+	-I$(top_srcdir)/master \
 	-Wall
 
 ec_master_LDADD = \

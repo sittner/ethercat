@@ -295,6 +295,7 @@ typedef struct {
     ec_transport_t *transport;           /**< Transport layer. */
     uint64_t jiffies_poll;               /**< Time of last poll (ms). */
     uint64_t last_link_check;            /**< Time of last link state check (ms). */
+    int last_link_state;                 /**< Last reported link state (-1 = unknown). */
 } ec_device_plat_t;
 
 /** Userspace-specific master fields. */
