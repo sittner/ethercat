@@ -59,7 +59,7 @@ The following components have been implemented and are present in the codebase:
 | Userspace PAL | `userspace/pal_user.c` | ✅ Implemented | Full implementation with transport integration |
 | Userspace API Header | `userspace/include/ecrt_user.h` | ✅ Created | ecrt_master_init/cleanup/idle API |
 | Userspace API Implementation | `userspace/ecrt_user.c` | ✅ Created | Stub implementations |
-| Master Daemon | `userspace/ec_master.c` | ✅ Created | Standalone daemon with CLI options |
+| Master Daemon | `userspace/ethercat_master.c` | ✅ Created | Standalone daemon with CLI options |
 | First Core File Migration | `master/datagram.c` | ✅ Started | Uses `ec_pal_malloc`, `ec_pal_free` |
 | Transport Interface | `userspace/transport/ec_transport.h` | ✅ Implemented | Transport abstraction with send/recv/link/MAC operations |
 | Transport Registry | `userspace/transport/transport.c` | ✅ Implemented | Transport type registration and lifecycle management |
@@ -333,10 +333,10 @@ For users who want a kernel-module-like experience without writing custom applic
 - Useful for testing, configuration, and slave commissioning
 - Can run as a system service for always-available master
 
-**Implementation (`userspace/ec_master.c`):**
+**Implementation (`userspace/ethercat_master.c`):**
 
 ```c
-// userspace/ec_master.c
+// userspace/ethercat_master.c
 
 /**
  * EtherCAT Master Demonstrator
@@ -1030,7 +1030,7 @@ ethercat/
 │   └── ...                   # Other existing files (shared)
 ├── userspace/                # NEW: Userspace-specific code
 │   ├── Makefile.am
-│   ├── ec_master.c           # NEW: Standalone master daemon
+│   ├── ethercat_master.c     # NEW: Standalone master daemon
 │   ├── ecrt_user.c           # NEW: Userspace API implementation
 │   ├── pal_user.c            # NEW: Userspace PAL implementation
 │   ├── control_socket.c      # NEW: Unix socket for CLI
