@@ -29,12 +29,7 @@
 #ifndef __EC_PDO_LIST_H__
 #define __EC_PDO_LIST_H__
 
-#ifdef __KERNEL__
-#include <linux/list.h>
-#else
-#include "uspace/list.h"
-#endif
-
+#include "pal.h"
 #include "globals.h"
 #include "pdo.h"
 

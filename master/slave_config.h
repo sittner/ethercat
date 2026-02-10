@@ -51,9 +51,7 @@
  * \param fmt format string (like in printf())
  * \param args arguments (optional)
  */
-#define EC_CONFIG_INFO(sc, fmt, args...) \
-    printk(KERN_INFO "EtherCAT %u %u:%u: " fmt, sc->master->index, \
-            sc->alias, sc->position, ##args)
+/* Defined in pal.h */
 
 /** Convenience macro for printing configuration-specific errors to syslog.
  *
@@ -65,9 +63,7 @@
  * \param fmt format string (like in printf())
  * \param args arguments (optional)
  */
-#define EC_CONFIG_ERR(sc, fmt, args...) \
-    printk(KERN_ERR "EtherCAT ERROR %u %u:%u: " fmt, sc->master->index, \
-            sc->alias, sc->position, ##args)
+/* Defined in pal.h */
 
 /** Convenience macro for printing configuration-specific warnings to syslog.
  *
@@ -79,9 +75,7 @@
  * \param fmt format string (like in printf())
  * \param args arguments (optional)
  */
-#define EC_CONFIG_WARN(sc, fmt, args...) \
-    printk(KERN_WARNING "EtherCAT WARNING %u %u:%u: " fmt, \
-            sc->master->index, sc->alias, sc->position, ##args)
+/* Defined in pal.h */
 
 /** Convenience macro for printing configuration-specific debug messages to
  * syslog.
@@ -96,13 +90,7 @@
  * \param fmt format string (like in printf())
  * \param args arguments (optional)
  */
-#define EC_CONFIG_DBG(sc, level, fmt, args...) \
-    do { \
-        if (sc->master->debug_level >= level) { \
-            printk(KERN_DEBUG "EtherCAT DEBUG %u %u:%u: " fmt, \
-                    sc->master->index, sc->alias, sc->position, ##args); \
-        } \
-    } while (0)
+/* Defined in pal.h */
 
 /****************************************************************************/
 

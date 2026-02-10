@@ -29,11 +29,6 @@
 #include "pal.h"
 #include "pdo_entry.h"
 
-#ifndef __KERNEL__
-#include <errno.h>
-#include <string.h>
-#endif
-
 /****************************************************************************/
 
 /** PDO entry constructor.

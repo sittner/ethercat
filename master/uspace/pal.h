@@ -41,8 +41,10 @@
 #include <semaphore.h>
 #include <unistd.h>
 #include <time.h>
+#include <sys/time.h>
 #include <stdio.h>
 #include <stdatomic.h>
+#include "uspace/list.h"
 
 /****************************************************************************/
 /* Memory allocation */
@@ -133,6 +135,48 @@ static inline unsigned long ec_pal_get_jiffies(void) {
 #define EC_PAL_DBG(fmt, args...)    printf("EtherCAT DEBUG: " fmt, ##args)
 #define EC_PAL_PRINT(fmt, args...)  printf(fmt, ##args)
 
+/* Slave-specific logging macros */
+#define EC_SLAVE_INFO(slave, fmt, args...) \
+    printf("EtherCAT %u-%u: " fmt, slave->master->index, \
+            slave->ring_position, ##args)
+
+#define EC_SLAVE_ERR(slave, fmt, args...) \
+    fprintf(stderr, "EtherCAT ERROR %u-%u: " fmt, slave->master->index, \
+            slave->ring_position, ##args)
+
+#define EC_SLAVE_WARN(slave, fmt, args...) \
+    fprintf(stderr, "EtherCAT WARNING %u-%u: " fmt, \
+            slave->master->index, slave->ring_position, ##args)
+
+#define EC_SLAVE_DBG(slave, level, fmt, args...) \
+    do { \
+        if (slave->master->debug_level >= level) { \
+            printf("EtherCAT DEBUG %u-%u: " fmt, \
+                    slave->master->index, slave->ring_position, ##args); \
+        } \
+    } while (0)
+
+/* Slave configuration-specific logging macros */
+#define EC_CONFIG_INFO(sc, fmt, args...) \
+    printf("EtherCAT %u %u:%u: " fmt, sc->master->index, \
+            sc->alias, sc->position, ##args)
+
+#define EC_CONFIG_ERR(sc, fmt, args...) \
+    fprintf(stderr, "EtherCAT ERROR %u %u:%u: " fmt, sc->master->index, \
+            sc->alias, sc->position, ##args)
+
+#define EC_CONFIG_WARN(sc, fmt, args...) \
+    fprintf(stderr, "EtherCAT WARNING %u %u:%u: " fmt, \
+            sc->master->index, sc->alias, sc->position, ##args)
+
+#define EC_CONFIG_DBG(sc, level, fmt, args...) \
+    do { \
+        if (sc->master->debug_level >= level) { \
+            printf("EtherCAT DEBUG %u %u:%u: " fmt, \
+                    sc->master->index, sc->alias, sc->position, ##args); \
+        } \
+    } while (0)
+
 /****************************************************************************/
 /* Atomics (using C11 stdatomic) */
 /****************************************************************************/
@@ -157,6 +201,17 @@ typedef struct {
 
 #define likely(x)      __builtin_expect(!!(x), 1)
 #define unlikely(x)    __builtin_expect(!!(x), 0)
+
+/****************************************************************************/
+/* Error pointer helpers */
+/****************************************************************************/
+
+#define MAX_ERRNO 4095
+#define IS_ERR_VALUE(x) ((unsigned long)(void *)(x) >= (unsigned long)-MAX_ERRNO)
+#define ERR_PTR(error) ((void *)((long)(error)))
+#define PTR_ERR(ptr) ((long)(ptr))
+#define IS_ERR(ptr) IS_ERR_VALUE((unsigned long)(ptr))
+#define IS_ERR_OR_NULL(ptr) (!ptr || IS_ERR(ptr))
 
 /****************************************************************************/
 

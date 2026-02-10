@@ -28,9 +28,6 @@
 
 #include "pal.h"
 #include "globals_int.h"
-#ifdef __KERNEL__
-#include "master.h"
-#endif
 
 #include "sdo.h"
 
