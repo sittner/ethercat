@@ -103,6 +103,7 @@
 #define ec_config_unlock(m)             sem_post(&(m)->config_sem)
 #define ec_ext_queue_lock(m)            sem_wait(&(m)->ext_queue_sem)
 #define ec_ext_queue_unlock(m)          sem_post(&(m)->ext_queue_sem)
+#define ec_ext_queue_trylock(m)         sem_trywait(&(m)->ext_queue_sem)
 
 /****************************************************************************/
 /* Time functions */

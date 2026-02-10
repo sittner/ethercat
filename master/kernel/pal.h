@@ -103,6 +103,7 @@
 #define ec_config_unlock(m)             up(&(m)->config_sem)
 #define ec_ext_queue_lock(m)            down(&(m)->ext_queue_sem)
 #define ec_ext_queue_unlock(m)          up(&(m)->ext_queue_sem)
+#define ec_ext_queue_trylock(m)         down_trylock(&(m)->ext_queue_sem)
 
 /****************************************************************************/
 /* Time functions */
