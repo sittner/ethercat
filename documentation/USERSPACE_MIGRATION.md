@@ -59,7 +59,7 @@ The following components have been implemented and are present in the codebase:
 | Userspace PAL | `userspace/pal_user.c` | ✅ Implemented | Full implementation with transport integration |
 | Userspace API Header | `userspace/include/ecrt_user.h` | ✅ Created | ecrt_master_init/cleanup/idle API |
 | Userspace API Implementation | `userspace/ecrt_user.c` | ✅ Created | Stub implementations |
-| Master Daemon | `userspace/ethercat_master.c` | ✅ Created | Standalone daemon with CLI options |
+| Master Daemon | `userspace/ec_master.c` | ✅ Created | Standalone daemon with CLI options |
 | First Core File Migration | `master/datagram.c` | ✅ Started | Uses `ec_pal_malloc`, `ec_pal_free` |
 | Transport Interface | `userspace/transport/ec_transport.h` | ✅ Implemented | Transport abstraction with send/recv/link/MAC operations |
 | Transport Registry | `userspace/transport/transport.c` | ✅ Implemented | Transport type registration and lifecycle management |
@@ -99,9 +99,9 @@ The migration is divided into six phases. Current progress for each phase:
 
 - ✅ **2026-02-09**: Transport layer complete - raw socket implementation working (PR #13)
 - ✅ **2026-02-09**: Master init wiring complete - transport integrated with ecrt_master_init() (PR #14)
-- ✅ **2026-02-09**: `ethercat_master` daemon runs successfully, displays link state and MAC address
+- ✅ **2026-02-09**: `ec_master` daemon runs successfully, displays link state and MAC address
 - ✅ **2026-02-09**: Clean shutdown on Ctrl+C with proper transport cleanup
-- ✅ **2026-02-09**: `ethercat_master` daemon runs and fails gracefully with "Function not implemented"
+- ✅ **2026-02-09**: `ec_master` daemon runs and fails gracefully with "Function not implemented"
 - ✅ **2026-02-09**: Kernel + userspace builds working simultaneously
 - ✅ **2026-02-09**: `globals.h` / `globals_int.h` split to fix C++ tool build
 - ✅ **2026-02-09**: PAL header with C++ atomic compatibility
@@ -322,9 +322,9 @@ void ecrt_master_idle(unsigned int master_index);
 int ecrt_master_process_control(unsigned int master_index);
 ```
 
-### ethercat_master Demonstrator
+### ec_master Demonstrator
 
-For users who want a kernel-module-like experience without writing custom applications, the `ethercat_master` tool provides a standalone daemon that runs the EtherCAT master in idle mode.
+For users who want a kernel-module-like experience without writing custom applications, the `ec_master` tool provides a standalone daemon that runs the EtherCAT master in idle mode.
 
 **Purpose:**
 
@@ -333,10 +333,10 @@ For users who want a kernel-module-like experience without writing custom applic
 - Useful for testing, configuration, and slave commissioning
 - Can run as a system service for always-available master
 
-**Implementation (`userspace/ethercat_master.c`):**
+**Implementation (`userspace/ec_master.c`):**
 
 ```c
-// userspace/ethercat_master.c
+// userspace/ec_master.c
 
 /**
  * EtherCAT Master Demonstrator
@@ -388,7 +388,7 @@ static void print_usage(const char *prog)
     printf("  -t, --transport TYPE    Transport type: raw, xdp (default: raw)\n");
     printf("  -s, --socket PATH       Control socket path (default: /var/run/ethercat/master0)\n");
     printf("  -d, --daemon            Run as daemon\n");
-    printf("  -p, --pidfile PATH      PID file path (default: /var/run/ethercat_master.pid)\n");
+    printf("  -p, --pidfile PATH      PID file path (default: /var/run/ec_master.pid)\n");
     printf("  -v, --verbose           Verbose output\n");
     printf("  -h, --help              Show this help\n");
     printf("\nExample:\n");
@@ -603,10 +603,10 @@ int main(int argc, char *argv[])
 
 ```bash
 # Run master on eth0 with raw sockets (foreground)
-$ ethercat_master -i eth0 -v
+$ ec_master -i eth0 -v
 
 # Run as daemon with XDP transport
-$ ethercat_master -i eth0 -t xdp -d -p /var/run/ethercat.pid
+$ ec_master -i eth0 -t xdp -d -p /var/run/ethercat.pid
 
 # Use with ethercat CLI tool
 $ ethercat slaves
@@ -624,7 +624,7 @@ After=network.target
 [Service]
 Type=forking
 PIDFile=/var/run/ethercat.pid
-ExecStart=/usr/local/bin/ethercat_master -i eth0 -t raw -d -p /var/run/ethercat.pid
+ExecStart=/usr/local/bin/ec_master -i eth0 -t raw -d -p /var/run/ethercat.pid
 ExecStop=/bin/kill -TERM $MAINPID
 Restart=on-failure
 
@@ -1030,7 +1030,7 @@ ethercat/
 │   └── ...                   # Other existing files (shared)
 ├── userspace/                # NEW: Userspace-specific code
 │   ├── Makefile.am
-│   ├── ethercat_master.c     # NEW: Standalone master daemon
+│   ├── ec_master.c           # NEW: Standalone master daemon
 │   ├── ecrt_user.c           # NEW: Userspace API implementation
 │   ├── pal_user.c            # NEW: Userspace PAL implementation
 │   ├── control_socket.c      # NEW: Unix socket for CLI

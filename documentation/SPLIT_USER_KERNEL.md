@@ -75,7 +75,7 @@ git/ethercat/
 │   └── ...
 ├── userspace/                 # Userspace code
 │   ├── pal_user.c
-│   ├── ethercat_master.c
+│   ├── ec_master.c
 │   └── transport/
 └── ...
 ```
@@ -114,7 +114,7 @@ git/ethercat/
 │       ├── device.c           # ec_device_* using transport
 │       ├── ecrt_user.c        # Userspace API extensions
 │       ├── ecrt_user.h
-│       ├── ethercat_master.c  # Standalone daemon
+│       ├── ec_master.c          # Standalone daemon
 │       └── transport/         # Transport layer
 │           ├── ec_transport.h
 │           ├── transport.c
@@ -483,7 +483,7 @@ void ec_master_idle_thread(ec_master_t *master)
 1. Create `master/kernel/` directory
 2. Create `master/uspace/` directory
 3. Move `userspace/transport/` to `master/uspace/transport/`
-4. Move `userspace/ethercat_master.c` to `master/uspace/`
+4. Move `userspace/ec_master.c` to `master/uspace/`
 5. Move `userspace/ecrt_user.*` to `master/uspace/`
 
 ### Phase 2: Kernel PAL
@@ -602,9 +602,9 @@ libethercat_master_la_SOURCES = \
     $(USPACE_SOURCES)
 
 # Daemon
-bin_PROGRAMS = ethercat_master
-ethercat_master_SOURCES = ethercat_master.c
-ethercat_master_LDADD = libethercat_master.la
+bin_PROGRAMS = ec_master
+ec_master_SOURCES = ethercat_master.c
+ec_master_LDADD = libethercat_master.la
 ```
 
 ---
@@ -617,7 +617,7 @@ ethercat_master_LDADD = libethercat_master.la
 - [ ] Kernel module loads successfully
 - [ ] Existing kernel functionality works
 - [ ] Userspace library compiles
-- [ ] `ethercat_master` daemon runs
+- [ ] `ec_master` daemon runs
 - [ ] No `#ifdef __KERNEL__` in shared code (goal)
 
 ### Final Verification
