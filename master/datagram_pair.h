@@ -29,7 +29,7 @@
 #ifndef __EC_DATAGRAM_PAIR_H__
 #define __EC_DATAGRAM_PAIR_H__
 
-#include <linux/list.h>
+#include "pal.h"
 
 #include "globals.h"
 #include "datagram.h"

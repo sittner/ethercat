@@ -29,7 +29,7 @@
 #ifndef __EC_FLAG_H__
 #define __EC_FLAG_H__
 
-#include <linux/list.h>
+#include "pal.h"
 
 /****************************************************************************/
 

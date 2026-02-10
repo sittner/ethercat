@@ -29,15 +29,15 @@
 #ifndef __EC_MASTER_H__
 #define __EC_MASTER_H__
 
-#include <linux/version.h>
-#include <linux/list.h>
-#include <linux/timer.h>
-
 #include "pal.h"
 #include "device.h"
 #include "domain.h"
-#include "ethernet.h"
 #include "fsm_master.h"
+
+#ifdef EC_EOE
+/* Forward declaration for EoE */
+typedef struct ec_eoe ec_eoe_t;
+#endif
 
 /****************************************************************************/
 
@@ -51,7 +51,7 @@
  * \param args arguments (optional)
  */
 #define EC_MASTER_INFO(master, fmt, args...) \
-    printk(KERN_INFO "EtherCAT %u: " fmt, master->index, ##args)
+    EC_PAL_INFO("EtherCAT %u: " fmt, (master)->index, ##args)
 
 /** Convenience macro for printing master-specific errors to syslog.
  *
@@ -63,7 +63,7 @@
  * \param args arguments (optional)
  */
 #define EC_MASTER_ERR(master, fmt, args...) \
-    printk(KERN_ERR "EtherCAT ERROR %u: " fmt, master->index, ##args)
+    EC_PAL_ERR("EtherCAT ERROR %u: " fmt, (master)->index, ##args)
 
 /** Convenience macro for printing master-specific warnings to syslog.
  *
@@ -75,7 +75,7 @@
  * \param args arguments (optional)
  */
 #define EC_MASTER_WARN(master, fmt, args...) \
-    printk(KERN_WARNING "EtherCAT WARNING %u: " fmt, master->index, ##args)
+    EC_PAL_WARN("EtherCAT WARNING %u: " fmt, (master)->index, ##args)
 
 /** Convenience macro for printing master-specific debug messages to syslog.
  *
@@ -90,9 +90,9 @@
  */
 #define EC_MASTER_DBG(master, level, fmt, args...) \
     do { \
-        if (master->debug_level >= level) { \
-            printk(KERN_DEBUG "EtherCAT DEBUG %u: " fmt, \
-                    master->index, ##args); \
+        if ((master)->debug_level >= (level)) { \
+            EC_PAL_DBG("EtherCAT DEBUG %u: " fmt, \
+                    (master)->index, ##args); \
         } \
     } while (0)
 
@@ -300,6 +300,7 @@ void ec_master_eoe_stop(ec_master_t *);
 // datagram IO
 void ec_master_receive_datagrams(ec_master_t *, ec_device_t *,
         const uint8_t *, size_t);
+void ec_master_send_datagrams(ec_master_t *, ec_device_index_t);
 void ec_master_queue_datagram(ec_master_t *, ec_datagram_t *);
 void ec_master_queue_datagram_ext(ec_master_t *, ec_datagram_t *);
 

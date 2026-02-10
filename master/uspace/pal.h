@@ -92,6 +92,42 @@
 #define ec_pal_sem_down_interruptible(sem) sem_wait(sem)  /* No interrupts in userspace */
 
 /****************************************************************************/
+/* Wait queues (using condition variables) */
+/****************************************************************************/
+
+typedef struct {
+    pthread_cond_t cond;
+    pthread_mutex_t mutex;
+} ec_pal_wait_queue_t;
+
+static inline void ec_pal_wait_queue_init(ec_pal_wait_queue_t *wq) {
+    pthread_cond_init(&wq->cond, NULL);
+    pthread_mutex_init(&wq->mutex, NULL);
+}
+
+static inline void ec_pal_wake_up(ec_pal_wait_queue_t *wq) {
+    pthread_mutex_lock(&wq->mutex);
+    pthread_cond_signal(&wq->cond);
+    pthread_mutex_unlock(&wq->mutex);
+}
+
+static inline void ec_pal_wake_up_all(ec_pal_wait_queue_t *wq) {
+    pthread_mutex_lock(&wq->mutex);
+    pthread_cond_broadcast(&wq->cond);
+    pthread_mutex_unlock(&wq->mutex);
+}
+
+/* For wait_event, caller must handle the condition check loop */
+#define ec_pal_wait_event(wq, cond) \
+    do { \
+        pthread_mutex_lock(&(wq)->mutex); \
+        while (!(cond)) { \
+            pthread_cond_wait(&(wq)->cond, &(wq)->mutex); \
+        } \
+        pthread_mutex_unlock(&(wq)->mutex); \
+    } while (0)
+
+/****************************************************************************/
 /* Master locking (convenience macros for master semaphores) */
 /****************************************************************************/
 
@@ -215,8 +251,34 @@ typedef struct {
 #define IS_ERR_OR_NULL(ptr) (!(ptr) || IS_ERR(ptr))
 
 /****************************************************************************/
+/* Ethernet constants */
+/****************************************************************************/
+
+#ifndef ETH_ALEN
+#define ETH_ALEN        6    /* Octets in one ethernet address */
+#endif
+
+#ifndef ETH_HLEN
+#define ETH_HLEN        14   /* Total octets in header */
+#endif
+
+#ifndef ETH_DATA_LEN
+#define ETH_DATA_LEN    1500 /* Max octets in payload */
+#endif
+
+/****************************************************************************/
 
 #include <stdint.h>
+
+/* Kernel-compatible integer types for userspace */
+typedef uint8_t  u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
+typedef uint64_t u64;
+typedef int8_t   s8;
+typedef int16_t  s16;
+typedef int32_t  s32;
+typedef int64_t  s64;
 
 /* Forward declarations */
 struct ec_master;
@@ -246,12 +308,13 @@ typedef struct {
     pthread_t thread;                   /**< Master thread. */
     pthread_mutex_t io_mutex;           /**< Mutex for I/O operations. */
 
-    pthread_cond_t scan_cond;           /**< Condition for scan state changes. */
-    pthread_cond_t config_cond;         /**< Condition for config state changes. */
-    pthread_cond_t request_cond;        /**< Condition for external requests. */
+    ec_pal_wait_queue_t scan_queue;     /**< Queue for scan state changes. */
+    ec_pal_wait_queue_t config_queue;   /**< Queue for config state changes. */
+    ec_pal_wait_queue_t request_queue;  /**< Wait queue for external requests. */
 
 #ifdef EC_EOE
     pthread_t eoe_thread;               /**< EoE thread. */
+    ec_pal_wait_queue_t eoe_queue;      /**< Wait queue for EoE. */
 #endif
 } ec_master_plat_t;
 

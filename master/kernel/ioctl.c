@@ -26,6 +26,7 @@
 /****************************************************************************/
 
 #include <linux/module.h>
+#include <linux/version.h>
 #include <linux/vmalloc.h>
 
 #include "../master.h"

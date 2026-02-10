@@ -29,8 +29,7 @@
 #ifndef __EC_DOMAIN_H__
 #define __EC_DOMAIN_H__
 
-#include <linux/list.h>
-
+#include "pal.h"
 #include "globals.h"
 #include "datagram.h"
 #include "master.h"

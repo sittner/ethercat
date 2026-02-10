@@ -30,6 +30,7 @@
 #include "master.h"
 #include "mailbox.h"
 #include "fsm_eoe.h"
+#include "ethernet.h"
 
 /****************************************************************************/
 
