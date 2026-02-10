@@ -45,28 +45,12 @@ SHARED_SOURCES = \
 	fsm_pdo_entry.c \
 	fsm_change.c \
 	fsm_foe.c \
-	slave.c \
-	slave_config.c \
-	master.c \
 	mailbox.c \
-	sync.c \
-	sync_config.c \
-	fmmu_config.c \
-	sdo_request.c \
-	soe_request.c \
-	foe_request.c \
-	reg_request.c \
-	voe_handler.c \
-	coe_emerg_ring.c \
-	eoe_request.c \
-	domain.c \
-	datagram_pair.c \
-	flag.c \
 	soe_errors.c
 
 # Add EoE FSM only if enabled
 if ENABLE_EOE
-SHARED_SOURCES += fsm_eoe.c ethernet.c
+SHARED_SOURCES += fsm_eoe.c
 endif
 
 # Userspace-specific sources (in current directory)
