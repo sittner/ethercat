@@ -26,9 +26,11 @@
 
 /****************************************************************************/
 
+#ifdef __KERNEL__
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
+#endif
 
 #include "foe_request.h"
 #include "foe.h"
@@ -86,7 +88,11 @@ void ec_foe_request_clear_data(
         )
 {
     if (req->buffer) {
+#ifdef __KERNEL__
         vfree(req->buffer);
+#else
+        free(req->buffer);
+#endif
         req->buffer = NULL;
     }
 
@@ -114,7 +120,11 @@ int ec_foe_request_alloc(
 
     ec_foe_request_clear_data(req);
 
+#ifdef __KERNEL__
     if (!(req->buffer = (uint8_t *) vmalloc(size))) {
+#else
+    if (!(req->buffer = (uint8_t *) malloc(size))) {
+#endif
         EC_ERR("Failed to allocate %zu bytes of FoE memory.\n", size);
         return -ENOMEM;
     }

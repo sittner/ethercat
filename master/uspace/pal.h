@@ -35,6 +35,13 @@
 
 /****************************************************************************/
 
+/* Undefine kernel-only features for userspace */
+#ifdef EC_EOE
+#undef EC_EOE
+#endif
+
+/****************************************************************************/
+
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
@@ -116,6 +123,11 @@ static inline void ec_pal_wake_up_all(ec_pal_wait_queue_t *wq) {
     pthread_cond_broadcast(&wq->cond);
     pthread_mutex_unlock(&wq->mutex);
 }
+
+/* Kernel compatibility - map kernel wake_up functions to PAL */
+#define wake_up(wq)             ec_pal_wake_up(wq)
+#define wake_up_all(wq)         ec_pal_wake_up_all(wq)
+#define wake_up_interruptible(wq) ec_pal_wake_up(wq)
 
 /* For wait_event, caller must handle the condition check loop */
 #define ec_pal_wait_event(wq, cond) \
@@ -282,8 +294,31 @@ typedef struct {
 #endif
 
 /****************************************************************************/
+/* Module macros (no-op in userspace) */
+/****************************************************************************/
+
+#define EXPORT_SYMBOL(sym)
+#define MODULE_AUTHOR(author)
+#define MODULE_DESCRIPTION(desc)
+#define MODULE_LICENSE(license)
+#define MODULE_VERSION(version)
+
+/****************************************************************************/
+/* Min/max macros */
+/****************************************************************************/
+
+#ifndef min
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#endif
+
+#ifndef max
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#endif
+
+/****************************************************************************/
 
 #include <stdint.h>
+#include <stdbool.h>
 
 /* Kernel-compatible integer types for userspace */
 typedef uint8_t  u8;

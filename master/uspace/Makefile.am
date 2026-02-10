@@ -33,13 +33,37 @@ SHARED_SOURCES = \
 	pdo_entry.c \
 	pdo_list.c \
 	sdo.c \
-	sdo_entry.c
+	sdo_entry.c \
+	fsm_master.c \
+	fsm_slave.c \
+	fsm_slave_config.c \
+	fsm_slave_scan.c \
+	fsm_sii.c \
+	fsm_coe.c \
+	fsm_soe.c \
+	fsm_pdo.c \
+	fsm_pdo_entry.c \
+	fsm_change.c \
+	fsm_foe.c \
+	slave.c \
+	sync.c \
+	fmmu_config.c \
+	sdo_request.c \
+	soe_request.c \
+	reg_request.c \
+	foe_request.c \
+	mailbox.c \
+	soe_errors.c \
+	coe_emerg_ring.c
+
+# Note: fsm_eoe.c is NOT included - EOE requires kernel network device support
 
 # Userspace-specific sources (in current directory)
 USPACE_SOURCES = \
 	pal.c \
 	device.c \
-	master_main.c
+	master_main.c \
+	utilities.c
 
 # Transport layer sources
 TRANSPORT_SOURCES = \
@@ -56,6 +80,9 @@ AM_CFLAGS = \
 	-I$(top_srcdir)/master \
 	-I$(top_srcdir)/include \
 	-Wall
+
+# Undefine EC_EOE for userspace - EOE requires kernel network device support
+AM_CPPFLAGS = -UEC_EOE
 
 # Libraries needed for userspace
 libethercat_master_la_LIBADD = -lpthread

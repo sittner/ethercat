@@ -25,7 +25,9 @@
 
 /****************************************************************************/
 
+#ifdef __KERNEL__
 #include <linux/module.h>
+#endif
 
 #include "reg_request.h"
 #include "globals_int.h"
