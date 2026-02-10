@@ -60,6 +60,116 @@ void ec_device_attach(ec_device_t *device, ec_transport_t *transport);
 /** Datagram timeout in microseconds (userspace). */
 #define EC_DATAGRAM_TIMEOUT_US 10000
 
+/* FSM states for userspace simplified FSM */
+typedef enum {
+    EC_FSM_MASTER_START,
+    EC_FSM_MASTER_BROADCAST,
+    EC_FSM_MASTER_WAIT_BROADCAST
+} ec_fsm_master_state_t;
+
+/* FSM state variables
+ * NOTE: Using static variables creates a singleton FSM that prevents
+ * multiple master instances. This is acceptable for the current minimal
+ * implementation but should be moved into ec_fsm_master_t structure
+ * if multi-master support is needed.
+ */
+static ec_fsm_master_state_t fsm_state = EC_FSM_MASTER_START;
+static unsigned long last_scan_jiffies = 0;
+static unsigned int last_slave_count = 0xFFFFFFFF;  /* Sentinel value */
+
+/* Userspace FSM functions - simplified version */
+void ec_fsm_master_init(
+        ec_fsm_master_t *fsm,
+        ec_master_t *master,
+        ec_datagram_t *datagram
+        )
+{
+    fsm->master = master;
+    fsm->datagram = datagram;
+    fsm->idle = 1;
+    /* Reset FSM state */
+    fsm_state = EC_FSM_MASTER_START;
+    last_scan_jiffies = 0;
+    last_slave_count = 0xFFFFFFFF;  /* Sentinel value */
+}
+
+void ec_fsm_master_clear(
+        ec_fsm_master_t *fsm
+        )
+{
+    (void)fsm;
+    /* Reset state variables */
+    fsm_state = EC_FSM_MASTER_START;
+    last_scan_jiffies = 0;
+    last_slave_count = 0xFFFFFFFF;  /* Sentinel value */
+}
+
+int ec_fsm_master_exec(
+        ec_fsm_master_t *fsm
+        )
+{
+    ec_datagram_t *datagram = fsm->datagram;
+    ec_master_t *master = fsm->master;
+    unsigned long now = ec_pal_jiffies();
+    unsigned long scan_interval_jiffies;
+    
+    /* Scan at ~10Hz (100ms intervals) to match kernel timing */
+    scan_interval_jiffies = ec_pal_hz() / 10;
+    if (scan_interval_jiffies < 1) {
+        scan_interval_jiffies = 1;
+    }
+    
+    switch (fsm_state) {
+    case EC_FSM_MASTER_START:
+        /* Start a broadcast read every ~100ms for 10Hz scanning rate */
+        if (last_scan_jiffies != 0 && 
+            now - last_scan_jiffies < scan_interval_jiffies) {
+            return 0;  /* Not time yet */
+        }
+        last_scan_jiffies = now;
+        
+        /* Prepare BRD datagram to read AL Status (0x0130) from all slaves */
+        ec_datagram_brd(datagram, 0x0130, 2);  /* AL Status is 2 bytes */
+        fsm_state = EC_FSM_MASTER_BROADCAST;
+        
+        EC_MASTER_DBG(master, 2, "Scanning bus...\n");
+        return 1;  /* Datagram ready to send */
+        
+    case EC_FSM_MASTER_BROADCAST:
+        /* Datagram was queued, wait for it to be sent */
+        fsm_state = EC_FSM_MASTER_WAIT_BROADCAST;
+        return 0;
+        
+    case EC_FSM_MASTER_WAIT_BROADCAST:
+        /* Check if datagram was received */
+        if (datagram->state == EC_DATAGRAM_RECEIVED) {
+            unsigned int slave_count = datagram->working_counter;
+            
+            if (slave_count != last_slave_count) {
+                EC_MASTER_INFO(master, "%u slave(s) responding on main device.\n",
+                               slave_count);
+                last_slave_count = slave_count;
+            }
+            
+            fsm_state = EC_FSM_MASTER_START;
+        } else if (datagram->state == EC_DATAGRAM_TIMED_OUT ||
+                   datagram->state == EC_DATAGRAM_ERROR) {
+            /* Timeout or error - report 0 slaves if count changed */
+            if (last_slave_count != 0) {
+                EC_MASTER_INFO(master, "0 slave(s) responding on main device.\n");
+                last_slave_count = 0;
+            }
+            fsm_state = EC_FSM_MASTER_START;
+        }
+        /* Still waiting */
+        return 0;
+        
+    default:
+        fsm_state = EC_FSM_MASTER_START;
+        return 0;
+    }
+}
+
 /** Internal sending callback (userspace).
  */
 void ec_master_internal_send_cb(
