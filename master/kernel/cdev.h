@@ -29,23 +29,15 @@
 #ifndef __EC_CDEV_H__
 #define __EC_CDEV_H__
 
-#include <linux/fs.h>
-#include <linux/cdev.h>
+#include <linux/types.h>
 
-#include "../globals.h"
-
-/****************************************************************************/
-
-/** EtherCAT master character device.
-*/
-typedef struct {
-    ec_master_t *master; /**< Master owning the device. */
-    struct cdev cdev; /**< Character device. */
-} ec_cdev_t;
+/* Forward declarations */
+struct ec_master;
+typedef struct ec_cdev ec_cdev_t;
 
 /****************************************************************************/
 
-int ec_cdev_init(ec_cdev_t *, ec_master_t *, dev_t);
+int ec_cdev_init(ec_cdev_t *, struct ec_master *, dev_t);
 void ec_cdev_clear(ec_cdev_t *);
 
 /****************************************************************************/

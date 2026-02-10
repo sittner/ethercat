@@ -92,18 +92,19 @@
 /* Master locking (convenience macros for master semaphores) */
 /****************************************************************************/
 
-#define ec_master_lock(m)               down(&(m)->master_sem)
-#define ec_master_unlock(m)             up(&(m)->master_sem)
-#define ec_master_lock_interruptible(m) down_interruptible(&(m)->master_sem)
-#define ec_device_lock(m)               down(&(m)->device_sem)
-#define ec_device_unlock(m)             up(&(m)->device_sem)
-#define ec_scan_lock(m)                 down(&(m)->scan_sem)
-#define ec_scan_unlock(m)               up(&(m)->scan_sem)
-#define ec_config_lock(m)               down(&(m)->config_sem)
-#define ec_config_unlock(m)             up(&(m)->config_sem)
-#define ec_ext_queue_lock(m)            down(&(m)->ext_queue_sem)
-#define ec_ext_queue_unlock(m)          up(&(m)->ext_queue_sem)
-#define ec_ext_queue_trylock(m)         down_trylock(&(m)->ext_queue_sem)
+#define ec_master_lock(m)               down(&(m)->plat.master_sem)
+#define ec_master_unlock(m)             up(&(m)->plat.master_sem)
+#define ec_master_lock_interruptible(m) down_interruptible(&(m)->plat.master_sem)
+#define ec_device_lock(m)               down(&(m)->plat.device_sem)
+#define ec_device_unlock(m)             up(&(m)->plat.device_sem)
+#define ec_device_lock_interruptible(m) down_interruptible(&(m)->plat.device_sem)
+#define ec_scan_lock(m)                 down(&(m)->plat.scan_sem)
+#define ec_scan_unlock(m)               up(&(m)->plat.scan_sem)
+#define ec_config_lock(m)               down(&(m)->plat.config_sem)
+#define ec_config_unlock(m)             up(&(m)->plat.config_sem)
+#define ec_ext_queue_lock(m)            down(&(m)->plat.ext_queue_sem)
+#define ec_ext_queue_unlock(m)          up(&(m)->plat.ext_queue_sem)
+#define ec_ext_queue_trylock(m)         down_trylock(&(m)->plat.ext_queue_sem)
 
 /****************************************************************************/
 /* Time functions */
@@ -209,10 +210,63 @@ typedef struct {
 #endif
 } ec_device_plat_t;
 
+/* Forward declarations for master platform types */
+#include <linux/wait.h>
+#include <linux/kthread.h>
+#include <linux/rtmutex.h>
+#include <linux/workqueue.h>
+#include <linux/irq_work.h>
+#include <linux/cdev.h>
+
+/* Forward declaration */
+struct ec_master;
+
+/** EtherCAT master character device. */
+struct ec_cdev {
+    struct ec_master *master; /**< Master owning the device. */
+    struct cdev cdev;         /**< Character device. */
+};
+typedef struct ec_cdev ec_cdev_t;
+
+#ifdef EC_RTDM
+struct rtdm_device;
+
+/** EtherCAT RTDM device. */
+struct ec_rtdm_dev {
+    struct ec_master *master;    /**< Master pointer. */
+    struct rtdm_device *dev;     /**< RTDM device. */
+};
+typedef struct ec_rtdm_dev ec_rtdm_dev_t;
+#endif
+
 /** Kernel-specific master fields. */
 typedef struct {
-    /* TODO: Platform-specific master fields will be added in future phases */
-    int placeholder;  /* Temporary placeholder to avoid empty struct */
+    ec_cdev_t cdev;                     /**< Master character device. */
+    struct device *class_device;        /**< Master class device. */
+
+#ifdef EC_RTDM
+    ec_rtdm_dev_t rtdm_dev;             /**< RTDM device. */
+#endif
+
+    struct semaphore master_sem;        /**< Master semaphore. */
+    struct semaphore device_sem;        /**< Device semaphore. */
+    struct semaphore scan_sem;          /**< Scan semaphore. */
+    struct semaphore config_sem;        /**< Configuration semaphore. */
+    struct semaphore ext_queue_sem;     /**< External queue semaphore. */
+
+    struct task_struct *thread;         /**< Master thread. */
+    struct rt_mutex io_mutex;           /**< Mutex for I/O operations. */
+
+    wait_queue_head_t scan_queue;       /**< Queue for scan state changes. */
+    wait_queue_head_t config_queue;     /**< Queue for config state changes. */
+    wait_queue_head_t request_queue;    /**< Wait queue for external requests. */
+
+#ifdef EC_EOE
+    struct task_struct *eoe_thread;     /**< EoE thread. */
+#endif
+
+    struct irq_work sc_reset_work_kicker; /**< IRQ work for slave config reset. */
+    struct work_struct sc_reset_work;     /**< Work struct for slave config reset. */
 } ec_master_plat_t;
 
 /****************************************************************************/

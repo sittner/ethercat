@@ -549,9 +549,9 @@ void ecdev_withdraw(ec_device_t *device /**< EtherCAT device */)
 
     EC_MASTER_INFO(master, "Releasing %s device %s.\n", dev_str, mac_str);
 
-    down(&master->device_sem);
+    ec_device_lock(master);
     ec_device_detach(device);
-    up(&master->device_sem);
+    ec_device_unlock(master);
 }
 
 /****************************************************************************/

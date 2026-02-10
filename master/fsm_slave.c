@@ -92,28 +92,28 @@ void ec_fsm_slave_clear(
 
     if (fsm->sdo_request) {
         fsm->sdo_request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&fsm->slave->master->request_queue);
+        wake_up_all(&fsm->slave->master->plat.request_queue);
     }
 
     if (fsm->reg_request) {
         fsm->reg_request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&fsm->slave->master->request_queue);
+        wake_up_all(&fsm->slave->master->plat.request_queue);
     }
 
     if (fsm->foe_request) {
         fsm->foe_request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&fsm->slave->master->request_queue);
+        wake_up_all(&fsm->slave->master->plat.request_queue);
     }
 
     if (fsm->soe_request) {
         fsm->soe_request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&fsm->slave->master->request_queue);
+        wake_up_all(&fsm->slave->master->plat.request_queue);
     }
 
 #ifdef EC_EOE
     if (fsm->eoe_request) {
         fsm->soe_request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&fsm->slave->master->request_queue);
+        wake_up_all(&fsm->slave->master->plat.request_queue);
     }
 #endif
 
@@ -257,7 +257,7 @@ int ec_fsm_slave_action_process_sdo(
         EC_SLAVE_WARN(slave, "Aborting SDO request,"
                 " slave has error flag set.\n");
         request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&slave->master->request_queue);
+        wake_up_all(&slave->master->plat.request_queue);
         fsm->state = ec_fsm_slave_state_idle;
         return 0;
     }
@@ -265,7 +265,7 @@ int ec_fsm_slave_action_process_sdo(
     if (slave->current_state == EC_SLAVE_STATE_INIT) {
         EC_SLAVE_WARN(slave, "Aborting SDO request, slave is in INIT.\n");
         request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&slave->master->request_queue);
+        wake_up_all(&slave->master->plat.request_queue);
         fsm->state = ec_fsm_slave_state_idle;
         return 0;
     }
@@ -302,7 +302,7 @@ void ec_fsm_slave_state_sdo_request(
     if (!ec_fsm_coe_success(&fsm->fsm_coe)) {
         EC_SLAVE_ERR(slave, "Failed to process SDO request.\n");
         request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&slave->master->request_queue);
+        wake_up_all(&slave->master->plat.request_queue);
         fsm->sdo_request = NULL;
         fsm->state = ec_fsm_slave_state_ready;
         return;
@@ -312,7 +312,7 @@ void ec_fsm_slave_state_sdo_request(
 
     // SDO request finished
     request->state = EC_INT_REQUEST_SUCCESS;
-    wake_up_all(&slave->master->request_queue);
+    wake_up_all(&slave->master->plat.request_queue);
     fsm->sdo_request = NULL;
     fsm->state = ec_fsm_slave_state_ready;
 }
@@ -358,7 +358,7 @@ int ec_fsm_slave_action_process_reg(
         EC_SLAVE_WARN(slave, "Aborting register request,"
                 " slave has error flag set.\n");
         fsm->reg_request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&slave->master->request_queue);
+        wake_up_all(&slave->master->plat.request_queue);
         fsm->reg_request = NULL;
         fsm->state = ec_fsm_slave_state_idle;
         return 0;
@@ -409,7 +409,7 @@ void ec_fsm_slave_state_reg_request(
                 " request datagram: ");
         ec_datagram_print_state(fsm->datagram);
         reg->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&slave->master->request_queue);
+        wake_up_all(&slave->master->plat.request_queue);
         fsm->reg_request = NULL;
         fsm->state = ec_fsm_slave_state_ready;
         return;
@@ -430,7 +430,7 @@ void ec_fsm_slave_state_reg_request(
                 fsm->datagram->working_counter);
     }
 
-    wake_up_all(&slave->master->request_queue);
+    wake_up_all(&slave->master->plat.request_queue);
     fsm->reg_request = NULL;
     fsm->state = ec_fsm_slave_state_ready;
 }
@@ -461,7 +461,7 @@ int ec_fsm_slave_action_process_foe(
         EC_SLAVE_WARN(slave, "Aborting FoE request,"
                 " slave has error flag set.\n");
         request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&slave->master->request_queue);
+        wake_up_all(&slave->master->plat.request_queue);
         fsm->state = ec_fsm_slave_state_idle;
         return 0;
     }
@@ -496,7 +496,7 @@ void ec_fsm_slave_state_foe_request(
     if (!ec_fsm_foe_success(&fsm->fsm_foe)) {
         EC_SLAVE_ERR(slave, "Failed to handle FoE request.\n");
         request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&slave->master->request_queue);
+        wake_up_all(&slave->master->plat.request_queue);
         fsm->foe_request = NULL;
         fsm->state = ec_fsm_slave_state_ready;
         return;
@@ -507,7 +507,7 @@ void ec_fsm_slave_state_foe_request(
             " data.\n", request->data_size);
 
     request->state = EC_INT_REQUEST_SUCCESS;
-    wake_up_all(&slave->master->request_queue);
+    wake_up_all(&slave->master->plat.request_queue);
     fsm->foe_request = NULL;
     fsm->state = ec_fsm_slave_state_ready;
 }
@@ -538,7 +538,7 @@ int ec_fsm_slave_action_process_soe(
         EC_SLAVE_WARN(slave, "Aborting SoE request,"
                 " slave has error flag set.\n");
         req->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&slave->master->request_queue);
+        wake_up_all(&slave->master->plat.request_queue);
         fsm->state = ec_fsm_slave_state_idle;
         return 0;
     }
@@ -546,7 +546,7 @@ int ec_fsm_slave_action_process_soe(
     if (slave->current_state == EC_SLAVE_STATE_INIT) {
         EC_SLAVE_WARN(slave, "Aborting SoE request, slave is in INIT.\n");
         req->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&slave->master->request_queue);
+        wake_up_all(&slave->master->plat.request_queue);
         fsm->state = ec_fsm_slave_state_idle;
         return 0;
     }
@@ -583,7 +583,7 @@ void ec_fsm_slave_state_soe_request(
     if (!ec_fsm_soe_success(&fsm->fsm_soe)) {
         EC_SLAVE_ERR(slave, "Failed to process SoE request.\n");
         request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&slave->master->request_queue);
+        wake_up_all(&slave->master->plat.request_queue);
         fsm->soe_request = NULL;
         fsm->state = ec_fsm_slave_state_ready;
         return;
@@ -593,7 +593,7 @@ void ec_fsm_slave_state_soe_request(
 
     // SoE request finished
     request->state = EC_INT_REQUEST_SUCCESS;
-    wake_up_all(&slave->master->request_queue);
+    wake_up_all(&slave->master->plat.request_queue);
     fsm->soe_request = NULL;
     fsm->state = ec_fsm_slave_state_ready;
 }
@@ -625,7 +625,7 @@ int ec_fsm_slave_action_process_eoe(
         EC_SLAVE_WARN(slave, "Aborting EoE request,"
                 " slave has error flag set.\n");
         request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&slave->master->request_queue);
+        wake_up_all(&slave->master->plat.request_queue);
         fsm->state = ec_fsm_slave_state_idle;
         return 0;
     }
@@ -633,7 +633,7 @@ int ec_fsm_slave_action_process_eoe(
     if (slave->current_state == EC_SLAVE_STATE_INIT) {
         EC_SLAVE_WARN(slave, "Aborting EoE request, slave is in INIT.\n");
         request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&slave->master->request_queue);
+        wake_up_all(&slave->master->plat.request_queue);
         fsm->state = ec_fsm_slave_state_idle;
         return 0;
     }
@@ -676,7 +676,7 @@ void ec_fsm_slave_state_eoe_request(
         EC_SLAVE_ERR(slave, "Failed to process EoE request.\n");
 	}
 
-    wake_up_all(&slave->master->request_queue);
+    wake_up_all(&slave->master->plat.request_queue);
     fsm->eoe_request = NULL;
     fsm->state = ec_fsm_slave_state_ready;
 }
