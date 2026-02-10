@@ -307,14 +307,13 @@ int ec_eoe_send(ec_eoe_t *eoe /**< EoE handler */)
 #if EOE_DEBUG_LEVEL >= 3
     EC_SLAVE_DBG(eoe->slave, 0, "");
     for (i = 0; i < current_size; i++) {
-        printk(KERN_CONT "%02X ",
-                eoe->tx_frame->skb->data[eoe->tx_offset + i]);
+        EC_PRINT("%02X ", eoe->tx_frame->skb->data[eoe->tx_offset + i]);
         if ((i + 1) % 16 == 0) {
-            printk(KERN_CONT "\n");
+            EC_PRINT("\n");
             EC_SLAVE_DBG(eoe->slave, 0, "");
         }
     }
-    printk(KERN_CONT "\n");
+    EC_PRINT("\n");
 #endif
 
     data = ec_slave_mbox_prepare_send(eoe->slave, &eoe->datagram,
@@ -353,12 +352,12 @@ void ec_eoe_run(ec_eoe_t *eoe /**< EoE handler */)
     eoe->state(eoe);
 
     // update statistics
-    if (jiffies - eoe->rate_jiffies > HZ) {
+    if (ec_pal_jiffies() - eoe->rate_jiffies > ec_pal_hz()) {
         eoe->rx_rate = eoe->rx_counter;
         eoe->tx_rate = eoe->tx_counter;
         eoe->rx_counter = 0;
         eoe->tx_counter = 0;
-        eoe->rate_jiffies = jiffies;
+        eoe->rate_jiffies = ec_pal_jiffies();
     }
 
     ec_datagram_output_stats(&eoe->datagram);
@@ -540,13 +539,13 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
 #if EOE_DEBUG_LEVEL >= 3
     EC_SLAVE_DBG(eoe->slave, 0, "");
     for (i = 0; i < rec_size - 4; i++) {
-        printk(KERN_CONT "%02X ", data[i + 4]);
+        EC_PRINT("%02X ", data[i + 4]);
         if ((i + 1) % 16 == 0) {
-            printk(KERN_CONT "\n");
+            EC_PRINT("\n");
             EC_SLAVE_DBG(eoe->slave, 0, "");
         }
     }
-    printk(KERN_CONT "\n");
+    EC_PRINT("\n");
 #endif
 
     data_size = time_appended ? rec_size - 8 : rec_size - 4;

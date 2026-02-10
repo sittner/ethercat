@@ -25,8 +25,7 @@
 
 /****************************************************************************/
 
-#include <linux/slab.h>
-
+#include "globals_int.h"
 #include "flag.h"
 
 /****************************************************************************/
@@ -43,7 +42,7 @@ int ec_flag_init(
         return -EINVAL;
     }
 
-    if (!(flag->key = (uint8_t *) kmalloc(strlen(key) + 1, GFP_KERNEL))) {
+    if (!(flag->key = (uint8_t *) ec_pal_malloc(strlen(key) + 1))) {
         return -ENOMEM;
     }
 
@@ -61,7 +60,7 @@ void ec_flag_clear(
         )
 {
     if (flag->key) {
-        kfree(flag->key);
+        ec_pal_free(flag->key);
         flag->key = NULL;
     }
 }
