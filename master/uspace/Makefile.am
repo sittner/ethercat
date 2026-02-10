@@ -73,7 +73,7 @@ EXTRA_DIST = \
 # Userspace master daemon
 bin_PROGRAMS = ec_master
 
-ec_master_SOURCES = ethercat_master.c
+ec_master_SOURCES = ec_master.c
 
 ec_master_CFLAGS = \
 	-I$(top_srcdir)/include \
