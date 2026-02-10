@@ -60,7 +60,7 @@ master/.*.cmd
 master/uspace/*.o
 master/uspace/*.lo
 master/uspace/.libs/
-master/uspace/.deps/
+master/uspace/**/.deps/
 master/uspace/transport/*.o
 master/uspace/transport/*.lo
 
