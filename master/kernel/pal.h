@@ -52,6 +52,7 @@
 #define ec_pal_zalloc(size)         kzalloc(size, GFP_KERNEL)
 #define ec_pal_free(ptr)            kfree(ptr)
 #define ec_pal_malloc_atomic(size)  kmalloc(size, GFP_ATOMIC)
+#define ec_pal_strdup(s)            kstrdup(s, GFP_KERNEL)
 
 /****************************************************************************/
 /* Spinlocks */
@@ -85,6 +86,21 @@
 #define ec_pal_sem_down(sem)        down(sem)
 #define ec_pal_sem_up(sem)          up(sem)
 #define ec_pal_sem_trydown(sem)     down_trylock(sem)
+
+/****************************************************************************/
+/* Master locking (convenience macros for master semaphores) */
+/****************************************************************************/
+
+#define ec_master_lock(m)           down(&(m)->master_sem)
+#define ec_master_unlock(m)         up(&(m)->master_sem)
+#define ec_device_lock(m)           down(&(m)->device_sem)
+#define ec_device_unlock(m)         up(&(m)->device_sem)
+#define ec_scan_lock(m)             down(&(m)->scan_sem)
+#define ec_scan_unlock(m)           up(&(m)->scan_sem)
+#define ec_config_lock(m)           down(&(m)->config_sem)
+#define ec_config_unlock(m)         up(&(m)->config_sem)
+#define ec_ext_queue_lock(m)        down(&(m)->ext_queue_sem)
+#define ec_ext_queue_unlock(m)      up(&(m)->ext_queue_sem)
 
 /****************************************************************************/
 /* Time functions */
