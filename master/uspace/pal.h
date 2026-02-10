@@ -44,6 +44,7 @@
 #include <sys/time.h>
 #include <stdio.h>
 #include <stdatomic.h>
+#include <errno.h>
 #include "uspace/list.h"
 
 /****************************************************************************/
