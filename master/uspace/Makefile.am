@@ -37,7 +37,8 @@ SHARED_SOURCES = \
 # Userspace-specific sources (in current directory)
 USPACE_SOURCES = \
 	pal.c \
-	device.c
+	device.c \
+	master_main.c
 
 # Transport layer sources
 TRANSPORT_SOURCES = \
