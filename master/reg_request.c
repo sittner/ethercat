@@ -26,7 +26,6 @@
 /****************************************************************************/
 
 #include <linux/module.h>
-#include <linux/slab.h>
 
 #include "reg_request.h"
 #include "globals_int.h"
@@ -42,7 +41,7 @@ int ec_reg_request_init(
         size_t size /**< Memory size. */
         )
 {
-    if (!(reg->data = (uint8_t *) kmalloc(size, GFP_KERNEL))) {
+    if (!(reg->data = (uint8_t *) ec_pal_malloc(size))) {
         EC_ERR("Failed to allocate %zu bytes of register memory.\n", size);
         return -ENOMEM;
     }
@@ -67,7 +66,7 @@ void ec_reg_request_clear(
         )
 {
     if (reg->data) {
-        kfree(reg->data);
+        ec_pal_free(reg->data);
     }
 }
 

@@ -26,9 +26,7 @@
 
 /****************************************************************************/
 
-#include <linux/slab.h>
-#include <linux/delay.h>
-
+#include "globals_int.h"
 #include "mailbox.h"
 #include "datagram.h"
 #include "master.h"
@@ -182,13 +180,13 @@ uint8_t *ec_slave_mbox_fetch(const ec_slave_t *slave, /**< slave */
         for (mbox_msg = mbox_error_messages; mbox_msg->code; mbox_msg++) {
             if (mbox_msg->code != code)
                 continue;
-            printk(KERN_CONT "Code 0x%04X: \"%s\".\n",
+            EC_PRINT("Code 0x%04X: \"%s\".\n",
                     mbox_msg->code, mbox_msg->message);
             break;
         }
 
         if (!mbox_msg->code) {
-            printk(KERN_CONT "Unknown error reply code 0x%04X.\n", code);
+            EC_PRINT("Unknown error reply code 0x%04X.\n", code);
         }
 
         if (slave->master->debug_level)
