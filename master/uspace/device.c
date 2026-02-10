@@ -50,16 +50,20 @@
 struct ec_master;
 typedef struct ec_master ec_master_t;
 
+/* Receive processing function (implemented in master_main.c) */
+void ec_master_receive_datagrams(ec_master_t *, ec_device_t *,
+        const uint8_t *, size_t);
+
+/* Device attach/detach functions */
+void ec_device_attach(ec_device_t *device, ec_transport_t *transport);
+void ec_device_detach(ec_device_t *device);
+
 /* Rate measurement intervals (matching master.c) */
 const unsigned int rate_intervals[] = {
     1000,      /* 1 second (1000 ms) */
     1000 * 3,  /* 3 seconds */
     1000 * 60  /* 60 seconds */
 };
-
-/* Device attach/detach functions */
-void ec_device_attach(ec_device_t *device, ec_transport_t *transport);
-void ec_device_detach(ec_device_t *device);
 
 /****************************************************************************/
 
@@ -317,11 +321,14 @@ void ec_device_poll(
     /* Non-blocking receive */
     ret = ec_transport_receive(device->plat.transport, rx_buffer, sizeof(rx_buffer));
     if (ret > 0) {
-        /* TODO: Pass data to master - transport layer handles Ethernet header
-         * This requires the master implementation to be present in userspace.
-         * For now, just update statistics.
+        /* Pass data to master for processing 
+         * The transport layer returns the full frame including Ethernet header,
+         * so we need to skip ETH_HLEN (14 bytes) to get to EtherCAT data
          */
-        /* ec_master_receive_datagrams(device->master, device, rx_buffer, ret); */
+        if (ret > ETH_HLEN) {
+            ec_master_receive_datagrams(device->master, device, 
+                                       rx_buffer + ETH_HLEN, ret - ETH_HLEN);
+        }
         device->rx_count++;
         device->rx_bytes += ret;
     }
