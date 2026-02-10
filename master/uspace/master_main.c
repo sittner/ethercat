@@ -62,7 +62,7 @@ typedef enum {
 /* FSM state variables */
 static ec_fsm_master_state_t fsm_state = EC_FSM_MASTER_START;
 static unsigned long last_scan_jiffies = 0;
-static unsigned int last_slave_count = 0;
+static unsigned int last_slave_count = 0xFFFFFFFF;  /* Sentinel value */
 
 /* FSM functions for userspace */
 void ec_fsm_master_init(
@@ -77,7 +77,7 @@ void ec_fsm_master_init(
     /* Reset FSM state */
     fsm_state = EC_FSM_MASTER_START;
     last_scan_jiffies = 0;
-    last_slave_count = 0;
+    last_slave_count = 0xFFFFFFFF;  /* Sentinel value */
 }
 
 void ec_fsm_master_clear(
@@ -88,7 +88,7 @@ void ec_fsm_master_clear(
     /* Reset state variables */
     fsm_state = EC_FSM_MASTER_START;
     last_scan_jiffies = 0;
-    last_slave_count = 0;
+    last_slave_count = 0xFFFFFFFF;  /* Sentinel value */
 }
 
 int ec_fsm_master_exec(
@@ -102,7 +102,7 @@ int ec_fsm_master_exec(
     switch (fsm_state) {
     case EC_FSM_MASTER_START:
         /* Start a broadcast read every ~1 second */
-        if (now - last_scan_jiffies < ec_pal_hz()) {
+        if (last_scan_jiffies != 0 && now - last_scan_jiffies < ec_pal_hz()) {
             return 0;  /* Not time yet */
         }
         last_scan_jiffies = now;
@@ -132,7 +132,11 @@ int ec_fsm_master_exec(
         } else if (datagram->state == EC_DATAGRAM_TIMED_OUT ||
                    datagram->state == EC_DATAGRAM_ERROR) {
             /* Timeout or error - retry */
-            if (last_slave_count != 0) {
+            if (last_slave_count != 0 && last_slave_count != 0xFFFFFFFF) {
+                EC_MASTER_INFO(master, "0 slave(s) responding on main device.\n");
+                last_slave_count = 0;
+            } else if (last_slave_count == 0xFFFFFFFF) {
+                /* First scan, report 0 slaves */
                 EC_MASTER_INFO(master, "0 slave(s) responding on main device.\n");
                 last_slave_count = 0;
             }
@@ -266,6 +270,9 @@ void ec_master_queue_datagram(
     /* Simple implementation - add to queue */
     if (list_empty(&datagram->queue)) {
         list_add_tail(&datagram->queue, &master->datagram_queue);
+        if (datagram->state == EC_DATAGRAM_INIT) {
+            datagram->state = EC_DATAGRAM_QUEUED;
+        }
     }
 }
 
@@ -281,13 +288,17 @@ int ecrt_master_send(
     
     /* Simple implementation - send each datagram in its own frame */
     list_for_each_entry_safe(datagram, next, &master->datagram_queue, queue) {
-        /* Remove from queue */
-        list_del_init(&datagram->queue);
+        /* Only send datagrams that are queued but not yet sent */
+        if (datagram->state != EC_DATAGRAM_QUEUED && 
+            datagram->state != EC_DATAGRAM_INIT) {
+            continue;
+        }
         
         /* Get transmit buffer */
         frame_data = ec_device_tx_data(&master->devices[EC_DEVICE_MAIN]);
         if (!frame_data) {
             datagram->state = EC_DATAGRAM_ERROR;
+            list_del_init(&datagram->queue);
             continue;
         }
         
@@ -319,6 +330,7 @@ int ecrt_master_send(
         
         datagram->state = EC_DATAGRAM_SENT;
         datagram->jiffies_sent = ec_pal_jiffies();
+        /* Keep datagram in queue until received or timed out */
     }
     
     return 0;
@@ -333,6 +345,34 @@ void ec_master_output_stats(
     /* Statistics output - simplified for userspace */
     /* Could be expanded later for periodic logging */
     (void)master;
+}
+
+/** Check for datagram timeouts.
+ *
+ * Checks all queued datagrams and marks timed-out ones.
+ */
+void ec_master_check_timeouts(
+        ec_master_t *master
+        )
+{
+    ec_datagram_t *datagram;
+    unsigned long now = ec_pal_jiffies();
+    /* Use a reasonable timeout: 10ms (10000 microseconds) */
+    unsigned long timeout_jiffies = (10000UL * ec_pal_hz()) / 1000000UL;
+    
+    /* Ensure minimum timeout of 1 jiffy */
+    if (timeout_jiffies < 1) {
+        timeout_jiffies = 1;
+    }
+    
+    list_for_each_entry(datagram, &master->datagram_queue, queue) {
+        if (datagram->state == EC_DATAGRAM_SENT) {
+            if (ec_pal_time_after(now, datagram->jiffies_sent + timeout_jiffies)) {
+                datagram->state = EC_DATAGRAM_TIMED_OUT;
+                list_del_init(&datagram->queue);
+            }
+        }
+    }
 }
 
 /** Clear all slaves.
@@ -527,6 +567,9 @@ void ecrt_master_idle(unsigned int master_index)
 
     /* Receive any pending frames */
     ec_device_poll(&master->devices[EC_DEVICE_MAIN]);
+
+    /* Check for datagram timeouts */
+    ec_master_check_timeouts(master);
 
     /* Execute master FSM (handles scanning, etc.) */
     if (ec_fsm_master_exec(&master->fsm)) {
