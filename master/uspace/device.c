@@ -77,6 +77,7 @@ int ec_device_init(
     device->open = 0;
     device->link_state = 0;
     device->plat.jiffies_poll = 0;
+    device->plat.last_link_check = 0;
 
     ec_device_clear_stats(device);
 
@@ -295,7 +296,6 @@ void ec_device_poll(
     uint8_t rx_buffer[ETH_FRAME_LEN];
     int ret;
     int link_state;
-    static uint64_t last_link_check = 0;
     uint64_t now;
 
     if (!device->plat.transport) {
@@ -306,12 +306,12 @@ void ec_device_poll(
     device->plat.jiffies_poll = now;
 
     /* Update link state periodically (every second) */
-    if (ec_pal_time_after(now, last_link_check + ec_pal_hz())) {
+    if (ec_pal_time_after(now, device->plat.last_link_check + ec_pal_hz())) {
         link_state = ec_transport_get_link_state(device->plat.transport);
         if (link_state >= 0) {
             device->link_state = (link_state != 0);
         }
-        last_link_check = now;
+        device->plat.last_link_check = now;
     }
 
     /* Non-blocking receive */
@@ -337,7 +337,7 @@ void ec_device_clear_stats(
 {
     unsigned int i;
 
-    // zero frame statistics
+    /* zero frame statistics */
     device->tx_count = 0;
     device->last_tx_count = 0;
     device->rx_count = 0;
