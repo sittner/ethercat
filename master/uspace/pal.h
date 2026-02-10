@@ -125,13 +125,8 @@ static inline int ec_pal_sem_down_interruptible_impl(sem_t *sem) {
             }
             /* Brief sleep to avoid busy-wait, allows signal delivery */
             usleep(1000);  /* 1ms */
-        } else if (errno == EINTR) {
-            /* Interrupted by signal */
-            if (!ec_pal_is_running()) {
-                return -EINTR;
-            }
-            /* Continue waiting */
         } else {
+            /* Other error occurred */
             return -errno;
         }
     }
@@ -143,6 +138,10 @@ static inline int ec_pal_sem_down_interruptible_impl(sem_t *sem) {
 /****************************************************************************/
 /* Wait queues (using condition variables) */
 /****************************************************************************/
+
+/* Timeout constants for signal-aware wait operations */
+#define EC_PAL_WAIT_TIMEOUT_NS 10000000   /* 10ms timeout in nanoseconds */
+#define NSEC_PER_SEC 1000000000           /* Nanoseconds per second */
 
 typedef struct {
     pthread_cond_t cond;
@@ -193,10 +192,10 @@ static inline void ec_pal_wake_up_all(ec_pal_wait_queue_t *wq) {
         pthread_mutex_lock(&(wq)->mutex); \
         while (!(cond) && ec_pal_is_running()) { \
             clock_gettime(CLOCK_REALTIME, &__ts); \
-            __ts.tv_nsec += 10000000; /* 10ms timeout */ \
-            if (__ts.tv_nsec >= 1000000000) { \
+            __ts.tv_nsec += EC_PAL_WAIT_TIMEOUT_NS; \
+            if (__ts.tv_nsec >= NSEC_PER_SEC) { \
                 __ts.tv_sec++; \
-                __ts.tv_nsec -= 1000000000; \
+                __ts.tv_nsec -= NSEC_PER_SEC; \
             } \
             pthread_cond_timedwait(&(wq)->cond, &(wq)->mutex, &__ts); \
         } \
