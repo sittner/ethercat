@@ -1056,10 +1056,6 @@ ethercat/
 └── include/
     └── ecrt.h                # Unchanged: public API
 ```
-│       └── bench_cpu.c       # CPU utilization measurement
-└── include/
-    └── ecrt.h                # Unchanged: public API
-```
 
 ### Files NOT Shared (Kernel-Only)
 
