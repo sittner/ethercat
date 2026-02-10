@@ -211,7 +211,7 @@ typedef struct {
 #define ERR_PTR(error) ((void *)((long)(error)))
 #define PTR_ERR(ptr) ((long)(ptr))
 #define IS_ERR(ptr) IS_ERR_VALUE((unsigned long)(ptr))
-#define IS_ERR_OR_NULL(ptr) (!ptr || IS_ERR(ptr))
+#define IS_ERR_OR_NULL(ptr) (!(ptr) || IS_ERR(ptr))
 
 /****************************************************************************/
 
