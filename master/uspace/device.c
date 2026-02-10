@@ -42,6 +42,7 @@
 #include "pal.h"
 #include "device.h"
 #include "globals.h"
+#include "master.h"
 #include "transport/ec_transport.h"
 
 /****************************************************************************/
@@ -82,6 +83,7 @@ int ec_device_init(
     device->link_state = 0;
     device->plat.jiffies_poll = 0;
     device->plat.last_link_check = 0;
+    device->plat.last_link_state = -1;  /* Unknown */
 
     ec_device_clear_stats(device);
 
@@ -313,7 +315,20 @@ void ec_device_poll(
     if (ec_pal_time_after(now, device->plat.last_link_check + ec_pal_hz())) {
         link_state = ec_transport_get_link_state(device->plat.transport);
         if (link_state >= 0) {
-            device->link_state = (link_state != 0);
+            int link_up = (link_state != 0);
+            
+            /* Log link state changes (skip initial state). */
+            if (device->plat.last_link_state >= 0 && 
+                link_up != device->plat.last_link_state) {
+                if (link_up) {
+                    EC_MASTER_INFO(device->master, "Link is UP\n");
+                } else {
+                    EC_MASTER_INFO(device->master, "Link is DOWN\n");
+                }
+            }
+            
+            device->link_state = link_up;
+            device->plat.last_link_state = link_up;
         }
         device->plat.last_link_check = now;
     }
