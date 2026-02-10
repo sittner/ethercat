@@ -19,17 +19,30 @@
 #
 #-----------------------------------------------------------------------------
 
-include $(top_srcdir)/Makefile.kbuild
+# Kernel build rules for master/kernel subdirectory
+# Note: We don't include Makefile.kbuild here because we need custom rules
+# that point to the kernel/ subdirectory instead of the current directory.
+KBUILD_KERNEL = $(MAKE) -C "$(LINUX_SOURCE_DIR)" M="$(abs_builddir)/kernel" INSTALL_MOD_DIR="$(INSTALL_MOD_DIR)"
 
-# Override module build directory to point to kernel/ subdirectory
 modules:
-	+$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="$(abs_builddir)/kernel" INSTALL_MOD_DIR="$(INSTALL_MOD_DIR)" modules
+	+$(KBUILD_KERNEL) modules
 
 modules_install:
-	+$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="$(abs_builddir)/kernel" INSTALL_MOD_DIR="$(INSTALL_MOD_DIR)" modules_install
+	+$(KBUILD_KERNEL) modules_install
+
+# Override default `clean` target to call Kbuild clean *before* automake
+# `clean` (see #5 for the rationale).
+clean: kbuild-clean
+	@if test -z "$(SUBDIRS)"; then \
+	  $(MAKE) $(AM_MAKEFLAGS) clean-am ; \
+	else \
+	  $(MAKE) $(AM_MAKEFLAGS) clean-recursive ; \
+	fi
 
 kbuild-clean:
-	$(MAKE) -C "$(LINUX_SOURCE_DIR)" M="$(abs_builddir)/kernel" INSTALL_MOD_DIR="$(INSTALL_MOD_DIR)" clean
+	$(KBUILD_KERNEL) clean
+
+.PHONY: kbuild-clean
 
 if ENABLE_USERSPACE
 SUBDIRS = uspace
