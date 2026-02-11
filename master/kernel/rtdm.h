@@ -25,7 +25,7 @@
 #ifndef __EC_RTDM_H__
 #define __EC_RTDM_H__
 
-#include "../include/ecrt.h" /* ec_master_t */
+#include "../../include/ecrt.h" /* ec_master_t */
 
 /****************************************************************************/
 

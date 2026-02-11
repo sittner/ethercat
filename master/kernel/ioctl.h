@@ -30,7 +30,7 @@
 
 #include <linux/ioctl.h>
 
-#include "globals.h"
+#include "../globals.h"
 
 /****************************************************************************/
 

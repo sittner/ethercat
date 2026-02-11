@@ -30,8 +30,8 @@
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 
-#include "globals.h"
-#include "master.h"
+#include "../globals.h"
+#include "../master.h"
 #include "debug.h"
 
 /****************************************************************************/
