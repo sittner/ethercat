@@ -29,8 +29,6 @@
 #ifndef __EC_EOE_REQUEST_H__
 #define __EC_EOE_REQUEST_H__
 
-#include <linux/etherdevice.h> // ETH_ALEN
-
 #include "pal.h"
 
 #include "globals.h"

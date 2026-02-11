@@ -38,10 +38,6 @@
 #include "datagram.h"
 
 #ifdef EC_EOE
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
-#include <uapi/linux/sched/types.h> // struct sched_param
-#include <linux/sched/types.h> // sched_setscheduler
-#endif
 #include "ethernet.h"
 #endif
 
