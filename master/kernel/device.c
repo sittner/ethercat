@@ -32,7 +32,7 @@
 #include <linux/netdevice.h>
 
 #include "device.h"
-#include "../master.h"
+#include "master.h"
 
 #ifdef EC_DEBUG_RING
 #define timersub(a, b, result) \

@@ -29,8 +29,8 @@
 #include <linux/device.h>
 #include <linux/err.h>
 
-#include "../globals.h"
-#include "../master.h"
+#include "globals.h"
+#include "master.h"
 #include "device.h"
 
 /****************************************************************************/

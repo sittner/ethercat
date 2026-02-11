@@ -29,7 +29,7 @@
 #include <linux/mman.h>
 
 
-#include "../master.h"
+#include "master.h"
 #include "ioctl.h"
 #include "rtdm.h"
 #include "rtdm_details.h"

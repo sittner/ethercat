@@ -28,7 +28,7 @@
 #include <linux/vmalloc.h>
 #include <rtdm/driver.h>
 
-#include "../master.h"
+#include "master.h"
 #include "ioctl.h"
 #include "rtdm.h"
 #include "rtdm_details.h"

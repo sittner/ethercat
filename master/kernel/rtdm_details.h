@@ -21,7 +21,7 @@
 #ifndef __EC_RTDM_DETAILS_H__
 #define __EC_RTDM_DETAILS_H__
 
-#include "../config.h"
+#include "config.h"
 #include "ioctl.h"
 
 #include <linux/kernel.h>

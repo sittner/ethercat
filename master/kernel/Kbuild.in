@@ -24,7 +24,7 @@
 #-----------------------------------------------------------------------------
 
 src := @abs_srcdir@
-ccflags-y := -I@abs_top_builddir@ -I$(src)/..
+ccflags-y := -I@abs_top_builddir@ -I$(src)/.. -I@abs_top_srcdir@/devices -I@abs_top_srcdir@/include
 
 obj-m := ec_master.o
 
