@@ -1,0 +1,211 @@
+/******************************************************************************
+ *
+ *  Copyright (C) 2006-2024  Florian Pose, Ingenieurgemeinschaft IgH
+ *
+ *  This file is part of the IgH EtherCAT Master.
+ *
+ *  The IgH EtherCAT Master is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU General Public License version 2, as
+ *  published by the Free Software Foundation.
+ *
+ *  The IgH EtherCAT Master is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General
+ *  Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License along
+ *  with the IgH EtherCAT Master; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+ *
+ *****************************************************************************/
+
+/**
+ * \file
+ * EtherCAT transport layer interface for userspace implementations.
+ */
+
+#ifndef __EC_TRANSPORT_H__
+#define __EC_TRANSPORT_H__
+
+#include <stddef.h>
+#include <stdint.h>
+
+/****************************************************************************/
+
+/** EtherCAT ethertype */
+#define EC_TRANSPORT_ETHERTYPE 0x88A4
+
+/** Maximum frame size (Ethernet MTU) */
+#define EC_TRANSPORT_MAX_FRAME_SIZE 1518
+
+/****************************************************************************/
+
+/** Transport type enumeration */
+typedef enum {
+    EC_TRANSPORT_RAW,   /**< AF_PACKET raw socket */
+    EC_TRANSPORT_XDP,   /**< AF_XDP */
+} ec_transport_type_t;
+
+/****************************************************************************/
+
+/* Forward declarations */
+typedef struct ec_transport ec_transport_t;
+typedef struct ec_transport_ops ec_transport_ops_t;
+
+/****************************************************************************/
+
+/**
+ * Transport operations structure.
+ * 
+ * Defines the interface that each transport implementation must provide.
+ */
+struct ec_transport_ops {
+    const char *name;  /**< Transport name for logging */
+    
+    /** Open transport on interface */
+    int (*open)(ec_transport_t *transport, const char *interface);
+    
+    /** Close transport */
+    void (*close)(ec_transport_t *transport);
+    
+    /** Get TX buffer pointer */
+    uint8_t *(*get_tx_buffer)(ec_transport_t *transport);
+    
+    /** Send frame */
+    int (*send)(ec_transport_t *transport, size_t size);
+    
+    /** Receive frame (non-blocking) */
+    int (*receive)(ec_transport_t *transport, uint8_t *buffer, size_t max_size);
+    
+    /** Get link state (1 = up, 0 = down) */
+    int (*get_link_state)(ec_transport_t *transport);
+    
+    /** Get MAC address */
+    int (*get_mac)(ec_transport_t *transport, uint8_t mac[6]);
+    
+    /** Get file descriptor for polling (optional, returns -1 if not supported) */
+    int (*get_fd)(ec_transport_t *transport);
+};
+
+/****************************************************************************/
+
+/**
+ * Transport instance structure.
+ */
+struct ec_transport {
+    const ec_transport_ops_t *ops;  /**< Operations table */
+    void *priv;                     /**< Private transport data */
+    char interface[16];             /**< Interface name */
+    uint8_t tx_buffer[EC_TRANSPORT_MAX_FRAME_SIZE];  /**< TX buffer */
+};
+
+/****************************************************************************/
+
+/**
+ * Create a transport instance.
+ * 
+ * @param type Transport type
+ * @return Transport instance or NULL on error
+ */
+ec_transport_t *ec_transport_create(ec_transport_type_t type);
+
+/**
+ * Destroy a transport instance.
+ * 
+ * @param transport Transport instance
+ */
+void ec_transport_destroy(ec_transport_t *transport);
+
+/**
+ * Open transport on network interface.
+ * 
+ * @param transport Transport instance
+ * @param interface Network interface name (e.g., "eth0")
+ * @return 0 on success, negative error code on failure
+ */
+int ec_transport_open(ec_transport_t *transport, const char *interface);
+
+/**
+ * Close transport.
+ * 
+ * @param transport Transport instance
+ */
+void ec_transport_close(ec_transport_t *transport);
+
+/**
+ * Get TX buffer pointer.
+ * 
+ * @param transport Transport instance
+ * @return Pointer to TX buffer
+ */
+uint8_t *ec_transport_get_tx_buffer(ec_transport_t *transport);
+
+/**
+ * Send frame.
+ * 
+ * @param transport Transport instance
+ * @param size Frame size in bytes
+ * @return 0 on success, negative error code on failure
+ */
+int ec_transport_send(ec_transport_t *transport, size_t size);
+
+/**
+ * Receive frame (non-blocking).
+ * 
+ * @param transport Transport instance
+ * @param buffer Buffer to receive frame into
+ * @param max_size Maximum buffer size
+ * @return Number of bytes received, 0 if no data available, negative error code on failure
+ */
+int ec_transport_receive(ec_transport_t *transport, uint8_t *buffer, size_t max_size);
+
+/**
+ * Get link state.
+ * 
+ * @param transport Transport instance
+ * @return 1 if link is up, 0 if down, negative error code on failure
+ */
+int ec_transport_get_link_state(ec_transport_t *transport);
+
+/**
+ * Get MAC address.
+ * 
+ * @param transport Transport instance
+ * @param mac Buffer to receive MAC address (6 bytes)
+ * @return 0 on success, negative error code on failure
+ */
+int ec_transport_get_mac(ec_transport_t *transport, uint8_t mac[6]);
+
+/**
+ * Get file descriptor for polling.
+ * 
+ * @param transport Transport instance
+ * @return File descriptor or -1 if not supported
+ */
+int ec_transport_get_fd(ec_transport_t *transport);
+
+/**
+ * Check if a transport type is available.
+ * 
+ * @param type Transport type
+ * @return 1 if available, 0 otherwise
+ */
+int ec_transport_available(ec_transport_type_t type);
+
+/**
+ * Get the name of a transport type.
+ * 
+ * @param type Transport type
+ * @return Transport type name string, or "unknown" if invalid
+ */
+const char *ec_transport_type_name(ec_transport_type_t type);
+
+/****************************************************************************/
+
+/* Transport operation tables (implemented by each transport) */
+extern const ec_transport_ops_t ec_transport_raw_ops;
+extern const ec_transport_ops_t ec_transport_xdp_ops;
+
+/****************************************************************************/
+
+#endif /* __EC_TRANSPORT_H__ */
