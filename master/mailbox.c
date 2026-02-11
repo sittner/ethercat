@@ -26,8 +26,8 @@
 
 /****************************************************************************/
 
-#include <linux/slab.h>
-#include <linux/delay.h>
+
+#include "pal.h"
 
 #include "mailbox.h"
 #include "datagram.h"

@@ -29,8 +29,8 @@
 #ifndef __EC_CDEV_H__
 #define __EC_CDEV_H__
 
-#include <linux/fs.h>
-#include <linux/cdev.h>
+
+#include "pal.h"
 
 #include "../globals.h"
 

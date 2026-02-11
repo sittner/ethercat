@@ -29,7 +29,8 @@
 #ifndef __EC_SDO_H__
 #define __EC_SDO_H__
 
-#include <linux/list.h>
+
+#include "pal.h"
 
 #include "globals.h"
 #include "sdo_entry.h"

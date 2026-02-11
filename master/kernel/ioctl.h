@@ -28,7 +28,8 @@
 #ifndef __EC_IOCTL_H__
 #define __EC_IOCTL_H__
 
-#include <linux/ioctl.h>
+
+#include "pal.h"
 
 #include "../globals.h"
 

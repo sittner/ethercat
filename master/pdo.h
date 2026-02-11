@@ -29,7 +29,8 @@
 #ifndef __EC_PDO_H__
 #define __EC_PDO_H__
 
-#include <linux/list.h>
+
+#include "pal.h"
 
 #include "globals.h"
 #include "pdo_entry.h"

@@ -26,9 +26,8 @@
 
 /****************************************************************************/
 
-#include <linux/version.h>
-#include <linux/netdevice.h>
-#include <linux/etherdevice.h>
+
+#include "pal.h"
 
 #include "../globals.h"
 #include "../master.h"

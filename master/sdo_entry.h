@@ -29,8 +29,8 @@
 #ifndef __EC_SDO_ENTRY_H__
 #define __EC_SDO_ENTRY_H__
 
-#include <linux/list.h>
-#include <linux/kobject.h>
+
+#include "pal.h"
 
 #include "globals.h"
 

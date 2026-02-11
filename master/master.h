@@ -29,14 +29,8 @@
 #ifndef __EC_MASTER_H__
 #define __EC_MASTER_H__
 
-#include <linux/version.h>
-#include <linux/irq_work.h>
-#include <linux/list.h>
-#include <linux/timer.h>
-#include <linux/wait.h>
-#include <linux/kthread.h>
-#include <linux/rtmutex.h>
-#include <linux/workqueue.h>
+
+#include "pal.h"
 
 #include "device.h"
 #include "domain.h"

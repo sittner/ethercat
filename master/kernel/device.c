@@ -26,10 +26,8 @@
 
 /****************************************************************************/
 
-#include <linux/module.h>
-#include <linux/skbuff.h>
-#include <linux/if_ether.h>
-#include <linux/netdevice.h>
+
+#include "pal.h"
 
 #include "device.h"
 #include "../master.h"

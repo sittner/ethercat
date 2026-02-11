@@ -26,11 +26,8 @@
 
 /****************************************************************************/
 
-#include <linux/version.h>
-#include <linux/netdevice.h>
-#include <linux/etherdevice.h>
-#include <linux/lockdep.h>
-#include <linux/skbuff.h>
+
+#include "pal.h"
 
 #include "globals.h"
 #include "master.h"
@@ -39,7 +36,6 @@
 #include "ethernet.h"
 
 #if defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
-#include <linux/suse_version.h>
 #else
 #  ifndef SUSE_VERSION
 #    define SUSE_VERSION 0

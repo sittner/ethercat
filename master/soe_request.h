@@ -29,7 +29,8 @@
 #ifndef __EC_SOE_REQUEST_H__
 #define __EC_SOE_REQUEST_H__
 
-#include <linux/list.h>
+
+#include "pal.h"
 
 #include "globals.h"
 

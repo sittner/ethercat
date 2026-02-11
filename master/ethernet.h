@@ -29,8 +29,8 @@
 #ifndef __EC_ETHERNET_H__
 #define __EC_ETHERNET_H__
 
-#include <linux/list.h>
-#include <linux/netdevice.h>
+
+#include "pal.h"
 
 #include "globals.h"
 #include "slave.h"

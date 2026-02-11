@@ -24,10 +24,9 @@
  * RTDM interface.
  */
 
-#include <linux/module.h>
-#include <linux/slab.h>
-#include <linux/mman.h>
 
+
+#include "pal.h"
 
 #include "../master.h"
 #include "ioctl.h"
@@ -35,7 +34,6 @@
 #include "rtdm_details.h"
 
 /* include last because it does some redefinitions */
-#include <rtdm/rtdm_driver.h>
 
 /** Set to 1 to enable device operations debugging.
  */

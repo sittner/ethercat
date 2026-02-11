@@ -26,7 +26,8 @@
 
 /****************************************************************************/
 
-#include <linux/slab.h>
+
+#include "pal.h"
 
 #include "datagram.h"
 #include "master.h"

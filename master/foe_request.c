@@ -26,10 +26,8 @@
 
 /****************************************************************************/
 
-#include <linux/module.h>
-#include <linux/jiffies.h>
-#include <linux/slab.h>
-#include <linux/vmalloc.h>
+
+#include "pal.h"
 
 #include "foe_request.h"
 #include "foe.h"

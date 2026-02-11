@@ -26,8 +26,8 @@
 
 /****************************************************************************/
 
-#include <linux/module.h>
-#include <linux/delay.h>
+
+#include "pal.h"
 
 #include "globals.h"
 #include "datagram.h"
