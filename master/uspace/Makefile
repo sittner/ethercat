@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -I. -I.. -I../..
+CFLAGS = -Wall -I. -I.. -I../.. -D_GNU_SOURCE
 
 # All .c files from parent /master/ directory
 MASTER_SRCS = \
@@ -10,7 +10,6 @@ MASTER_SRCS = \
 	../domain.c \
 	../doxygen.c \
 	../eoe_request.c \
-	../ethernet.c \
 	../flag.c \
 	../fmmu_config.c \
 	../foe_request.c \
@@ -42,6 +41,9 @@ MASTER_SRCS = \
 	../sync.c \
 	../sync_config.c \
 	../voe_handler.c
+
+#	../ethernet.c \
+
 
 # Userspace sources
 USPACE_SRCS = master_main.c pal.c

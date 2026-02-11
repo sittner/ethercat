@@ -29,8 +29,6 @@
 #ifndef __EC_USPACE_PAL_H__
 #define __EC_USPACE_PAL_H__
 
-#define _GNU_SOURCE
-
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
@@ -49,6 +47,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "../globals.h"
+
 /****************************************************************************/
 /* Kernel-compatible integer types for userspace */
 /****************************************************************************/
@@ -61,6 +61,20 @@ typedef int8_t   s8;
 typedef int16_t  s16;
 typedef int32_t  s32;
 typedef int64_t  s64;
+
+/* Kernel module exports - not needed in userspace */
+#define EXPORT_SYMBOL(x)
+#define EXPORT_SYMBOL_GPL(x)
+#define MODULE_LICENSE(x)
+#define MODULE_AUTHOR(x)
+#define MODULE_DESCRIPTION(x)
+#define MODULE_VERSION(x)
+#define MODULE_PARM_DESC(x, y)
+#define module_param(name, type, perm)
+#define module_param_named(name, var, type, perm)
+#define module_param_array(name, type, nump, perm)
+#define module_init(fn)
+#define module_exit(fn)
 
 /****************************************************************************/
 /* Ethernet constants */
@@ -80,10 +94,42 @@ typedef int64_t  s64;
 
 #include "uspace/list.h"
 
-#define kfree(ptr) free(ptr)
-#define kmalloc(size, flags) malloc(size)
 
-#define HZ 1000  /* 1ms tick */
+#define GFP_KERNEL  0
+#define GFP_ATOMIC  0
+#define __GFP_ZERO  0
+
+#define kmalloc(size, flags)    malloc(size)
+#define kzalloc(size, flags)    calloc(1, size)
+#define kfree(ptr)              free(ptr)
+
+#define vmalloc(size)           malloc(size)
+#define vzalloc(size)           calloc(1, size)
+#define vfree(ptr)              free(ptr)
+
+#define krealloc(ptr, size, flags)  realloc(ptr, size)
+
+/* kmemdup - allocate and copy */
+static inline void *kmemdup(const void *src, size_t len, unsigned gfp)
+{
+    void *p = malloc(len);
+    if (p)
+        memcpy(p, src, len);
+    return p;
+}
+
+/* kstrdup - duplicate a string */
+static inline char *kstrdup(const char *s, unsigned gfp)
+{
+    return strdup(s);
+}
+
+/* kstrndup - duplicate a string with max length */
+static inline char *kstrndup(const char *s, size_t max, unsigned gfp)
+{
+    return strndup(s, max);
+}
+
 
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #define likely(x)   __builtin_expect(!!(x), 1)
@@ -111,7 +157,64 @@ typedef int64_t  s64;
 int printk(const char *fmt, ...);
 
 
+//************************************************************************
+
+/* Kernel semaphore compatibility */
 typedef sem_t ec_semaphore_t;
+
+/**
+ * sema_init - initialize a semaphore
+ * @sem: semaphore to initialize
+ * @val: initial value
+ */
+static inline void sema_init(ec_semaphore_t *sem, int val)
+{
+    sem_init(sem, 0, val);  /* 0 = not shared between processes */
+}
+
+/**
+ * down - acquire semaphore (may sleep)
+ * @sem: semaphore to acquire
+ *
+ * Kernel down() cannot be interrupted. Use sem_wait().
+ */
+static inline void down(ec_semaphore_t *sem)
+{
+    sem_wait(sem);
+}
+
+/**
+ * down_interruptible - acquire semaphore, interruptible
+ * @sem: semaphore to acquire
+ *
+ * Returns 0 on success, -EINTR if interrupted by signal
+ */
+static inline int down_interruptible(ec_semaphore_t *sem)
+{
+    if (sem_wait(sem) == -1 && errno == EINTR)
+        return -EINTR;
+    return 0;
+}
+
+/**
+ * down_trylock - try to acquire without blocking
+ * @sem: semaphore to acquire
+ *
+ * Returns 0 if acquired, 1 if not (note: opposite of sem_trywait!)
+ */
+static inline int down_trylock(ec_semaphore_t *sem)
+{
+    return (sem_trywait(sem) == 0) ? 0 : 1;
+}
+
+/**
+ * up - release semaphore
+ * @sem: semaphore to release
+ */
+static inline void up(ec_semaphore_t *sem)
+{
+    sem_post(sem);
+}
 
 //************************************************************************
 //typedef struct rt_mutex ec_rt_mutex_t;
@@ -1155,7 +1258,48 @@ static inline void irq_work_sync(ec_irq_work_t *work)
     }
 }
 
+/****************************************************************************/
+/* Kernel utility macros */
+/****************************************************************************/
+
+/* min/max macros with strict type checking */
+#define min(a, b) \
+    ({ \
+        typeof(a) _a = (a); \
+        typeof(b) _b = (b); \
+        _a < _b ? _a : _b; \
+    })
+
+#define max(a, b) \
+    ({ \
+        typeof(a) _a = (a); \
+        typeof(b) _b = (b); \
+        _a > _b ? _a : _b; \
+    })
+
+/* Type-specific versions */
+#define min_t(type, a, b) \
+    ({ \
+        type _a = (a); \
+        type _b = (b); \
+        _a < _b ? _a : _b; \
+    })
+
+#define max_t(type, a, b) \
+    ({ \
+        type _a = (a); \
+        type _b = (b); \
+        _a > _b ? _a : _b; \
+    })
+
+/* Clamp a value to a range */
+#define clamp(val, lo, hi) min(max(val, lo), hi)
+
+#define clamp_t(type, val, lo, hi) min_t(type, max_t(type, val, lo), hi)
+
 //************************************************************************
+
+#define HZ 1000  /* 1ms tick */
 
 typedef unsigned long jiffies_t;
 
@@ -1181,6 +1325,80 @@ static inline jiffies_t get_jiffies(void)
 #define time_after_eq(a, b)  ((long)((a) - (b)) >= 0)
 #define time_before_eq(a, b) time_after_eq(b, a)
 
+/****************************************************************************/
+/* 64-bit division helpers */
+/****************************************************************************/
+
+/**
+ * do_div - 64-bit division with remainder
+ * @n: dividend (modified in place to become quotient)
+ * @base: divisor
+ *
+ * Returns: remainder
+ *
+ * In kernel, this handles 64-bit division on 32-bit architectures.
+ * In userspace, we can just use regular division.
+ */
+#define do_div(n, base) \
+    ({ \
+        uint64_t __n = (n); \
+        uint32_t __base = (base); \
+        uint32_t __rem = __n % __base; \
+        (n) = __n / __base; \
+        __rem; \
+    })
+
+/**
+ * div_u64 - unsigned 64-bit divide with 32-bit divisor
+ * @dividend: 64-bit dividend
+ * @divisor: 32-bit divisor
+ *
+ * Returns: quotient
+ */
+static inline uint64_t div_u64(uint64_t dividend, uint32_t divisor)
+{
+    return dividend / divisor;
+}
+
+/**
+ * div_u64_rem - unsigned 64-bit divide with remainder
+ * @dividend: 64-bit dividend
+ * @divisor: 32-bit divisor
+ * @remainder: pointer to store remainder
+ *
+ * Returns: quotient
+ */
+static inline uint64_t div_u64_rem(uint64_t dividend, uint32_t divisor,
+                                   uint32_t *remainder)
+{
+    *remainder = dividend % divisor;
+    return dividend / divisor;
+}
+
+/**
+ * div_s64 - signed 64-bit divide
+ * @dividend: 64-bit dividend
+ * @divisor: 32-bit divisor
+ *
+ * Returns: quotient
+ */
+static inline int64_t div_s64(int64_t dividend, int32_t divisor)
+{
+    return dividend / divisor;
+}
+
+/**
+ * div64_u64 - unsigned 64/64 division
+ * @dividend: 64-bit dividend
+ * @divisor: 64-bit divisor
+ *
+ * Returns: quotient
+ */
+static inline uint64_t div64_u64(uint64_t dividend, uint64_t divisor)
+{
+    return dividend / divisor;
+}
+
 //************************************************************************
 
 struct net_device_stats {
@@ -1197,7 +1415,8 @@ typedef struct {
     int last_link_state;                 /**< Last reported link state (-1 = unknown). */
 } ec_device_pal_t;
 
-
+struct ec_master;
+typedef struct ec_master ec_master_t;
 
 /** Kernel-specific master fields. */
 typedef struct {
