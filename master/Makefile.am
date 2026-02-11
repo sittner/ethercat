@@ -70,6 +70,7 @@ noinst_HEADERS = \
 	kernel/device.c kernel/device.h \
 	kernel/ioctl.c kernel/ioctl.h \
 	kernel/module.c \
+	kernel/rtdm-ioctl.c \
 	kernel/rtdm.c kernel/rtdm.h \
 	kernel/rtdm_details.h \
 	kernel/rtdm_xenomai_v3.c
