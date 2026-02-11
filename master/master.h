@@ -38,14 +38,14 @@
 #include <linux/rtmutex.h>
 #include <linux/workqueue.h>
 
-#include "kernel/device.h"
+#include "device.h"
 #include "domain.h"
 #include "ethernet.h"
 #include "fsm_master.h"
-#include "kernel/cdev.h"
+#include "cdev.h"
 
 #ifdef EC_RTDM
-#include "kernel/rtdm.h"
+#include "rtdm.h"
 #endif
 
 /****************************************************************************/

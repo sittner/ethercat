@@ -41,7 +41,7 @@
 #include "globals.h"
 #include "slave.h"
 #include "slave_config.h"
-#include "kernel/device.h"
+#include "device.h"
 #include "datagram.h"
 
 #ifdef EC_EOE
