@@ -50,8 +50,7 @@ int printk(const char *fmt, ...)
     pthread_mutex_lock(&printk_lock);
 
     /* Check for log level prefix */
-    len = strlen(msg);
-    if (len >=3 && fmt[0] == '<' && fmt[2] == '>') {
+    if (fmt[0] == '<' && fmt[1] != 0 && fmt[2] == '>') {
         if (fmt[1] >= '0' && fmt[1] <= '7') {
             priority = fmt[1] - '0';
             msg = fmt + 3;
@@ -75,6 +74,7 @@ int printk(const char *fmt, ...)
     va_end(args);
 
     /* Track newline state */
+    len = strlen(msg);
     printk_newline = (len > 0 && msg[len - 1] != '\n');
 
     fflush(stdout);

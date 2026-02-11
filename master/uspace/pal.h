@@ -43,6 +43,7 @@
 #include <stdarg.h>
 #include <pthread.h>
 #include <sys/syscall.h>
+#include <sched.h>
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -76,24 +77,7 @@ typedef int64_t  s64;
 #define module_init(fn)
 #define module_exit(fn)
 
-/****************************************************************************/
-/* Ethernet constants */
-/****************************************************************************/
-
-#ifndef ETH_ALEN
-#define ETH_ALEN        6    /* Octets in one ethernet address */
-#endif
-
-#ifndef ETH_HLEN
-#define ETH_HLEN        14   /* Total octets in header */
-#endif
-
-#ifndef ETH_DATA_LEN
-#define ETH_DATA_LEN    1500 /* Max octets in payload */
-#endif
-
-#include "uspace/list.h"
-
+#include "list.h"
 
 #define GFP_KERNEL  0
 #define GFP_ATOMIC  0
@@ -133,6 +117,32 @@ static inline char *kstrndup(const char *s, size_t max, unsigned gfp)
 
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #define likely(x)   __builtin_expect(!!(x), 1)
+
+//************************************************************************
+
+typedef unsigned long jiffies_t;
+
+static inline jiffies_t get_jiffies(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (ts.tv_sec * 1000) + (ts.tv_nsec / 1000000);
+}
+
+#define jiffies get_jiffies()
+
+/* HZ equivalent - we're using milliseconds directly */
+#define HZ 1000
+
+/* Conversion macros (trivial since we use ms directly) */
+#define jiffies_to_msecs(j)  (j)
+#define msecs_to_jiffies(m)  (m)
+
+/* Time comparison macros (handle wraparound) */
+#define time_after(a, b)     ((long)((b) - (a)) < 0)
+#define time_before(a, b)    time_after(b, a)
+#define time_after_eq(a, b)  ((long)((a) - (b)) >= 0)
+#define time_before_eq(a, b) time_after_eq(b, a)
 
 /****************************************************************************/
 /* Logging */
@@ -450,10 +460,6 @@ static inline void wake_up_all(ec_wait_queue_t *wq)
 #define PTR_ERR(ptr)        ((long)(ptr))
 #define IS_ERR(ptr)         IS_ERR_VALUE((unsigned long)(ptr))
 #define IS_ERR_OR_NULL(ptr) (!(ptr) || IS_ERR(ptr))
-
-#ifndef HZ
-#define HZ 1000
-#endif
 
 /* Portable gettid */
 #if defined(__GLIBC__) && \
@@ -1283,34 +1289,6 @@ static inline void irq_work_sync(ec_irq_work_t *work)
 
 #define clamp_t(type, val, lo, hi) min_t(type, max_t(type, val, lo), hi)
 
-//************************************************************************
-
-#define HZ 1000  /* 1ms tick */
-
-typedef unsigned long jiffies_t;
-
-static inline jiffies_t get_jiffies(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (ts.tv_sec * 1000) + (ts.tv_nsec / 1000000);
-}
-
-#define jiffies get_jiffies()
-
-/* HZ equivalent - we're using milliseconds directly */
-#define HZ 1000
-
-/* Conversion macros (trivial since we use ms directly) */
-#define jiffies_to_msecs(j)  (j)
-#define msecs_to_jiffies(m)  (m)
-
-/* Time comparison macros (handle wraparound) */
-#define time_after(a, b)     ((long)((b) - (a)) < 0)
-#define time_before(a, b)    time_after(b, a)
-#define time_after_eq(a, b)  ((long)((a) - (b)) >= 0)
-#define time_before_eq(a, b) time_after_eq(b, a)
-
 /****************************************************************************/
 /* 64-bit division helpers */
 /****************************************************************************/
@@ -1418,7 +1396,68 @@ static inline uint64_t div64_u64(uint64_t dividend, uint64_t divisor)
 #define ETH_P_ETHERCAT  0x88A4  /* EtherCAT protocol */
 #endif
 
+#define EC_ETH_ALEN 6
+#ifdef ETH_ALEN
+#if ETH_ALEN != EC_ETH_ALEN
+#error Ethernet address length mismatch
+#endif
+#endif
+
 #include <stdlib.h>
+
+#include <sched.h>
+
+/****************************************************************************/
+/* Scheduler functions */
+/****************************************************************************/
+
+/**
+ * sched_set_normal - set task to normal scheduling policy
+ * @task: task to modify
+ * @nice: nice value (-20 to 19)
+ *
+ * In kernel, this sets SCHED_NORMAL policy.
+ * In userspace, we use SCHED_OTHER (same thing).
+ */
+static inline void sched_set_normal(ec_thread_t *task, int nice)
+{
+    struct sched_param param = { .sched_priority = 0 };
+    
+    /* SCHED_OTHER (normal) doesn't use priority, uses nice instead */
+    pthread_setschedparam(task->thread, SCHED_OTHER, &param);
+    
+    /* Set nice value - requires appropriate privileges */
+    /* Note: setpriority() affects the whole thread group in some cases,
+     * but for pthreads this is typically fine */
+#ifdef _GNU_SOURCE
+    /* Could use pthread_setschedprio or setpriority here */
+    (void)nice;  /* Nice value handling is limited in pthreads */
+#endif
+}
+
+/**
+ * sched_set_fifo - set task to FIFO real-time scheduling policy
+ * @task: task to modify
+ * @priority: RT priority (1-99, higher = more priority)
+ */
+static inline void sched_set_fifo(ec_thread_t *task, int priority)
+{
+    struct sched_param param;
+    
+    param.sched_priority = priority;
+    pthread_setschedparam(task->thread, SCHED_FIFO, &param);
+}
+
+/**
+ * sched_set_fifo_low - set task to FIFO with lowest RT priority
+ * @task: task to modify
+ */
+static inline void sched_set_fifo_low(ec_thread_t *task)
+{
+    sched_set_fifo(task, sched_get_priority_min(SCHED_FIFO));
+}
+
+#define ec_sched_set_normal(thread, nice) sched_set_normal(thread, nice)
 
 /****************************************************************************/
 /* String conversion functions */

@@ -1,5 +1,6 @@
 CC = gcc
 CFLAGS = -Wall -I. -I.. -I../.. -D_GNU_SOURCE
+LDFLAGS = -lpthread
 
 # All .c files from parent /master/ directory
 MASTER_SRCS = \
@@ -58,7 +59,7 @@ TARGET = ec_master
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS)
 
 clean:
 	rm -f $(OBJS) $(TARGET)
