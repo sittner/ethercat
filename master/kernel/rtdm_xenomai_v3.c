@@ -27,6 +27,8 @@
 
 #include "pal.h"
 
+#include <rtdm/driver.h>
+
 #include "../master.h"
 #include "ioctl.h"
 #include "rtdm.h"
