@@ -337,6 +337,199 @@ void ec_device_poll(
 }
 
 
+/*****************************************************************************
+ *  Device interface
+ ****************************************************************************/
+
+/** Withdraws an EtherCAT device from the master.
+ *
+ * The device is disconnected from the master and all device ressources
+ * are freed.
+ *
+ * \attention Before calling this function, the ecdev_stop() function has
+ *            to be called, to be sure that the master does not use the device
+ *            any more.
+ * \ingroup DeviceInterface
+ */
+void ecdev_withdraw(ec_device_t *device /**< EtherCAT device */)
+{
+    ec_master_t *master = device->master;
+    char dev_str[20], mac_str[20];
+
+    ec_mac_print(device->pal.dev->dev_addr, mac_str);
+
+    if (device == &master->devices[EC_DEVICE_MAIN]) {
+        sprintf(dev_str, "main");
+    } else if (device == &master->devices[EC_DEVICE_BACKUP]) {
+        sprintf(dev_str, "backup");
+    } else {
+        EC_MASTER_WARN(master, "%s() called with unknown device %s!\n",
+                __func__, mac_str);
+        sprintf(dev_str, "UNKNOWN");
+    }
+
+    EC_MASTER_INFO(master, "Releasing %s device %s.\n", dev_str, mac_str);
+
+    down(&master->device_sem);
+    ec_device_detach(device);
+    up(&master->device_sem);
+}
+
+/****************************************************************************/
+
+/** Opens the network device and makes the master enter IDLE phase.
+ *
+ * \return 0 on success, else < 0
+ * \ingroup DeviceInterface
+ */
+int ecdev_open(ec_device_t *device /**< EtherCAT device */)
+{
+    int ret;
+    ec_master_t *master = device->master;
+    unsigned int all_open = 1, dev_idx;
+
+    ret = ec_device_open(device);
+    if (ret) {
+        EC_MASTER_ERR(master, "Failed to open device: error %d!\n", ret);
+        return ret;
+    }
+
+    for (dev_idx = EC_DEVICE_MAIN;
+            dev_idx < ec_master_num_devices(device->master); dev_idx++) {
+        if (!master->devices[dev_idx].open) {
+            all_open = 0;
+            break;
+        }
+    }
+
+    if (all_open) {
+        ret = ec_master_enter_idle_phase(device->master);
+        if (ret) {
+            EC_MASTER_ERR(device->master, "Failed to enter IDLE phase!\n");
+            return ret;
+        }
+    }
+
+    return 0;
+}
+
+/****************************************************************************/
+
+/** Makes the master leave IDLE phase and closes the network device.
+ *
+ * \return 0 on success, else < 0
+ * \ingroup DeviceInterface
+ */
+void ecdev_close(ec_device_t *device /**< EtherCAT device */)
+{
+    ec_master_t *master = device->master;
+
+    if (master->phase == EC_IDLE) {
+        ec_master_leave_idle_phase(master);
+    }
+
+    if (ec_device_close(device)) {
+        EC_MASTER_WARN(master, "Failed to close device!\n");
+    }
+}
+
+/****************************************************************************/
+
+/** Accepts a received frame.
+ *
+ * Forwards the received data to the master. The master will analyze the frame
+ * and dispatch the received commands to the sending instances.
+ *
+ * The data have to begin with the Ethernet header (target MAC address).
+ *
+ * \ingroup DeviceInterface
+ */
+void ecdev_receive(
+        ec_device_t *device, /**< EtherCAT device */
+        const void *data, /**< pointer to received data */
+        size_t size /**< number of bytes received */
+        )
+{
+    const void *ec_data = data + ETH_HLEN;
+    size_t ec_size = size - ETH_HLEN;
+
+    if (unlikely(!data)) {
+        EC_MASTER_WARN(device->master, "%s() called with NULL data.\n",
+                __func__);
+        return;
+    }
+
+    device->rx_count++;
+    device->master->device_stats.rx_count++;
+    device->rx_bytes += size;
+    device->master->device_stats.rx_bytes += size;
+
+    if (unlikely(device->master->debug_level > 1)) {
+        EC_MASTER_DBG(device->master, 2, "Received frame:\n");
+        ec_print_data(data, size);
+    }
+
+#ifdef EC_DEBUG_IF
+    ec_debug_send(&device->dbg, data, size);
+#endif
+#ifdef EC_DEBUG_RING
+    ec_device_debug_ring_append(device, RX, ec_data, ec_size);
+#endif
+
+    ec_master_receive_datagrams(device->master, device, ec_data, ec_size);
+}
+
+/****************************************************************************/
+
+/** Sets a new link state.
+ *
+ * If the device notifies the master about the link being down, the master
+ * will not try to send frames using this device.
+ *
+ * \ingroup DeviceInterface
+ */
+void ecdev_set_link(
+        ec_device_t *device, /**< EtherCAT device */
+        uint8_t state /**< new link state */
+        )
+{
+    if (unlikely(!device)) {
+        EC_WARN("ecdev_set_link() called with null device!\n");
+        return;
+    }
+
+    if (likely(state != device->link_state)) {
+        device->link_state = state;
+        EC_MASTER_INFO(device->master,
+                "Link state of %s changed to %s.\n",
+                device->name, (state ? "UP" : "DOWN"));
+    }
+}
+
+/****************************************************************************/
+
+/** Reads the link state.
+ *
+ * \ingroup DeviceInterface
+ *
+ * \return Link state.
+ */
+uint8_t ecdev_get_link(
+        const ec_device_t *device /**< EtherCAT device */
+        )
+{
+    if (unlikely(!device)) {
+        EC_WARN("ecdev_get_link() called with null device!\n");
+        return 0;
+    }
+
+    return device->link_state;
+}
+
+/****************************************************************************/
+
+/** \cond */
+
 EXPORT_SYMBOL(ecdev_withdraw);
 EXPORT_SYMBOL(ecdev_open);
 EXPORT_SYMBOL(ecdev_close);
@@ -344,3 +537,6 @@ EXPORT_SYMBOL(ecdev_receive);
 EXPORT_SYMBOL(ecdev_get_link);
 EXPORT_SYMBOL(ecdev_set_link);
 
+/** \endcond */
+
+/****************************************************************************/

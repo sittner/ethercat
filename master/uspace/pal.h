@@ -85,6 +85,9 @@ typedef int64_t  s64;
 
 #define HZ 1000  /* 1ms tick */
 
+#define unlikely(x) __builtin_expect(!!(x), 0)
+#define likely(x)   __builtin_expect(!!(x), 1)
+
 /****************************************************************************/
 /* Logging */
 /****************************************************************************/
@@ -1008,16 +1011,20 @@ static inline void *__irq_work_worker(void *arg)
                 ec_irq_work_t *next = work->next;
                 int flags;
 
-                /* Mark as running */
+                /* Mark as running, get previous flags */
                 flags = atomic_fetch_and(&work->flags, ~IRQ_WORK_PENDING);
-                atomic_fetch_or(&work->flags, IRQ_WORK_BUSY);
+    
+                /* Only execute if work was actually pending */
+                if (flags & IRQ_WORK_PENDING) {
+                    atomic_fetch_or(&work->flags, IRQ_WORK_BUSY);
 
-                /* Execute work function */
-                if (work->func)
-                    work->func(work);
+                    /* Execute work function */
+                    if (work->func)
+                        work->func(work);
 
-                /* Mark as complete */
-                atomic_fetch_and(&work->flags, ~IRQ_WORK_BUSY);
+                    /* Mark as complete */
+                    atomic_fetch_and(&work->flags, ~IRQ_WORK_BUSY);
+                }
 
                 work = next;
             }
@@ -1150,13 +1157,45 @@ static inline void irq_work_sync(ec_irq_work_t *work)
 
 //************************************************************************
 
+typedef unsigned long jiffies_t;
+
+static inline jiffies_t get_jiffies(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (ts.tv_sec * 1000) + (ts.tv_nsec / 1000000);
+}
+
+#define jiffies get_jiffies()
+
+/* HZ equivalent - we're using milliseconds directly */
+#define HZ 1000
+
+/* Conversion macros (trivial since we use ms directly) */
+#define jiffies_to_msecs(j)  (j)
+#define msecs_to_jiffies(m)  (m)
+
+/* Time comparison macros (handle wraparound) */
+#define time_after(a, b)     ((long)((b) - (a)) < 0)
+#define time_before(a, b)    time_after(b, a)
+#define time_after_eq(a, b)  ((long)((a) - (b)) >= 0)
+#define time_before_eq(a, b) time_after_eq(b, a)
+
+//************************************************************************
+
+struct net_device_stats {
+  int dummy;
+};
+
+struct ec_device;
+typedef struct ec_device ec_device_t;
 
 typedef struct {
 //    ec_transport_t *transport;           /**< Transport layer. */
     uint64_t jiffies_poll;               /**< Time of last poll (ms). */
     uint64_t last_link_check;            /**< Time of last link state check (ms). */
     int last_link_state;                 /**< Last reported link state (-1 = unknown). */
-} ec_device_plat_t;
+} ec_device_pal_t;
 
 
 

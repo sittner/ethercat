@@ -158,7 +158,7 @@ typedef struct {
                                         different statistics cycle periods. */
     s32 loss_rates[EC_RATE_COUNT]; /**< Frame loss rates for different
                                      statistics cycle periods. */
-    unsigned long jiffies; /**< Jiffies of last statistic cycle. */
+    unsigned long last_cycle; /**< Jiffies of last statistic cycle. */
 } ec_device_stats_t;
 
 /****************************************************************************/
