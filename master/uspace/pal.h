@@ -1401,6 +1401,39 @@ static inline uint64_t div64_u64(uint64_t dividend, uint64_t divisor)
     return dividend / divisor;
 }
 
+/****************************************************************************/
+/* Ethernet constants */
+/****************************************************************************/
+
+#ifndef ETH_ALEN
+#define ETH_ALEN        6       /* Octets in one ethernet address */
+#endif
+
+#ifndef ETH_HLEN
+#define ETH_HLEN        14      /* Total octets in header */
+#endif
+
+#ifndef ETH_DATA_LEN
+#define ETH_DATA_LEN    1500    /* Max octets in payload */
+#endif
+
+#ifndef ETH_ZLEN
+#define ETH_ZLEN        60      /* Min octets in frame sans FCS */
+#endif
+
+#ifndef ETH_FRAME_LEN
+#define ETH_FRAME_LEN   1514    /* Max octets in frame sans FCS */
+#endif
+
+#ifndef ETH_FCS_LEN
+#define ETH_FCS_LEN     4       /* Octets in the FCS (frame check sequence) */
+#endif
+
+/* EtherCAT specific */
+#ifndef ETH_P_ETHERCAT
+#define ETH_P_ETHERCAT  0x88A4  /* EtherCAT protocol */
+#endif
+
 //************************************************************************
 
 struct net_device_stats {
