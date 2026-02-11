@@ -1477,8 +1477,11 @@ struct net_device_stats {
 struct ec_device;
 typedef struct ec_device ec_device_t;
 
+/* Forward declaration of transport type */
+struct ec_transport;
+
 typedef struct {
-//    ec_transport_t *transport;           /**< Transport layer. */
+    struct ec_transport *transport;      /**< Transport layer. */
     uint64_t jiffies_poll;               /**< Time of last poll (ms). */
     uint64_t last_link_check;            /**< Time of last link state check (ms). */
     int last_link_state;                 /**< Last reported link state (-1 = unknown). */

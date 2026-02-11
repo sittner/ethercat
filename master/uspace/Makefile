@@ -1,6 +1,11 @@
 CC = gcc
-CFLAGS = -Wall -I. -I.. -I../.. -D_GNU_SOURCE
+CFLAGS = -Wall -I. -I.. -I../.. -Itransport -D_GNU_SOURCE
 LDFLAGS = -lpthread
+
+# Transport sources
+TRANSPORT_SRCS = \
+	transport/transport.c \
+	transport/transport_raw.c
 
 # All .c files from parent /master/ directory
 MASTER_SRCS = \
@@ -48,7 +53,7 @@ MASTER_SRCS = \
 
 
 # Userspace sources
-USPACE_SRCS = master_main.c pal.c
+USPACE_SRCS = master_main.c pal.c $(TRANSPORT_SRCS)
 
 # All sources combined
 SRCS = $(MASTER_SRCS) $(USPACE_SRCS)
