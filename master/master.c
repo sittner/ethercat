@@ -41,15 +41,6 @@
 #include "ethernet.h"
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0) || \
-    (defined(CONFIG_PREEMPT_RT_FULL) && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0))
-#  define ec_rt_lock_interruptible(lock) \
-          rt_mutex_lock_interruptible(lock)
-#else
-#  define ec_rt_lock_interruptible(lock) \
-          rt_mutex_lock_interruptible(lock, 0)
-#endif
-
 #include "master.h"
 
 /****************************************************************************/
@@ -115,9 +106,10 @@ static int ec_master_eoe_thread(void *);
 void ec_master_find_dc_ref_clock(ec_master_t *);
 void ec_master_clear_device_stats(ec_master_t *);
 void ec_master_update_device_stats(ec_master_t *);
-void ec_master_nanosleep(const unsigned long);
-static void sc_reset_task_kicker(struct irq_work *work);
-static void sc_reset_task(struct work_struct *work);
+static void sc_reset_task_kicker(ec_irq_work_t *work);
+static void sc_reset_task(ec_work_t *work);
+
+int ecrt_master_send_ext(ec_master_t *master);
 
 /****************************************************************************/
 
@@ -1325,58 +1317,6 @@ void ec_master_update_device_stats(
 
 /****************************************************************************/
 
-#ifdef EC_USE_HRTIMER
-
-/*
- * Sleep related functions:
- */
-static enum hrtimer_restart ec_master_nanosleep_wakeup(struct hrtimer *timer)
-{
-    struct hrtimer_sleeper *t =
-        container_of(timer, struct hrtimer_sleeper, timer);
-    struct task_struct *task = t->task;
-
-    t->task = NULL;
-    if (task)
-        wake_up_process(task);
-
-    return HRTIMER_NORESTART;
-}
-
-/****************************************************************************/
-
-void ec_master_nanosleep(const unsigned long nsecs)
-{
-    struct hrtimer_sleeper t;
-    enum hrtimer_mode mode = HRTIMER_MODE_REL;
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0)
-    hrtimer_setup(&t.timer, ec_master_nanosleep_wakeup,
-            CLOCK_MONOTONIC, mode);
-#else
-    hrtimer_init(&t.timer, CLOCK_MONOTONIC, mode);
-    t.timer.function = ec_master_nanosleep_wakeup;
-#endif
-    t.task = current;
-    hrtimer_set_expires(&t.timer, ktime_set(0, nsecs));
-
-    do {
-        set_current_state(TASK_INTERRUPTIBLE);
-        hrtimer_start(&t.timer, hrtimer_get_expires(&t.timer), mode);
-
-        if (likely(t.task))
-            schedule();
-
-        hrtimer_cancel(&t.timer);
-        mode = HRTIMER_MODE_ABS;
-
-    } while (t.task && !signal_pending(current));
-}
-
-#endif // EC_USE_HRTIMER
-
-/****************************************************************************/
-
 /** Execute slave FSMs.
  */
 void ec_master_exec_slave_fsms(
@@ -1595,18 +1535,6 @@ static int ec_master_operation_thread(void *priv_data)
 
 #ifdef EC_EOE
 
-/* compatibility for priority changes */
-static inline void set_normal_priority(struct task_struct *p, int nice)
-{
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
-    sched_set_normal(p, nice);
-#else
-    struct sched_param param = { .sched_priority = 0 };
-    sched_setscheduler(p, SCHED_NORMAL, &param);
-    set_user_nice(p, nice);
-#endif
-}
-
 /****************************************************************************/
 
 /** Starts Ethernet over EtherCAT processing on demand.
@@ -1638,7 +1566,7 @@ void ec_master_eoe_start(ec_master_t *master /**< EtherCAT master */)
         return;
     }
 
-    set_normal_priority(master->eoe_thread, 0);
+    ec_sched_set_normal(master->eoe_thread, 0);
 }
 
 /****************************************************************************/
@@ -3243,7 +3171,7 @@ int ecrt_master_reset(ec_master_t *master)
 
 /****************************************************************************/
 
-static void sc_reset_task_kicker(struct irq_work *work)
+static void sc_reset_task_kicker(ec_irq_work_t *work)
 {
     struct ec_master *master =
         container_of(work, struct ec_master, sc_reset_work_kicker);
@@ -3252,7 +3180,7 @@ static void sc_reset_task_kicker(struct irq_work *work)
 
 /****************************************************************************/
 
-static void sc_reset_task(struct work_struct *work)
+static void sc_reset_task(ec_work_t *work)
 {
     struct ec_master *master =
         container_of(work, struct ec_master, sc_reset_work);

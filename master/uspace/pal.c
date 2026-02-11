@@ -83,6 +83,18 @@ int printk(const char *fmt, ...)
     return ret;
 }
 
+#ifdef EC_USE_HRTIMER
+void ec_master_nanosleep(const unsigned long nsecs) {
+    struct timespec ts = {
+        .tv_sec = nsecs / 1000000000UL,
+        .tv_nsec = nsecs % 1000000000UL
+    };
+
+    clock_nanosleep(CLOCK_MONOTONIC, 0, &ts, NULL);
+}
+#endif
+
+
 //TODO
 struct workqueue_struct *system_wq;
 struct pal_irq_work_queue *irq_work_queue_global;

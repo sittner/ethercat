@@ -363,6 +363,10 @@ void ec_master_request_op(ec_master_t *);
 void ec_master_internal_send_cb(void *);
 void ec_master_internal_receive_cb(void *);
 
+#ifdef EC_USE_HRTIMER
+void ec_master_nanosleep(const unsigned long);
+#endif
+
 extern const unsigned int rate_intervals[EC_RATE_COUNT]; // see master.c
 
 /****************************************************************************/

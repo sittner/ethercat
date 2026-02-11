@@ -286,6 +286,8 @@ static inline int rt_mutex_lock_interruptible(ec_rt_mutex_t *lock)
     return ret ? -ret : 0;
 }
 
+#define ec_rt_lock_interruptible(lock) rt_mutex_lock_interruptible(lock)
+
 /**
  * rt_mutex_trylock - try to acquire without blocking
  * @lock: the mutex to acquire

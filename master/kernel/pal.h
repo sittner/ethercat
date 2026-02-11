@@ -95,6 +95,26 @@ typedef struct task_struct ec_thread_t;
 typedef struct work_struct ec_work_t;
 typedef struct irq_work ec_irq_work_t;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0) || \
+    (defined(CONFIG_PREEMPT_RT_FULL) && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0))
+#  define ec_rt_lock_interruptible(lock) \
+          rt_mutex_lock_interruptible(lock)
+#else
+#  define ec_rt_lock_interruptible(lock) \
+          rt_mutex_lock_interruptible(lock, 0)
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
+#    define ec_sched_set_normal(thread, nice) sched_set_normal(thread, nice)
+#else
+#    define ec_sched_set_normal(thread, nice)                   \
+        do {                                                    \
+            struct sched_param param = { .sched_priority = 0 }; \
+            sched_setscheduler(p, SCHED_NORMAL, &param);        \
+            set_user_nice(p, nice);                             \
+        } while (0)
+#endif
+
 /** Kernel-specific master fields. */
 typedef struct {
     ec_cdev_t cdev;                     /**< Master character device. */

@@ -4,6 +4,55 @@
 #include "../device.h"
 #include "../master.h"
 
+#ifdef EC_USE_HRTIMER
+
+/*
+ * Sleep related functions:
+ */
+static enum hrtimer_restart ec_master_nanosleep_wakeup(struct hrtimer *timer)
+{
+    struct hrtimer_sleeper *t =
+        container_of(timer, struct hrtimer_sleeper, timer);
+    ec_thread_t *task = t->task;
+
+    t->task = NULL;
+    if (task)
+        wake_up_process(task);
+
+    return HRTIMER_NORESTART;
+}
+
+/****************************************************************************/
+
+void ec_master_nanosleep(const unsigned long nsecs)
+{
+    struct hrtimer_sleeper t;
+    enum hrtimer_mode mode = HRTIMER_MODE_REL;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 15, 0)
+    hrtimer_setup(&t.timer, ec_master_nanosleep_wakeup,
+            CLOCK_MONOTONIC, mode);
+#else
+    hrtimer_init(&t.timer, CLOCK_MONOTONIC, mode);
+    t.timer.function = ec_master_nanosleep_wakeup;
+#endif
+    t.task = current;
+    hrtimer_set_expires(&t.timer, ktime_set(0, nsecs));
+
+    do {
+        set_current_state(TASK_INTERRUPTIBLE);
+        hrtimer_start(&t.timer, hrtimer_get_expires(&t.timer), mode);
+
+        if (likely(t.task))
+            schedule();
+
+        hrtimer_cancel(&t.timer);
+        mode = HRTIMER_MODE_ABS;
+
+    } while (t.task && !signal_pending(current));
+}
+
+#endif // EC_USE_HRTIMER
 
 enum {
     /* genet driver needs extra headroom in skb for status block */
