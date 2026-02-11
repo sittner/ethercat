@@ -1,11 +1,12 @@
 CC = gcc
-CFLAGS = -Wall -I. -I..
+CFLAGS = -Wall -I. -I.. -I../..
 
 # All .c files from parent /master/ directory
 MASTER_SRCS = \
 	../coe_emerg_ring.c \
 	../datagram.c \
 	../datagram_pair.c \
+	../device.c \
 	../domain.c \
 	../doxygen.c \
 	../eoe_request.c \
@@ -43,7 +44,7 @@ MASTER_SRCS = \
 	../voe_handler.c
 
 # Userspace sources
-USPACE_SRCS = master_main.c
+USPACE_SRCS = master_main.c pal.c
 
 # All sources combined
 SRCS = $(MASTER_SRCS) $(USPACE_SRCS)

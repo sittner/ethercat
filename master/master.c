@@ -148,8 +148,6 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
         unsigned int index, /**< master index */
         const uint8_t *main_mac, /**< MAC address of main device */
         const uint8_t *backup_mac, /**< MAC address of backup device */
-        dev_t device_number, /**< Character device number. */
-        struct class *class, /**< Device class. */
         unsigned int debug_level, /**< Debug level (module parameter). */
         unsigned int run_on_cpu /**< bind created kernel threads to a cpu */
         )
@@ -330,38 +328,8 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     INIT_WORK(&master->sc_reset_work, sc_reset_task);
     init_irq_work(&master->sc_reset_work_kicker, sc_reset_task_kicker);
 
-    // init character device
-    ret = ec_cdev_init(&master->cdev, master, device_number);
-    if (ret)
-        goto out_clear_sync_mon;
-
-    master->class_device = device_create(class, NULL,
-            MKDEV(MAJOR(device_number), master->index), NULL,
-            "EtherCAT%u", master->index);
-    if (IS_ERR(master->class_device)) {
-        EC_MASTER_ERR(master, "Failed to create class device!\n");
-        ret = PTR_ERR(master->class_device);
-        goto out_clear_cdev;
-    }
-
-#ifdef EC_RTDM
-    // init RTDM device
-    ret = ec_rtdm_dev_init(&master->rtdm_dev, master);
-    if (ret) {
-        goto out_unregister_class_device;
-    }
-#endif
-
     return 0;
 
-#ifdef EC_RTDM
-out_unregister_class_device:
-    device_unregister(master->class_device);
-#endif
-out_clear_cdev:
-    ec_cdev_clear(&master->cdev);
-out_clear_sync_mon:
-    ec_datagram_clear(&master->sync_mon_datagram);
 out_clear_sync:
     ec_datagram_clear(&master->sync_datagram);
 out_clear_ref_sync:
@@ -388,14 +356,6 @@ void ec_master_clear(
         )
 {
     unsigned int dev_idx, i;
-
-#ifdef EC_RTDM
-    ec_rtdm_dev_clear(&master->rtdm_dev);
-#endif
-
-    device_unregister(master->class_device);
-
-    ec_cdev_clear(&master->cdev);
 
     irq_work_sync(&master->sc_reset_work_kicker);
     cancel_work_sync(&master->sc_reset_work);
@@ -1132,7 +1092,7 @@ void ec_master_receive_datagrams(
         if (master->debug_level || FORCE_OUTPUT_CORRUPTED) {
             EC_MASTER_DBG(master, 0, "Corrupted frame received"
                     " on %s (size %zu < %u byte):\n",
-                    device->dev->name, size, EC_FRAME_HEADER_SIZE);
+                    device->name, size, EC_FRAME_HEADER_SIZE);
             ec_print_data(frame_data, size);
         }
         master->stats.corrupted++;
@@ -1152,7 +1112,7 @@ void ec_master_receive_datagrams(
         if (master->debug_level || FORCE_OUTPUT_CORRUPTED) {
             EC_MASTER_DBG(master, 0, "Corrupted frame received"
                     " on %s (invalid frame size %zu for "
-                    "received size %zu):\n", device->dev->name,
+                    "received size %zu):\n", device->name,
                     frame_size, size);
             ec_print_data(frame_data, size);
         }
@@ -1177,7 +1137,7 @@ void ec_master_receive_datagrams(
             if (master->debug_level || FORCE_OUTPUT_CORRUPTED) {
                 EC_MASTER_DBG(master, 0, "Corrupted frame received"
                         " on %s (invalid data size %zu):\n",
-                        device->dev->name, data_size);
+                        device->name, data_size);
                 ec_print_data(frame_data, size);
             }
             master->stats.corrupted++;
@@ -2446,7 +2406,7 @@ int ecrt_master_send(ec_master_t *master)
                 }
             }
 
-            if (!master->devices[dev_idx].dev) {
+            if (!master->devices[dev_idx].name) {
                 continue;
             }
 
@@ -2933,8 +2893,8 @@ int ecrt_master_sdo_download(ec_master_t *master, uint16_t slave_position,
 
     if (request.state == EC_INT_REQUEST_SUCCESS) {
         ret = 0;
-    } else if (request.errno) {
-        ret = -request.errno;
+    } else if (request.error) {
+        ret = -request.error;
     } else {
         ret = -EIO;
     }
@@ -3014,8 +2974,8 @@ int ecrt_master_sdo_download_complete(ec_master_t *master,
 
     if (request.state == EC_INT_REQUEST_SUCCESS) {
         ret = 0;
-    } else if (request.errno) {
-        ret = -request.errno;
+    } else if (request.error) {
+        ret = -request.error;
     } else {
         ret = -EIO;
     }
@@ -3086,8 +3046,8 @@ int ecrt_master_sdo_upload(ec_master_t *master, uint16_t slave_position,
 
     if (request.state != EC_INT_REQUEST_SUCCESS) {
         *result_size = 0;
-        if (request.errno) {
-            ret = -request.errno;
+        if (request.error) {
+            ret = -request.error;
         } else {
             ret = -EIO;
         }

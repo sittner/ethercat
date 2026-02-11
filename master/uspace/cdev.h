@@ -21,38 +21,33 @@
 
 /**
    \file
-   Network interface for debugging purposes.
+   EtherCAT master character device.
 */
 
 /****************************************************************************/
 
-#ifndef __EC_DEBUG_H__
-#define __EC_DEBUG_H__
+#ifndef __EC_CDEV_H__
+#define __EC_CDEV_H__
+
 
 #include "pal.h"
 
-/****************************************************************************/
-
-/** Debugging network interface.
- */
-typedef struct
-{
-    ec_device_t *device; /**< Parent device. */
-    struct net_device *dev; /**< net_device for virtual ethernet device */
-    struct net_device_stats stats; /**< device statistics */
-    uint8_t registered; /**< net_device is opened */
-    uint8_t opened; /**< net_device is opened */
-}
-ec_debug_t;
+#include "../globals.h"
 
 /****************************************************************************/
 
-int ec_debug_init(ec_debug_t *, ec_device_t *, const char *);
-void ec_debug_clear(ec_debug_t *);
-void ec_debug_register(ec_debug_t *, const struct net_device *);
-void ec_debug_unregister(ec_debug_t *);
-void ec_debug_send(ec_debug_t *, const uint8_t *, size_t);
+/** EtherCAT master character device.
+*/
+typedef struct {
+    ec_master_t *master; /**< Master owning the device. */
+    //TODO struct cdev cdev; /**< Character device. */
+} ec_cdev_t;
+
+/****************************************************************************/
+
+int ec_cdev_init(ec_cdev_t *, ec_master_t *, dev_t);
+void ec_cdev_clear(ec_cdev_t *);
+
+/****************************************************************************/
 
 #endif
-
-/****************************************************************************/

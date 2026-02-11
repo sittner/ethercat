@@ -29,11 +29,12 @@ ccflags-y := -I@abs_top_builddir@ -I$(src)/.. -I$(src)
 obj-m := ec_master.o
 
 ec_master-objs := \
+	pal.o \
 	cdev.o \
 	../coe_emerg_ring.o \
 	../datagram.o \
 	../datagram_pair.o \
-	device.o \
+	../device.o \
 	../domain.o \
 	../flag.o \
 	../fmmu_config.o \

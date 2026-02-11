@@ -57,7 +57,7 @@ struct ec_sdo_request {
     unsigned long jiffies_start; /**< Jiffies, when the request was issued. */
     unsigned long jiffies_sent; /**< Jiffies, when the upload/download
                                      request was sent. */
-    int errno; /**< Error number. */
+    int error; /**< Error number. */
     uint32_t abort_code; /**< SDO request abort code. Zero on success. */
 };
 

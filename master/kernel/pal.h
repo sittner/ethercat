@@ -80,6 +80,48 @@
 #  endif
 #endif
 
+#include "../../devices/ecdev.h"
+
+#include "cdev.h"
+
+#ifdef EC_RTDM
+#include "rtdm.h"
+#endif
+
+typedef struct semaphore ec_semaphore_t;
+typedef struct rt_mutex ec_rt_mutex_t;
+typedef wait_queue_head_t ec_wait_queue_t;
+typedef struct task_struct ec_thread_t;
+typedef struct work_struct ec_work_t;
+typedef struct irq_work ec_irq_work_t;
+
+/** Kernel-specific master fields. */
+typedef struct {
+    ec_cdev_t cdev;                     /**< Master character device. */
+    struct device *class_device;        /**< Master class device. */
+
+#ifdef EC_RTDM
+    ec_rtdm_dev_t rtdm_dev;             /**< RTDM device. */
+#endif
+} ec_master_pal_t;
+
+/**
+ * Size of the transmit ring.
+ * This memory ring is used to transmit frames. It is necessary to use
+ * different memory regions, because otherwise the network device DMA could
+ * send the same data twice, if it is called twice.
+ */
+#define EC_TX_RING_SIZE 2
+
+/** Kernel-specific device fields. */
+typedef struct {
+    ec_pollfunc_t poll; /**< pointer to the device's poll function */
+    struct net_device *dev; /**< pointer to the assigned net_device */
+    struct module *module; /**< pointer to the device's owning module */
+    struct sk_buff *tx_skb[EC_TX_RING_SIZE]; /**< transmit skb ring */
+    unsigned int tx_ring_index; /**< last ring entry used to transmit */
+} ec_device_pal_t;
+
 /****************************************************************************/
 
 #endif // __EC_PAL_H__

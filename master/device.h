@@ -32,16 +32,7 @@
 
 #include "pal.h"
 
-#include "../../devices/ecdev.h"
 #include "../globals.h"
-
-/**
- * Size of the transmit ring.
- * This memory ring is used to transmit frames. It is necessary to use
- * different memory regions, because otherwise the network device DMA could
- * send the same data twice, if it is called twice.
- */
-#define EC_TX_RING_SIZE 2
 
 #ifdef EC_DEBUG_IF
 #include "debug.h"
@@ -74,13 +65,9 @@ typedef struct {
 struct ec_device
 {
     ec_master_t *master; /**< EtherCAT master */
-    struct net_device *dev; /**< pointer to the assigned net_device */
-    ec_pollfunc_t poll; /**< pointer to the device's poll function */
-    struct module *module; /**< pointer to the device's owning module */
+    const char *name; /**< device name */
     uint8_t open; /**< true, if the net_device has been opened */
     uint8_t link_state; /**< device link state */
-    struct sk_buff *tx_skb[EC_TX_RING_SIZE]; /**< transmit skb ring */
-    unsigned int tx_ring_index; /**< last ring entry used to transmit */
 #ifdef EC_HAVE_CYCLES
     cycles_t cycles_poll; /**< cycles of last poll */
 #endif
@@ -120,19 +107,13 @@ struct ec_device
     unsigned int debug_frame_index;
     unsigned int debug_frame_count;
 #endif
+    ec_device_pal_t pal;
 };
 
 /****************************************************************************/
 
 int ec_device_init(ec_device_t *, ec_master_t *);
 void ec_device_clear(ec_device_t *);
-
-void ec_device_attach(ec_device_t *, struct net_device *, ec_pollfunc_t,
-        struct module *);
-void ec_device_detach(ec_device_t *);
-
-int ec_device_open(ec_device_t *);
-int ec_device_close(ec_device_t *);
 
 void ec_device_poll(ec_device_t *);
 uint8_t *ec_device_tx_data(ec_device_t *);

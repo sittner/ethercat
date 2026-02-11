@@ -39,7 +39,7 @@
 #ifdef EC_USE_RTMUTEX
 
 
-typedef struct rt_mutex ec_lock_t;
+typedef ec_rt_mutex_t ec_lock_t;
 
 static inline void ec_lock_init(ec_lock_t *sem) { rt_mutex_init(sem); }
 static inline void ec_lock_down(ec_lock_t *sem) { rt_mutex_lock(sem); }
@@ -56,7 +56,7 @@ static inline void ec_lock_up(ec_lock_t *sem) { rt_mutex_unlock(sem); }
 
 #else
 
-typedef struct semaphore ec_lock_t;
+typedef ec_semaphore_t ec_lock_t;
 
 static inline void ec_lock_init(ec_lock_t *sem) { sema_init(sem, 1); }
 static inline void ec_lock_down(ec_lock_t *sem) { down(sem); }

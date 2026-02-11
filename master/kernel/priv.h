@@ -1,6 +1,6 @@
 /*****************************************************************************
  *
- *  Copyright (C) 2006-2008  Florian Pose, Ingenieurgemeinschaft IgH
+ *  Copyright (C) 2006-2024  Florian Pose, Ingenieurgemeinschaft IgH
  *
  *  This file is part of the IgH EtherCAT Master.
  *
@@ -21,38 +21,23 @@
 
 /**
    \file
-   Network interface for debugging purposes.
+   Platform Abstraction Layer - System and kernel includes.
 */
 
 /****************************************************************************/
 
-#ifndef __EC_DEBUG_H__
-#define __EC_DEBUG_H__
+#ifndef __EC_PRIV_H__
+#define __EC_PRIV_H__
 
 #include "pal.h"
 
-/****************************************************************************/
+#include "../device.h"
 
-/** Debugging network interface.
- */
-typedef struct
-{
-    ec_device_t *device; /**< Parent device. */
-    struct net_device *dev; /**< net_device for virtual ethernet device */
-    struct net_device_stats stats; /**< device statistics */
-    uint8_t registered; /**< net_device is opened */
-    uint8_t opened; /**< net_device is opened */
-}
-ec_debug_t;
+void ec_device_attach(ec_device_t *, struct net_device *, ec_pollfunc_t,
+        struct module *);
+void ec_device_detach(ec_device_t *);
 
-/****************************************************************************/
+int ec_device_open(ec_device_t *);
+int ec_device_close(ec_device_t *);
 
-int ec_debug_init(ec_debug_t *, ec_device_t *, const char *);
-void ec_debug_clear(ec_debug_t *);
-void ec_debug_register(ec_debug_t *, const struct net_device *);
-void ec_debug_unregister(ec_debug_t *);
-void ec_debug_send(ec_debug_t *, const uint8_t *, size_t);
-
-#endif
-
-/****************************************************************************/
+#endif // __EC_PRIV_H__

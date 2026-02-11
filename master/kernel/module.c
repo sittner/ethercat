@@ -27,10 +27,11 @@
 
 
 #include "pal.h"
+#include "priv.h"
 
 #include "../globals.h"
 #include "../master.h"
-#include "device.h"
+#include "../device.h"
 
 /****************************************************************************/
 
@@ -44,6 +45,10 @@ static int ec_mac_parse(uint8_t *, const char *, int);
 // prototypes for private functions
 int ec_mac_equal(const uint8_t *, const uint8_t *);
 int ec_mac_is_broadcast(const uint8_t *);
+
+int ec_master_pal_init(ec_master_t *, unsigned int, const uint8_t *,
+    const uint8_t *, dev_t, struct class *, unsigned int, unsigned int);
+void ec_master_pal_clear(ec_master_t *);
 
 /****************************************************************************/
 
@@ -151,7 +156,7 @@ int __init ec_init_module(void)
     }
 
     for (i = 0; i < master_count; i++) {
-        ret = ec_master_init(&masters[i], i, macs[i][0], macs[i][1],
+        ret = ec_master_pal_init(&masters[i], i, macs[i][0], macs[i][1],
                     device_number, class, debug_level, run_on_cpu);
         if (ret)
             goto out_free_masters;
@@ -163,7 +168,7 @@ int __init ec_init_module(void)
 
 out_free_masters:
     for (i--; i >= 0; i--)
-        ec_master_clear(&masters[i]);
+        ec_master_pal_clear(&masters[i]);
     kfree(masters);
 out_class:
     class_destroy(class);
@@ -185,7 +190,7 @@ void __exit ec_cleanup_module(void)
     unsigned int i;
 
     for (i = 0; i < master_count; i++) {
-        ec_master_clear(&masters[i]);
+        ec_master_pal_clear(&masters[i]);
     }
 
     if (master_count)
@@ -206,6 +211,80 @@ void __exit ec_cleanup_module(void)
 unsigned int ec_master_count(void)
 {
     return master_count;
+}
+
+/****************************************************************************/
+
+/** Platform specific init.
+ */
+int ec_master_pal_init(ec_master_t *master, /**< EtherCAT master */
+        unsigned int index, /**< master index */
+        const uint8_t *main_mac, /**< MAC address of main device */
+        const uint8_t *backup_mac, /**< MAC address of backup device */
+        dev_t device_number, /**< Character device number. */
+        struct class *class, /**< Device class. */
+        unsigned int debug_level, /**< Debug level (module parameter). */
+        unsigned int run_on_cpu /**< bind created kernel threads to a cpu */
+        )
+{
+    int ret;
+
+    // init master
+    ret = ec_master_init(master, index, main_mac, backup_mac,
+               debug_level, run_on_cpu);
+    if (ret)
+        goto out_return;
+
+    // init character device
+    ret = ec_cdev_init(&master->pal.cdev, master, device_number);
+    if (ret)
+        goto out_free_master;
+
+    master->pal.class_device = device_create(class, NULL,
+            MKDEV(MAJOR(device_number), master->index), NULL,
+            "EtherCAT%u", master->index);
+    if (IS_ERR(master->pal.class_device)) {
+        EC_MASTER_ERR(master, "Failed to create class device!\n");
+        ret = PTR_ERR(master->pal.class_device);
+        goto out_clear_cdev;
+    }
+
+#ifdef EC_RTDM
+    // init RTDM device
+    ret = ec_rtdm_dev_init(&master->pal.rtdm_dev, master);
+    if (ret) {
+        goto out_unregister_class_device;
+    }
+#endif
+    return 0;
+
+#ifdef EC_RTDM
+out_unregister_class_device:
+    device_unregister(master->pal.class_device);
+#endif
+out_clear_cdev:
+    ec_cdev_clear(&master->pal.cdev);
+out_free_master:
+    ec_master_clear(master);
+out_return:
+    return ret;
+}
+
+/** Platform specific cleanup.
+ */
+void ec_master_pal_clear(
+        ec_master_t *master /**< EtherCAT master */
+        )
+{
+#ifdef EC_RTDM
+    ec_rtdm_dev_clear(&master->pal.rtdm_dev);
+#endif
+
+    device_unregister(master->pal.class_device);
+
+    ec_cdev_clear(&master->pal.cdev);
+
+    ec_master_clear(master);
 }
 
 /*****************************************************************************
@@ -497,7 +576,7 @@ ec_device_t *ecdev_offer(
 
         for (dev_idx = EC_DEVICE_MAIN;
                 dev_idx < ec_master_num_devices(master); dev_idx++) {
-            if (!master->devices[dev_idx].dev
+            if (!master->devices[dev_idx].pal.dev
                 && (ec_mac_equal(master->macs[dev_idx], net_dev->dev_addr)
                     || ec_mac_is_broadcast(master->macs[dev_idx]))) {
 
@@ -577,7 +656,7 @@ ec_master_t *ecrt_request_master_err(
 
     for (; dev_idx < ec_master_num_devices(master); dev_idx++) {
         ec_device_t *device = &master->devices[dev_idx];
-        if (!try_module_get(device->module)) {
+        if (!try_module_get(device->pal.module)) {
             up(&master->device_sem);
             EC_MASTER_ERR(master, "Device module is unloading!\n");
             errptr = ERR_PTR(-ENODEV);
@@ -599,7 +678,7 @@ ec_master_t *ecrt_request_master_err(
  out_module_put:
     for (; dev_idx > 0; dev_idx--) {
         ec_device_t *device = &master->devices[dev_idx - 1];
-        module_put(device->module);
+        module_put(device->pal.module);
     }
  out_release:
     master->reserved = 0;
@@ -633,7 +712,7 @@ void ecrt_release_master(ec_master_t *master)
 
     for (dev_idx = EC_DEVICE_MAIN; dev_idx < ec_master_num_devices(master);
             dev_idx++) {
-        module_put(master->devices[dev_idx].module);
+        module_put(master->devices[dev_idx].pal.module);
     }
 
     master->reserved = 0;

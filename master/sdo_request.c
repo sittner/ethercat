@@ -58,7 +58,7 @@ void ec_sdo_request_init(
     req->state = EC_INT_REQUEST_INIT;
     req->jiffies_start = 0U;
     req->jiffies_sent = 0U;
-    req->errno = 0;
+    req->error = 0;
     req->abort_code = 0x00000000;
 }
 
@@ -220,7 +220,7 @@ int ecrt_sdo_request_read(ec_sdo_request_t *req)
 {
     req->dir = EC_DIR_INPUT;
     req->state = EC_INT_REQUEST_QUEUED;
-    req->errno = 0;
+    req->error = 0;
     req->abort_code = 0x00000000;
     req->jiffies_start = jiffies;
     return 0;
@@ -232,7 +232,7 @@ int ecrt_sdo_request_write(ec_sdo_request_t *req)
 {
     req->dir = EC_DIR_OUTPUT;
     req->state = EC_INT_REQUEST_QUEUED;
-    req->errno = 0;
+    req->error = 0;
     req->abort_code = 0x00000000;
     req->jiffies_start = jiffies;
     return 0;
