@@ -28,15 +28,8 @@
 
 /****************************************************************************/
 
-#include <linux/module.h>
-#include <linux/kernel.h>
-#include <linux/string.h>
-#include <linux/slab.h>
-#include <linux/delay.h>
-#include <linux/device.h>
-#include <linux/version.h>
-#include <linux/hrtimer.h>
-#include <linux/kthread.h>
+
+#include "pal.h"
 
 #include "globals.h"
 #include "slave.h"
@@ -45,10 +38,6 @@
 #include "datagram.h"
 
 #ifdef EC_EOE
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
-#include <uapi/linux/sched/types.h> // struct sched_param
-#include <linux/sched/types.h> // sched_setscheduler
-#endif
 #include "ethernet.h"
 #endif
 

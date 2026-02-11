@@ -26,8 +26,8 @@
 
 /****************************************************************************/
 
-#include <linux/slab.h>
-#include <linux/err.h>
+
+#include "pal.h"
 
 #include "pdo.h"
 

@@ -25,7 +25,8 @@
 
 /****************************************************************************/
 
-#include <asm/div64.h>
+
+#include "pal.h"
 
 #include "globals.h"
 #include "master.h"

@@ -29,7 +29,8 @@
 #ifndef __EC_VOE_HANDLER_H__
 #define __EC_VOE_HANDLER_H__
 
-#include <linux/list.h>
+
+#include "pal.h"
 
 #include "globals.h"
 #include "datagram.h"

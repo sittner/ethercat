@@ -24,10 +24,9 @@
  * RTDM interface.
  */
 
-#include <linux/module.h>
-#include <linux/slab.h>
-#include <linux/mman.h>
 
+
+#include "pal.h"
 
 #include "../master.h"
 #include "ioctl.h"

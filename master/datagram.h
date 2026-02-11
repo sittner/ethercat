@@ -29,9 +29,8 @@
 #ifndef __EC_DATAGRAM_H__
 #define __EC_DATAGRAM_H__
 
-#include <linux/list.h>
-#include <linux/time.h>
-#include <linux/timex.h>
+
+#include "pal.h"
 
 #include "globals.h"
 

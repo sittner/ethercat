@@ -28,6 +28,8 @@
 
 /****************************************************************************/
 
+#include "pal.h"
+
 #include "slave_config.h"
 
 #include "globals.h"
@@ -40,8 +42,6 @@
 #include "eoe_request.h"
 #endif
 
-#include <linux/module.h>
-#include <linux/slab.h>
 
 /****************************************************************************/
 

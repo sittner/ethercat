@@ -29,7 +29,8 @@
 #ifndef __EC_REG_REQUEST_H__
 #define __EC_REG_REQUEST_H__
 
-#include <linux/list.h>
+
+#include "pal.h"
 
 #include "globals.h"
 

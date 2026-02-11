@@ -25,9 +25,8 @@
 
 /****************************************************************************/
 
-#include <linux/module.h>
-#include <linux/jiffies.h>
-#include <linux/slab.h>
+
+#include "pal.h"
 
 #include "eoe_request.h"
 

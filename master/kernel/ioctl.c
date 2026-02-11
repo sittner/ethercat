@@ -25,8 +25,8 @@
 
 /****************************************************************************/
 
-#include <linux/module.h>
-#include <linux/vmalloc.h>
+
+#include "pal.h"
 
 #include "../master.h"
 #include "../slave_config.h"

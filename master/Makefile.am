@@ -24,6 +24,7 @@ include $(top_srcdir)/Makefile.kbuild
 # using HEADERS to enable tags target
 noinst_HEADERS = \
 	kernel/cdev.c kernel/cdev.h \
+	kernel/pal.h \
 	coe_emerg_ring.c coe_emerg_ring.h \
 	datagram.c datagram.h \
 	datagram_pair.c datagram_pair.h \

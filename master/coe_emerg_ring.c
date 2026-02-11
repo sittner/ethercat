@@ -27,7 +27,8 @@
 
 /****************************************************************************/
 
-#include <linux/slab.h>
+
+#include "pal.h"
 
 #include "coe_emerg_ring.h"
 

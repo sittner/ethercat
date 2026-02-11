@@ -26,7 +26,8 @@
 
 /****************************************************************************/
 
-#include <linux/slab.h>
+
+#include "pal.h"
 
 #include "master.h"
 #include "datagram_pair.h"

@@ -29,7 +29,8 @@
 #ifndef __EC_DEVICE_H__
 #define __EC_DEVICE_H__
 
-#include <linux/interrupt.h>
+
+#include "pal.h"
 
 #include "../../devices/ecdev.h"
 #include "../globals.h"

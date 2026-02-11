@@ -24,8 +24,9 @@
  * RTDM interface.
  */
 
-#include <linux/module.h>
-#include <linux/vmalloc.h>
+
+#include "pal.h"
+
 #include <rtdm/driver.h>
 
 #include "../master.h"

@@ -26,9 +26,8 @@
 
 /****************************************************************************/
 
-#include <linux/module.h>
-#include <linux/vmalloc.h>
-#include <linux/mm.h>
+
+#include "pal.h"
 
 #include "cdev.h"
 #include "../master.h"

@@ -25,9 +25,8 @@
 
 /****************************************************************************/
 
-#include <linux/module.h>
-#include <linux/device.h>
-#include <linux/err.h>
+
+#include "pal.h"
 
 #include "../globals.h"
 #include "../master.h"

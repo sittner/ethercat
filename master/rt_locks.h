@@ -29,16 +29,15 @@
 #ifndef __EC_LOCKS_H__
 #define __EC_LOCKS_H__
 
-#include "globals.h"
-#include <linux/version.h>
+#include "pal.h"
 
-#include <linux/semaphore.h>
+#include "globals.h"
+
 
 /****************************************************************************/
 
 #ifdef EC_USE_RTMUTEX
 
-#include <linux/rtmutex.h>
 
 typedef struct rt_mutex ec_lock_t;
 

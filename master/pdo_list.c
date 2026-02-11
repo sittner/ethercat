@@ -26,7 +26,8 @@
 
 /****************************************************************************/
 
-#include <linux/module.h>
+
+#include "pal.h"
 
 #include "globals.h"
 #include "pdo.h"
