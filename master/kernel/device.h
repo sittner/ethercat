@@ -31,7 +31,7 @@
 
 #include <linux/interrupt.h>
 
-#include "devices/ecdev.h"
+#include "../devices/ecdev.h"
 #include "globals.h"
 
 /**
