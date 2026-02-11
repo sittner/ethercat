@@ -136,7 +136,7 @@ int main(int argc, char *argv[])
 
     /* Store transport reference in device */
     master.devices[EC_DEVICE_MAIN].pal.transport = transport;
-    master.devices[EC_DEVICE_MAIN].name = interface;
+    master.devices[EC_DEVICE_MAIN].name = interface;  /* Safe: interface from argv remains valid */
 
     /* Open device */
     ret = ec_device_open(&master.devices[EC_DEVICE_MAIN]);
@@ -165,10 +165,8 @@ int main(int argc, char *argv[])
         /* Poll device for received frames */
         ec_device_poll(&master.devices[EC_DEVICE_MAIN]);
 
-        /* Execute master FSM */
-        if (master.fsm.datagram) {
-            ec_fsm_master_exec(&master.fsm);
-        }
+        /* Execute master FSM unconditionally */
+        ec_fsm_master_exec(&master.fsm);
 
         /* Small sleep to prevent busy-waiting */
         usleep(1000);  /* 1ms */
@@ -278,14 +276,7 @@ void ec_device_poll(ec_device_t *device)
     }
 
     /* Poll transport layer for received frames */
-    while (1) {
-        received = ec_transport_receive(device->pal.transport, rx_buffer, sizeof(rx_buffer));
-        
-        if (received <= 0) {
-            /* No more frames or error */
-            break;
-        }
-
+    while ((received = ec_transport_receive(device->pal.transport, rx_buffer, sizeof(rx_buffer))) > 0) {
         /* Update RX statistics */
         device->rx_count++;
         device->master->device_stats.rx_count++;
