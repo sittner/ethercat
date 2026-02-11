@@ -56,7 +56,6 @@
 #include <linux/skbuff.h>
 #include <linux/slab.h>
 #include <linux/string.h>
-#include <linux/suse_version.h>
 #include <linux/time.h>
 #include <linux/timex.h>
 #include <linux/timer.h>
@@ -65,10 +64,20 @@
 #include <linux/wait.h>
 #include <linux/workqueue.h>
 #include <rtdm/driver.h>
-#include <rtdm/rtdm_driver.h>
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 0)
 #include <linux/sched/types.h>
 #include <uapi/linux/sched/types.h>
+#endif
+
+#if defined(CONFIG_SUSE_KERNEL) && LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+#include <linux/suse_version.h>
+#else
+#  ifndef SUSE_VERSION
+#    define SUSE_VERSION 0
+#  endif
+#  ifndef SUSE_PATCHLEVEL
+#    define SUSE_PATCHLEVEL 0
+#  endif
 #endif
 
 /****************************************************************************/

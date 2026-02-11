@@ -21,18 +21,19 @@
 #ifndef __EC_RTDM_DETAILS_H__
 #define __EC_RTDM_DETAILS_H__
 
-#include "pal.h"
-
 #include "../../config.h"
 #include "ioctl.h"
 
+#include <linux/kernel.h>
 
 #ifdef EC_RTDM_XENOMAI_V3
 
+#include <rtdm/driver.h>
 #define EC_RTDM_USERFD_T struct rtdm_fd
 
 #else // EC_RTDM_XENOMAI_V3
 
+#include <rtdm/rtdm_driver.h>
 
 #define EC_RTDM_USERFD_T rtdm_user_info_t
 

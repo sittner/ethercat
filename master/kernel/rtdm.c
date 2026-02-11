@@ -34,6 +34,7 @@
 #include "rtdm_details.h"
 
 /* include last because it does some redefinitions */
+#include <rtdm/rtdm_driver.h>
 
 /** Set to 1 to enable device operations debugging.
  */
