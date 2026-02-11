@@ -1260,7 +1260,7 @@ void ec_master_clear_device_stats(
         master->device_stats.loss_rates[i] = 0;
     }
 
-    master->device_stats.jiffies = 0;
+    master->device_stats.last_cycle = 0;
 }
 
 /****************************************************************************/
@@ -1277,7 +1277,7 @@ void ec_master_update_device_stats(
     unsigned int i, dev_idx;
 
     // frame statistics
-    if (likely(jiffies - s->jiffies < HZ)) {
+    if (likely(jiffies - s->last_cycle < HZ)) {
         return;
     }
 
@@ -1312,7 +1312,7 @@ void ec_master_update_device_stats(
         ec_device_update_stats(&master->devices[dev_idx]);
     }
 
-    s->jiffies = jiffies;
+    s->last_cycle = jiffies;
 }
 
 /****************************************************************************/

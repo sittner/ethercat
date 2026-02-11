@@ -36,7 +36,6 @@
 #include "master.h"
 #include "voe_handler.h"
 #include "flag.h"
-#include "ioctl.h"
 
 #ifdef EC_EOE
 #include "eoe_request.h"

@@ -323,8 +323,9 @@ static inline int rt_mutex_is_locked(ec_rt_mutex_t *lock)
     return 1;  /* Is locked */
 }
 
-//************************************************************************
-//typedef wait_queue_head_t ec_wait_queue_t;
+/****************************************************************************/
+/* Wait queues */
+/****************************************************************************/
 
 /* Wait queue structure for userspace */
 typedef struct {
@@ -332,9 +333,12 @@ typedef struct {
     pthread_cond_t cond;
 } ec_wait_queue_t;
 
+/* Kernel compatibility name */
+#define wait_queue_head_t ec_wait_queue_t
+
 /**
  * init_waitqueue_head - initialize a wait queue
- * @wq: wait queue to initialize
+ * @wq: pointer to wait queue to initialize
  */
 static inline void init_waitqueue_head(ec_wait_queue_t *wq)
 {
@@ -343,20 +347,8 @@ static inline void init_waitqueue_head(ec_wait_queue_t *wq)
 }
 
 /**
- * destroy_waitqueue_head - clean up wait queue resources
- * @wq: wait queue to destroy
- *
- * Note: No kernel equivalent, but needed in userspace
- */
-static inline void destroy_waitqueue_head(ec_wait_queue_t *wq)
-{
-    pthread_cond_destroy(&wq->cond);
-    pthread_mutex_destroy(&wq->lock);
-}
-
-/**
  * wake_up - wake one waiting thread
- * @wq: wait queue
+ * @wq: pointer to wait queue
  */
 static inline void wake_up(ec_wait_queue_t *wq)
 {
@@ -367,7 +359,7 @@ static inline void wake_up(ec_wait_queue_t *wq)
 
 /**
  * wake_up_all - wake all waiting threads
- * @wq: wait queue
+ * @wq: pointer to wait queue
  */
 static inline void wake_up_all(ec_wait_queue_t *wq)
 {
@@ -376,51 +368,43 @@ static inline void wake_up_all(ec_wait_queue_t *wq)
     pthread_mutex_unlock(&wq->lock);
 }
 
-/**
- * wake_up_interruptible - wake threads (same as wake_up in userspace)
- * @wq: wait queue
- */
 #define wake_up_interruptible(wq) wake_up(wq)
 
 /**
  * wait_event - sleep until condition is true
- * @wq: wait queue
+ * @wq: wait queue (passed by VALUE, not pointer - kernel API!)
  * @condition: condition to wait for
- *
- * Note: Condition is checked with lock held to avoid races
  */
 #define wait_event(wq, condition)                       \
     do {                                                \
-        pthread_mutex_lock(&(wq)->lock);                \
+        pthread_mutex_lock(&(wq).lock);                 \
         while (!(condition)) {                          \
-            pthread_cond_wait(&(wq)->cond, &(wq)->lock);\
+            pthread_cond_wait(&(wq).cond, &(wq).lock);  \
         }                                               \
-        pthread_mutex_unlock(&(wq)->lock);              \
+        pthread_mutex_unlock(&(wq).lock);               \
     } while (0)
 
 /**
  * wait_event_interruptible - sleep until condition (interruptible)
- * @wq: wait queue
+ * @wq: wait queue (passed by VALUE)
  * @condition: condition to wait for
  *
  * Returns 0 if condition became true, -ERESTARTSYS on signal
- *
- * Note: True signal interruption requires more complex handling
  */
 #define wait_event_interruptible(wq, condition)         \
     ({                                                  \
         int __ret = 0;                                  \
-        pthread_mutex_lock(&(wq)->lock);                \
+        pthread_mutex_lock(&(wq).lock);                 \
         while (!(condition)) {                          \
-            pthread_cond_wait(&(wq)->cond, &(wq)->lock);\
+            pthread_cond_wait(&(wq).cond, &(wq).lock);  \
         }                                               \
-        pthread_mutex_unlock(&(wq)->lock);              \
+        pthread_mutex_unlock(&(wq).lock);               \
         __ret;                                          \
     })
 
 /**
  * wait_event_timeout - sleep until condition or timeout
- * @wq: wait queue
+ * @wq: wait queue (passed by VALUE)
  * @condition: condition to wait for
  * @timeout_jiffies: timeout in jiffies
  *
@@ -437,15 +421,15 @@ static inline void wake_up_all(ec_wait_queue_t *wq)
             __ts.tv_sec++;                                              \
             __ts.tv_nsec -= 1000000000L;                                \
         }                                                               \
-        pthread_mutex_lock(&(wq)->lock);                                \
+        pthread_mutex_lock(&(wq).lock);                                 \
         while (!(condition)) {                                          \
-            if (pthread_cond_timedwait(&(wq)->cond, &(wq)->lock, &__ts) \
+            if (pthread_cond_timedwait(&(wq).cond, &(wq).lock, &__ts)   \
                     == ETIMEDOUT) {                                     \
                 __ret = 0;                                              \
                 break;                                                  \
             }                                                           \
         }                                                               \
-        pthread_mutex_unlock(&(wq)->lock);                              \
+        pthread_mutex_unlock(&(wq).lock);                               \
         __ret;                                                          \
     })
 
