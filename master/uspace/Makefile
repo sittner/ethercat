@@ -40,6 +40,7 @@ MASTER_SRCS = \
 	../soe_request.c \
 	../sync.c \
 	../sync_config.c \
+	../utils.c \
 	../voe_handler.c
 
 #	../ethernet.c \

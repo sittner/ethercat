@@ -1418,6 +1418,17 @@ static inline uint64_t div64_u64(uint64_t dividend, uint64_t divisor)
 #define ETH_P_ETHERCAT  0x88A4  /* EtherCAT protocol */
 #endif
 
+#include <stdlib.h>
+
+/****************************************************************************/
+/* String conversion functions */
+/****************************************************************************/
+
+#define simple_strtoul(str, endp, base)  strtoul(str, endp, base)
+#define simple_strtol(str, endp, base)   strtol(str, endp, base)
+#define simple_strtoull(str, endp, base) strtoull(str, endp, base)
+#define simple_strtoll(str, endp, base)  strtoll(str, endp, base)
+
 //************************************************************************
 
 struct net_device_stats {
