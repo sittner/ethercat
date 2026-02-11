@@ -28,7 +28,7 @@
 #include <sstream>
 using namespace std;
 
-#include "../master/ioctl.h"
+#include "../master/kernel/ioctl.h"
 
 class MasterDevice;
 

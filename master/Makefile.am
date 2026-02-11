@@ -23,12 +23,12 @@ include $(top_srcdir)/Makefile.kbuild
 
 # using HEADERS to enable tags target
 noinst_HEADERS = \
-	cdev.c cdev.h \
+	kernel/cdev.c kernel/cdev.h \
 	coe_emerg_ring.c coe_emerg_ring.h \
 	datagram.c datagram.h \
 	datagram_pair.c datagram_pair.h \
-	debug.c debug.h \
-	device.c device.h \
+	kernel/debug.c kernel/debug.h \
+	kernel/device.c kernel/device.h \
 	domain.c domain.h \
 	doxygen.c \
 	eoe_request.c eoe_request.h \
@@ -50,18 +50,18 @@ noinst_HEADERS = \
 	fsm_slave_scan.c fsm_slave_scan.h \
 	fsm_soe.c fsm_soe.h \
 	globals.h \
-	ioctl.c ioctl.h \
+	kernel/ioctl.c kernel/ioctl.h \
 	mailbox.c mailbox.h \
 	master.c master.h \
-	module.c \
+	kernel/module.c \
 	pdo.c pdo.h \
 	pdo_entry.c pdo_entry.h \
 	pdo_list.c pdo_list.h \
 	reg_request.c reg_request.h \
-	rtdm-ioctl.c \
-	rtdm.c rtdm.h \
-	rtdm_details.h \
-	rtdm_xenomai_v3.c \
+	kernel/rtdm-ioctl.c \
+	kernel/rtdm.c kernel/rtdm.h \
+	kernel/rtdm_details.h \
+	kernel/rtdm_xenomai_v3.c \
 	sdo.c sdo.h \
 	sdo_entry.c sdo_entry.h \
 	sdo_request.c sdo_request.h \

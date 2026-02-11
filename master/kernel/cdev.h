@@ -32,7 +32,7 @@
 #include <linux/fs.h>
 #include <linux/cdev.h>
 
-#include "globals.h"
+#include "../globals.h"
 
 /****************************************************************************/
 

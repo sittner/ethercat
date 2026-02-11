@@ -38,7 +38,7 @@ lib/*.cmake
 lib/libethercat.la
 lib/libethercat.pc
 libtool
-master/*.o.d
+master/**/*.o.d
 script/ethercat
 script/ethercat.service
 script/ethercatctl
