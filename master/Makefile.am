@@ -29,7 +29,7 @@ noinst_HEADERS = \
 	datagram.c datagram.h \
 	datagram_pair.c datagram_pair.h \
 	kernel/debug.c kernel/debug.h \
-	kernel/device.c kernel/device.h \
+	device.c device.h \
 	domain.c domain.h \
 	doxygen.c \
 	eoe_request.c eoe_request.h \
@@ -51,6 +51,7 @@ noinst_HEADERS = \
 	fsm_slave_scan.c fsm_slave_scan.h \
 	fsm_soe.c fsm_soe.h \
 	globals.h \
+	utils.c \
 	kernel/ioctl.c kernel/ioctl.h \
 	mailbox.c mailbox.h \
 	master.c master.h \
