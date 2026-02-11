@@ -40,8 +40,6 @@
 int __init ec_init_module(void);
 void __exit ec_cleanup_module(void);
 
-static int ec_mac_parse(uint8_t *, const char *, int);
-
 // prototypes for private functions
 int ec_mac_equal(const uint8_t *, const uint8_t *);
 int ec_mac_is_broadcast(const uint8_t *);

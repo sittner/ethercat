@@ -311,4 +311,19 @@ typedef struct ec_slave ec_slave_t; /**< \see ec_slave. */
 
 /****************************************************************************/
 
+/*****************************************************************************
+ * Utils
+ ****************************************************************************/
+
+#define EC_MAX_MAC_STRING_SIZE (3 * ETH_ALEN)
+
+int ec_mac_equal(const uint8_t *, const uint8_t *);
+ssize_t ec_mac_print(const uint8_t *, char *);
+int ec_mac_is_zero(const uint8_t *);
+int ec_mac_is_broadcast(const uint8_t *);
+int ec_mac_parse(uint8_t *, const char *, int);
+void ec_print_data(const uint8_t *, size_t);
+void ec_print_data_diff(const uint8_t *, const uint8_t *, size_t);
+size_t ec_state_string(uint8_t, char *, uint8_t);
+
 #endif

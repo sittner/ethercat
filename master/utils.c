@@ -80,7 +80,6 @@ int ec_mac_equal(
 
 /** Maximum MAC string size.
  */
-#define EC_MAX_MAC_STRING_SIZE (3 * ETH_ALEN)
 
 /** Print a MAC address to a buffer.
  *
@@ -149,7 +148,7 @@ int ec_mac_is_broadcast(
  *
  * \return 0 on success, else < 0
  */
-static int ec_mac_parse(uint8_t *mac, const char *src, int allow_empty)
+int ec_mac_parse(uint8_t *mac, const char *src, int allow_empty)
 {
     unsigned int i, value;
     const char *orig = src;
