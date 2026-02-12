@@ -404,7 +404,7 @@ void ec_fsm_coe_dict_request(
         return;
     }
 
-    fsm->jiffies_start = fsm->datagram->jiffies_sent;
+    fsm->time_start = fsm->datagram->time_sent;
 
     ec_slave_mbox_prepare_check(slave, datagram); // can not fail.
     fsm->retries = EC_FSM_RETRIES;
@@ -443,9 +443,8 @@ void ec_fsm_coe_dict_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms =
-            (fsm->datagram->jiffies_received - fsm->jiffies_start) *
-            1000 / HZ;
+        unsigned long diff_ms = ec_time_to_ms(
+            fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= EC_FSM_COE_DICT_TIMEOUT) {
             fsm->state = ec_fsm_coe_error;
             EC_SLAVE_ERR(slave, "Timeout while waiting for"
@@ -625,7 +624,7 @@ void ec_fsm_coe_dict_response(
 
     if (EC_READ_U8(data + 2) & 0x80 || fragments_left) {
         // more messages waiting. check again.
-        fsm->jiffies_start = fsm->datagram->jiffies_sent;
+        fsm->time_start = fsm->datagram->time_sent;
         ec_slave_mbox_prepare_check(slave, datagram); // can not fail.
         fsm->retries = EC_FSM_RETRIES;
         fsm->state = ec_fsm_coe_dict_check;
@@ -684,7 +683,7 @@ void ec_fsm_coe_dict_desc_request(
         return;
     }
 
-    fsm->jiffies_start = fsm->datagram->jiffies_sent;
+    fsm->time_start = fsm->datagram->time_sent;
 
     ec_slave_mbox_prepare_check(slave, datagram); // can not fail.
     fsm->retries = EC_FSM_RETRIES;
@@ -725,9 +724,8 @@ void ec_fsm_coe_dict_desc_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms =
-            (fsm->datagram->jiffies_received - fsm->jiffies_start) *
-            1000 / HZ;
+        unsigned long diff_ms = ec_time_to_ms(
+            fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= EC_FSM_COE_DICT_TIMEOUT) {
             fsm->state = ec_fsm_coe_error;
             EC_SLAVE_ERR(slave, "Timeout while waiting for"
@@ -948,7 +946,7 @@ void ec_fsm_coe_dict_entry_request(
         return;
     }
 
-    fsm->jiffies_start = fsm->datagram->jiffies_sent;
+    fsm->time_start = fsm->datagram->time_sent;
 
     ec_slave_mbox_prepare_check(slave, datagram); // can not fail
     fsm->retries = EC_FSM_RETRIES;
@@ -989,9 +987,8 @@ void ec_fsm_coe_dict_entry_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms =
-            (fsm->datagram->jiffies_received - fsm->jiffies_start) *
-            1000 / HZ;
+        unsigned long diff_ms = ec_time_to_ms(
+            fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= EC_FSM_COE_DICT_TIMEOUT) {
             fsm->state = ec_fsm_coe_error;
             EC_SLAVE_ERR(slave, "Timeout while waiting for"
@@ -1328,7 +1325,7 @@ void ec_fsm_coe_down_start(
     }
 
 
-    fsm->request->jiffies_sent = jiffies;
+    fsm->request->time_sent = ec_current_time();
     fsm->retries = EC_FSM_RETRIES;
 
     if (ec_fsm_coe_prepare_down_start(fsm, datagram)) {
@@ -1367,7 +1364,8 @@ void ec_fsm_coe_down_request(
         return;
     }
 
-    diff_ms = (jiffies - fsm->request->jiffies_sent) * 1000 / HZ;
+    diff_ms = ec_time_to_ms(ec_current_time() -
+        fsm->request->time_sent);
 
     if (fsm->datagram->working_counter != 1) {
         if (!fsm->datagram->working_counter) {
@@ -1400,7 +1398,7 @@ void ec_fsm_coe_down_request(
     }
 #endif
 
-    fsm->jiffies_start = fsm->datagram->jiffies_sent;
+    fsm->time_start = fsm->datagram->time_sent;
 
     ec_slave_mbox_prepare_check(slave, datagram); // can not fail.
     fsm->retries = EC_FSM_RETRIES;
@@ -1442,9 +1440,8 @@ void ec_fsm_coe_down_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms =
-            (fsm->datagram->jiffies_received - fsm->jiffies_start) *
-            1000 / HZ;
+        unsigned long diff_ms = ec_time_to_ms(
+            fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= fsm->request->response_timeout) {
             fsm->request->error = EIO;
             fsm->state = ec_fsm_coe_error;
@@ -1684,9 +1681,8 @@ void ec_fsm_coe_down_seg_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms =
-            (fsm->datagram->jiffies_received - fsm->jiffies_start) *
-            1000 / HZ;
+        unsigned long diff_ms = ec_time_to_ms(
+            fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= fsm->request->response_timeout) {
             fsm->request->error = EIO;
             fsm->state = ec_fsm_coe_error;
@@ -1900,7 +1896,7 @@ void ec_fsm_coe_up_start(
     }
 
     fsm->retries = EC_FSM_RETRIES;
-    fsm->request->jiffies_sent = jiffies;
+    fsm->request->time_sent = ec_current_time();
 
     if (ec_fsm_coe_prepare_up(fsm, datagram)) {
         fsm->state = ec_fsm_coe_error;
@@ -1936,7 +1932,8 @@ void ec_fsm_coe_up_request(
         return;
     }
 
-    diff_ms = (jiffies - fsm->request->jiffies_sent) * 1000 / HZ;
+    diff_ms = ec_time_to_ms(ec_current_time() -
+        fsm->request->time_sent);
 
     if (fsm->datagram->working_counter != 1) {
         if (!fsm->datagram->working_counter) {
@@ -1969,7 +1966,7 @@ void ec_fsm_coe_up_request(
     }
 #endif
 
-    fsm->jiffies_start = fsm->datagram->jiffies_sent;
+    fsm->time_start = fsm->datagram->time_sent;
 
     ec_slave_mbox_prepare_check(slave, datagram); // can not fail.
     fsm->retries = EC_FSM_RETRIES;
@@ -2012,9 +2009,8 @@ void ec_fsm_coe_up_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms =
-            (fsm->datagram->jiffies_received - fsm->jiffies_start) *
-            1000 / HZ;
+        unsigned long diff_ms = ec_time_to_ms(
+            fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= fsm->request->response_timeout) {
             fsm->request->error = EIO;
             fsm->state = ec_fsm_coe_error;
@@ -2296,7 +2292,7 @@ void ec_fsm_coe_up_seg_request(
         return;
     }
 
-    fsm->jiffies_start = fsm->datagram->jiffies_sent;
+    fsm->time_start = fsm->datagram->time_sent;
 
     ec_slave_mbox_prepare_check(slave, datagram); // can not fail.
     fsm->retries = EC_FSM_RETRIES;
@@ -2340,9 +2336,8 @@ void ec_fsm_coe_up_seg_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms =
-            (fsm->datagram->jiffies_received - fsm->jiffies_start) *
-            1000 / HZ;
+        unsigned long diff_ms = ec_time_to_ms(
+            fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= fsm->request->response_timeout) {
             fsm->request->error = EIO;
             fsm->state = ec_fsm_coe_error;

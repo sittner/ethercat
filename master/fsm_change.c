@@ -222,11 +222,11 @@ void ec_fsm_change_state_check(ec_fsm_change_t *fsm
 
     if (fsm->take_time) {
         fsm->take_time = 0;
-        fsm->jiffies_start = datagram->jiffies_sent;
+        fsm->time_start = datagram->time_sent;
     }
 
     if (datagram->working_counter == 0) {
-        if (datagram->jiffies_received - fsm->jiffies_start >= 3 * HZ) {
+        if (datagram->time_received - fsm->time_start >= ec_ms_to_time(3000)) {
             char state_str[EC_STATE_STRING_SIZE];
             ec_state_string(fsm->requested_state, state_str, 0);
             fsm->state = ec_fsm_change_state_error;
@@ -295,7 +295,7 @@ void ec_fsm_change_state_status(ec_fsm_change_t *fsm
 
     if (fsm->take_time) {
         fsm->take_time = 0;
-        fsm->jiffies_start = datagram->jiffies_sent;
+        fsm->time_start = datagram->time_sent;
     }
 
     slave->current_state = EC_READ_U8(datagram->data);
@@ -337,8 +337,8 @@ void ec_fsm_change_state_status(ec_fsm_change_t *fsm
     // still old state
 
     timeout_ms = ec_fsm_change_timeout_ms(fsm);
-    if (datagram->jiffies_received - fsm->jiffies_start >=
-            timeout_ms * HZ / 1000) {
+    if (datagram->time_received - fsm->time_start >=
+            ec_ms_to_time(timeout_ms)) {
         // timeout while checking
         char state_str[EC_STATE_STRING_SIZE];
         ec_state_string(fsm->requested_state, state_str, 0);
@@ -554,7 +554,7 @@ void ec_fsm_change_state_check_ack(ec_fsm_change_t *fsm
 
     if (fsm->take_time) {
         fsm->take_time = 0;
-        fsm->jiffies_start = datagram->jiffies_sent;
+        fsm->time_start = datagram->time_sent;
     }
 
     slave->current_state = EC_READ_U8(datagram->data);
@@ -573,8 +573,8 @@ void ec_fsm_change_state_check_ack(ec_fsm_change_t *fsm
     }
 
     timeout_ms = ec_fsm_change_timeout_ms(fsm);
-    if (datagram->jiffies_received - fsm->jiffies_start >=
-            timeout_ms * HZ / 1000) {
+    if (datagram->time_received - fsm->time_start >=
+            ec_ms_to_time(timeout_ms)) {
         // timeout while checking
         char state_str[EC_STATE_STRING_SIZE];
         ec_state_string(slave->current_state, state_str, 0);

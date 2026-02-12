@@ -54,8 +54,8 @@ typedef struct {
                           the slave, EC_DIR_INPUT means uploading from the
                           slave. */
     ec_internal_request_state_t state; /**< FoE request state. */
-    unsigned long jiffies_start; /**< Jiffies, when the request was issued. */
-    unsigned long jiffies_sent; /**< Jiffies, when the upload/download
+    ec_time_t time_start; /**< Time, when the request was issued. */
+    ec_time_t time_sent; /**< Time, when the upload/download
                                      request was sent. */
     uint8_t *file_name; /**< Pointer to the filename. */
     uint32_t result; /**< FoE request abort code. Zero on success. */

@@ -241,7 +241,7 @@ int ec_fsm_soe_prepare_read(
         ec_print_data(data, EC_SOE_SIZE);
     }
 
-    fsm->request->jiffies_sent = jiffies;
+    fsm->request->time_sent = ec_current_time();
     fsm->state = ec_fsm_soe_read_request;
 
     return 0;
@@ -306,7 +306,7 @@ void ec_fsm_soe_read_request(
         return;
     }
 
-    diff_ms = (jiffies - fsm->request->jiffies_sent) * 1000 / HZ;
+    diff_ms = ec_time_to_ms(ec_current_time() - fsm->request->time_sent);
 
     if (fsm->datagram->working_counter != 1) {
         if (!fsm->datagram->working_counter) {
@@ -327,7 +327,7 @@ void ec_fsm_soe_read_request(
         return;
     }
 
-    fsm->jiffies_start = fsm->datagram->jiffies_sent;
+    fsm->time_start = fsm->datagram->time_sent;
     ec_slave_mbox_prepare_check(slave, datagram); // can not fail.
     fsm->retries = EC_FSM_RETRIES;
     fsm->state = ec_fsm_soe_read_check;
@@ -367,9 +367,8 @@ void ec_fsm_soe_read_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms =
-            (fsm->datagram->jiffies_received - fsm->jiffies_start) *
-            1000 / HZ;
+        unsigned long diff_ms = ec_time_to_ms(
+            fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= EC_SOE_RESPONSE_TIMEOUT) {
             fsm->state = ec_fsm_soe_error;
             EC_SLAVE_ERR(slave, "Timeout after %lu ms while waiting for"
@@ -499,7 +498,7 @@ void ec_fsm_soe_read_response(
     if (incomplete) {
         EC_SLAVE_DBG(slave, 1, "SoE data incomplete. Waiting for fragment"
                 " at offset %zu.\n", req->data_size);
-        fsm->jiffies_start = fsm->datagram->jiffies_sent;
+        fsm->time_start = fsm->datagram->time_sent;
         ec_slave_mbox_prepare_check(slave, datagram); // can not fail.
         fsm->retries = EC_FSM_RETRIES;
         fsm->state = ec_fsm_soe_read_check;
@@ -595,7 +594,7 @@ void ec_fsm_soe_write_start(
     fsm->offset = 0;
     fsm->retries = EC_FSM_RETRIES;
     ec_fsm_soe_write_next_fragment(fsm, datagram);
-    req->jiffies_sent = jiffies;
+    req->time_sent = ec_current_time();
 }
 
 /****************************************************************************/
@@ -623,7 +622,8 @@ void ec_fsm_soe_write_request(
         return;
     }
 
-    diff_ms = (jiffies - fsm->request->jiffies_sent) * 1000 / HZ;
+    ec_time_t now = ec_current_time();
+    diff_ms = ec_time_to_ms(now - fsm->request->time_sent);
 
     if (fsm->datagram->working_counter != 1) {
         if (!fsm->datagram->working_counter) {
@@ -648,10 +648,10 @@ void ec_fsm_soe_write_request(
         // next fragment
         fsm->retries = EC_FSM_RETRIES;
         ec_fsm_soe_write_next_fragment(fsm, datagram);
-        fsm->request->jiffies_sent = jiffies;
+        fsm->request->time_sent = now;
     } else {
         // all fragments sent; query response
-        fsm->jiffies_start = fsm->datagram->jiffies_sent;
+        fsm->time_start = fsm->datagram->time_sent;
         ec_slave_mbox_prepare_check(slave, datagram); // can not fail.
         fsm->retries = EC_FSM_RETRIES;
         fsm->state = ec_fsm_soe_write_check;
@@ -691,8 +691,8 @@ void ec_fsm_soe_write_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms =
-            (datagram->jiffies_received - fsm->jiffies_start) * 1000 / HZ;
+        unsigned long diff_ms = ec_time_to_ms(
+            datagram->time_received - fsm->time_start);
         if (diff_ms >= EC_SOE_RESPONSE_TIMEOUT) {
             fsm->state = ec_fsm_soe_error;
             EC_SLAVE_ERR(slave, "Timeout after %lu ms while waiting"

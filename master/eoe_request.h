@@ -40,7 +40,7 @@
 typedef struct {
     struct list_head list; /**< List item. */
     ec_internal_request_state_t state; /**< Request state. */
-    unsigned long jiffies_sent; /**< Jiffies, when the request was sent. */
+    ec_time_t time_sent; /**< Time, when the request was sent. */
 
     uint8_t mac_address_included;
     uint8_t ip_address_included;

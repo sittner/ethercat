@@ -127,7 +127,7 @@ typedef struct {
     unsigned int corrupted; /**< corrupted frames */
     unsigned int unmatched; /**< unmatched datagrams (received, but not
                                queued any longer) */
-    unsigned long output_jiffies; /**< time of last output */
+    ec_time_t output_time; /**< time of last output */
 } ec_stats_t;
 
 /****************************************************************************/
@@ -158,7 +158,7 @@ typedef struct {
                                         different statistics cycle periods. */
     s32 loss_rates[EC_RATE_COUNT]; /**< Frame loss rates for different
                                      statistics cycle periods. */
-    unsigned long last_cycle; /**< Jiffies of last statistic cycle. */
+    ec_time_t last_cycle; /**< Time of last statistic cycle. */
 } ec_device_stats_t;
 
 /****************************************************************************/
@@ -365,6 +365,8 @@ void ec_master_internal_receive_cb(void *);
 
 void ec_master_idle_thread_schedule(ec_master_t *master, int sent_bytes);
 void ec_master_operation_thread_schedule(ec_master_t *master);
+
+ec_time_t ec_current_time(void);
 
 extern const unsigned int rate_intervals[EC_RATE_COUNT]; // see master.c
 

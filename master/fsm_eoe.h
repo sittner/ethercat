@@ -46,7 +46,7 @@ struct ec_fsm_eoe {
 
     void (*state)(ec_fsm_eoe_t *, ec_datagram_t *); /**< EoE state function */
     ec_datagram_t *datagram; /**< Datagram used in the previous step. */
-    unsigned long jiffies_start; /**< Timestamp. */
+    ec_time_t time_start; /**< Timestamp. */
     ec_eoe_request_t *request; /**< EoE request */
     unsigned int frame_type_retries; /**< retries upon wrong frame type. */
 };

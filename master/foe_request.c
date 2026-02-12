@@ -29,6 +29,7 @@
 
 #include "pal.h"
 
+#include "master.h"
 #include "foe_request.h"
 #include "foe.h"
 
@@ -159,7 +160,7 @@ int ec_foe_request_timed_out(
         )
 {
     return req->issue_timeout
-        && jiffies - req->jiffies_start > HZ * req->issue_timeout / 1000;
+        && (ec_current_time() - req->time_start) > ec_us_to_time(req->issue_timeout * 1000LL);
 }
 
 /****************************************************************************/
@@ -173,7 +174,7 @@ void ec_foe_request_read(
     req->dir = EC_DIR_INPUT;
     req->state = EC_INT_REQUEST_QUEUED;
     req->result = FOE_BUSY;
-    req->jiffies_start = jiffies;
+    req->time_start = ec_current_time();
 }
 
 /****************************************************************************/
@@ -187,7 +188,7 @@ void ec_foe_request_write(
     req->dir = EC_DIR_OUTPUT;
     req->state = EC_INT_REQUEST_QUEUED;
     req->result = FOE_BUSY;
-    req->jiffies_start = jiffies;
+    req->time_start = ec_current_time();
 }
 
 /****************************************************************************/

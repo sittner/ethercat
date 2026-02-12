@@ -49,7 +49,7 @@ struct ec_fsm_foe {
     void (*state)(ec_fsm_foe_t *, ec_datagram_t *); /**< FoE state function.
                                                      */
     ec_datagram_t *datagram; /**< Datagram used in previous step. */
-    unsigned long jiffies_start; /**< FoE timestamp. */
+    ec_time_t time_start; /**< FoE timestamp. */
     uint8_t subindex; /**< Current subindex. */
     ec_foe_request_t *request; /**< FoE request. */
     uint8_t toggle; /**< Toggle bit for segment commands. */

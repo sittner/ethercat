@@ -357,8 +357,8 @@ void ec_fsm_foe_state_ack_check(
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
         // slave did not put anything in the mailbox yet
-        unsigned long diff_ms = (fsm->datagram->jiffies_received -
-                fsm->jiffies_start) * 1000 / HZ;
+        unsigned long diff_ms = ec_time_to_ms(fsm->datagram->time_received -
+                fsm->time_start);
         if (diff_ms >= EC_FSM_FOE_TIMEOUT) {
             ec_foe_set_tx_error(fsm, FOE_TIMEOUT_ERROR);
             EC_SLAVE_ERR(slave, "Timeout while waiting for ack response.\n");
@@ -487,7 +487,7 @@ void ec_fsm_foe_state_wrq_sent(
         return;
     }
 
-    fsm->jiffies_start = fsm->datagram->jiffies_sent;
+    fsm->time_start = fsm->datagram->time_sent;
 
     ec_slave_mbox_prepare_check(slave, datagram); // can not fail.
 
@@ -528,7 +528,7 @@ void ec_fsm_foe_state_data_sent(
     }
 
     ec_slave_mbox_prepare_check(slave, datagram);
-    fsm->jiffies_start = jiffies;
+    fsm->time_start = ec_current_time();
     fsm->retries = EC_FSM_RETRIES;
     fsm->state = ec_fsm_foe_state_ack_check;
 }
@@ -625,7 +625,7 @@ void ec_fsm_foe_state_rrq_sent(
         return;
     }
 
-    fsm->jiffies_start = fsm->datagram->jiffies_sent;
+    fsm->time_start = fsm->datagram->time_sent;
 
     ec_slave_mbox_prepare_check(slave, datagram); // can not fail.
 
@@ -696,8 +696,8 @@ void ec_fsm_foe_state_data_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms = (fsm->datagram->jiffies_received -
-                fsm->jiffies_start) * 1000 / HZ;
+        unsigned long diff_ms = ec_time_to_ms(fsm->datagram->time_received -
+                fsm->time_start);
         if (diff_ms >= EC_FSM_FOE_TIMEOUT) {
             ec_foe_set_tx_error(fsm, FOE_TIMEOUT_ERROR);
             EC_SLAVE_ERR(slave, "Timeout while waiting for ack response.\n");
@@ -870,7 +870,7 @@ void ec_fsm_foe_state_sent_ack(
         return;
     }
 
-    fsm->jiffies_start = fsm->datagram->jiffies_sent;
+    fsm->time_start = fsm->datagram->time_sent;
 
     ec_slave_mbox_prepare_check(slave, datagram); // can not fail.
 

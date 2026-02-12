@@ -33,7 +33,7 @@
 
 /** Read/write timeout [ms].
  *
- * Used to calculate timeouts bsed on the jiffies counter.
+ * Used to calculate timeouts based on ec_time_t system.
  *
  * \attention Must be more than 10 to avoid problems on kernels that run with
  * a timer interupt frequency of 100 Hz.
@@ -215,7 +215,7 @@ void ec_fsm_sii_state_read_check(
         return;
     }
 
-    fsm->jiffies_start = datagram->jiffies_sent;
+    fsm->time_start = datagram->time_sent;
     fsm->check_once_more = 1;
 
     // issue check/fetch datagram
@@ -280,8 +280,8 @@ void ec_fsm_sii_state_read_fetch(
     if (EC_READ_U8(datagram->data + 1) & 0x81) { /* busy bit or
                                                     read operation busy */
         // still busy... timeout?
-        unsigned long diff_ms =
-            (datagram->jiffies_received - fsm->jiffies_start) * 1000 / HZ;
+        unsigned long diff_ms = ec_time_to_ms(
+            datagram->time_received - fsm->time_start);
         if (diff_ms >= SII_TIMEOUT) {
             if (fsm->check_once_more) {
                 fsm->check_once_more = 0;
@@ -362,7 +362,7 @@ void ec_fsm_sii_state_write_check(
         return;
     }
 
-    fsm->jiffies_start = datagram->jiffies_sent;
+    fsm->time_start = datagram->time_sent;
     fsm->check_once_more = 1;
 
     // issue check datagram
@@ -417,7 +417,7 @@ void ec_fsm_sii_state_write_check2(
 
     /* FIXME: some slaves never answer with the busy flag set...
      * wait a few ms for the write operation to complete. */
-    diff_ms = (datagram->jiffies_received - fsm->jiffies_start) * 1000 / HZ;
+    diff_ms = ec_time_to_ms(datagram->time_received - fsm->time_start);
     if (diff_ms < SII_INHIBIT) {
 #ifdef SII_DEBUG
         EC_SLAVE_DBG(fsm->slave, 0, "too early.\n");

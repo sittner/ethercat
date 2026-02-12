@@ -52,7 +52,7 @@ struct ec_voe_handler {
     void (*state)(ec_voe_handler_t *); /**< State function */
     ec_internal_request_state_t request_state; /**< Handler state. */
     unsigned int retries; /**< retries upon datagram timeout */
-    unsigned long jiffies_start; /**< Timestamp for timeout calculation. */
+    ec_time_t time_start; /**< Timestamp for timeout calculation. */
 };
 
 /****************************************************************************/

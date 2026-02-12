@@ -28,6 +28,7 @@
 
 #include "pal.h"
 
+#include "master.h"
 #include "soe_request.h"
 
 /****************************************************************************/
@@ -58,8 +59,8 @@ void ec_soe_request_init(
     req->issue_timeout = 0; // no timeout
     req->dir = EC_DIR_INVALID;
     req->state = EC_INT_REQUEST_INIT;
-    req->jiffies_start = 0U;
-    req->jiffies_sent = 0U;
+    req->time_start = 0;
+    req->time_sent = 0;
     req->error_code = 0x0000;
 }
 
@@ -229,7 +230,7 @@ int ec_soe_request_read(
     req->dir = EC_DIR_INPUT;
     req->state = EC_INT_REQUEST_QUEUED;
     req->error_code = 0x0000;
-    req->jiffies_start = jiffies;
+    req->time_start = ec_current_time();
     return 0;
 }
 
@@ -244,7 +245,7 @@ int ec_soe_request_write(
     req->dir = EC_DIR_OUTPUT;
     req->state = EC_INT_REQUEST_QUEUED;
     req->error_code = 0x0000;
-    req->jiffies_start = jiffies;
+    req->time_start = ec_current_time();
     return 0;
 }
 
@@ -257,7 +258,7 @@ int ec_soe_request_write(
 int ec_soe_request_timed_out(const ec_soe_request_t *req /**< SDO request. */)
 {
     return req->issue_timeout
-        && jiffies - req->jiffies_start > HZ * req->issue_timeout / 1000;
+        && ec_current_time() - req->time_start > ec_ms_to_time(req->issue_timeout);
 }
 
 /*****************************************************************************

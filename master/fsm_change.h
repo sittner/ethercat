@@ -63,7 +63,7 @@ struct ec_fsm_change
     ec_fsm_change_mode_t mode; /**< full state change, or ack only. */
     ec_slave_state_t requested_state; /**< input: state */
     ec_slave_state_t old_state; /**< prior slave state */
-    unsigned long jiffies_start; /**< change timer */
+    ec_time_t time_start; /**< change timer */
     uint8_t take_time; /**< take sending timestamp */
     uint8_t spontaneous_change; /**< spontaneous state change detected */
 };

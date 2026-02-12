@@ -54,8 +54,8 @@ struct ec_sdo_request {
                           the slave, EC_DIR_INPUT means uploading from the
                           slave. */
     ec_internal_request_state_t state; /**< SDO request state. */
-    unsigned long jiffies_start; /**< Jiffies, when the request was issued. */
-    unsigned long jiffies_sent; /**< Jiffies, when the upload/download
+    ec_time_t time_start; /**< Time, when the request was issued. */
+    ec_time_t time_sent; /**< Time, when the upload/download
                                      request was sent. */
     int error; /**< Error number. */
     uint32_t abort_code; /**< SDO request abort code. Zero on success. */

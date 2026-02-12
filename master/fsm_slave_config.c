@@ -579,7 +579,7 @@ void ec_fsm_slave_config_state_mbox_sync(
 
     if (fsm->take_time) {
         fsm->take_time = 0;
-        fsm->jiffies_start = datagram->jiffies_sent;
+        fsm->time_start = datagram->time_sent;
     }
 
     /* Because the sync manager configurations are cleared during the last
@@ -588,9 +588,9 @@ void ec_fsm_slave_config_state_mbox_sync(
      * a certain time, if the slave does not respond.
      */
     if (datagram->working_counter == 0) {
-        unsigned long diff = datagram->jiffies_received - fsm->jiffies_start;
+        ec_time_t diff = datagram->time_received - fsm->time_start;
 
-        if (diff >= HZ) {
+        if (diff >= ec_ms_to_time(1000)) {
             slave->error_flag = 1;
             fsm->state = ec_fsm_slave_config_state_error;
             EC_SLAVE_ERR(slave, "Timeout while configuring"
@@ -598,7 +598,7 @@ void ec_fsm_slave_config_state_mbox_sync(
             return;
         } else {
             EC_SLAVE_DBG(slave, 1, "Resending after %u ms...\n",
-                    (unsigned int) diff * 1000 / HZ);
+                    (unsigned int) ec_time_to_ms(diff));
         }
 
         // send configuration datagram again
@@ -726,7 +726,7 @@ void ec_fsm_slave_config_state_boot_preop(
     }
 
     // slave is now in BOOT or PREOP
-    slave->jiffies_preop = fsm->datagram->jiffies_received;
+    slave->time_preop = fsm->datagram->time_received;
 
     EC_SLAVE_DBG(slave, 1, "Now in %s.\n",
             slave->requested_state != EC_SLAVE_STATE_BOOT ? "PREOP" : "BOOT");
@@ -1426,7 +1426,7 @@ void ec_fsm_slave_config_state_dc_cycle(
 
     EC_SLAVE_DBG(slave, 1, "Checking for synchrony.\n");
 
-    fsm->jiffies_start = jiffies;
+    fsm->time_start = ec_current_time();
     ec_datagram_fprd(datagram, slave->station_address, 0x092c, 4);
     fsm->retries = EC_FSM_RETRIES;
     fsm->state = ec_fsm_slave_config_state_dc_sync_check;
@@ -1474,7 +1474,7 @@ void ec_fsm_slave_config_state_dc_sync_check(
     }
 
     abs_sync_diff = EC_READ_U32(datagram->data) & 0x7fffffff;
-    diff_ms = (datagram->jiffies_received - fsm->jiffies_start) * 1000 / HZ;
+    diff_ms = ec_time_to_ms(datagram->time_received - fsm->time_start);
 
     if (abs_sync_diff > EC_DC_MAX_SYNC_DIFF_NS) {
 
@@ -1639,7 +1639,7 @@ void ec_fsm_slave_config_enter_wait_safeop(
         ec_datagram_fprd(fsm->datagram, fsm->slave->station_address,
                 0x0600, 1);
 
-        fsm->jiffies_start = jiffies;
+        fsm->time_start = ec_current_time();
     }
     else {
         ec_fsm_slave_config_enter_safeop(fsm);
@@ -1654,9 +1654,9 @@ void ec_fsm_slave_config_state_wait_safeop(
         ec_fsm_slave_config_t *fsm /**< slave state machine */
         )
 {
-    unsigned long diff = jiffies - fsm->jiffies_start;
+    ec_time_t diff = ec_current_time() - fsm->time_start;
 
-    if (diff * 1000 / HZ < fsm->wait_ms) {
+    if (diff < ec_ms_to_time(fsm->wait_ms)) {
         return;
     }
 

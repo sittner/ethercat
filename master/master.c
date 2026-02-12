@@ -56,27 +56,13 @@
 /** SDO injection timeout in microseconds. */
 #define EC_SDO_INJECTION_TIMEOUT 10000
 
-#ifdef EC_HAVE_CYCLES
-
-/** Frame timeout in cycles.
+/** Frame timeout
  */
-static cycles_t timeout_cycles;
+static ec_time_t datagram_timeout;
 
-/** Timeout for external datagram injection [cycles].
+/** Timeout for external datagram injection
  */
-static cycles_t ext_injection_timeout_cycles;
-
-#else
-
-/** Frame timeout in jiffies.
- */
-static unsigned long timeout_jiffies;
-
-/** Timeout for external datagram injection [jiffies].
- */
-static unsigned long ext_injection_timeout_jiffies;
-
-#endif
+static ec_time_t ext_injection_timeout;
 
 /** List of intervals for statistics [s].
  */
@@ -117,16 +103,10 @@ int ecrt_master_send_ext(ec_master_t *master);
 */
 void ec_master_init_static(void)
 {
-#ifdef EC_HAVE_CYCLES
-    timeout_cycles = (cycles_t) EC_IO_TIMEOUT /* us */ * (cpu_khz / 1000);
-    ext_injection_timeout_cycles =
-        (cycles_t) EC_SDO_INJECTION_TIMEOUT /* us */ * (cpu_khz / 1000);
-#else
     // one jiffy may always elapse between time measurement
-    timeout_jiffies = max(EC_IO_TIMEOUT * HZ / 1000000, 1);
-    ext_injection_timeout_jiffies =
-        max(EC_SDO_INJECTION_TIMEOUT * HZ / 1000000, 1);
-#endif
+    datagram_timeout = max(ec_us_to_time(EC_IO_TIMEOUT), 1);
+    ext_injection_timeout =
+        max(ec_us_to_time(EC_SDO_INJECTION_TIMEOUT), 1);
 }
 
 /****************************************************************************/
@@ -213,7 +193,7 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     }
 
     // send interval in IDLE phase
-    ec_master_set_send_interval(master, 1000000 / HZ);
+    ec_master_set_send_interval(master, EC_IDLE_SEND_INTERVAL);
 
     master->fsm_slave = NULL;
     INIT_LIST_HEAD(&master->fsm_exec_list);
@@ -224,7 +204,7 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     master->stats.timeouts = 0;
     master->stats.corrupted = 0;
     master->stats.unmatched = 0;
-    master->stats.output_jiffies = 0;
+    master->stats.output_time = 0;
 
     master->thread = NULL;
 
@@ -554,8 +534,6 @@ void ec_master_thread_stop(
         ec_master_t *master /**< EtherCAT master */
         )
 {
-    unsigned long sleep_jiffies;
-
     if (!master->thread) {
         EC_MASTER_WARN(master, "%s(): Already finished!\n", __func__);
         return;
@@ -572,8 +550,7 @@ void ec_master_thread_stop(
     }
 
     // wait for FSM datagram
-    sleep_jiffies = max(HZ / 100, 1); // 10 ms, at least 1 jiffy
-    schedule_timeout(sleep_jiffies);
+    ec_schedule_ms(10);
 }
 
 /****************************************************************************/
@@ -776,10 +753,7 @@ void ec_master_inject_external_datagrams(
                     datagram->data_size, new_queue_size);
             datagram_count++;
 #endif
-#ifdef EC_HAVE_CYCLES
-            datagram->cycles_sent = 0;
-#endif
-            datagram->jiffies_sent = 0;
+            datagram->time_sent = 0;
             ec_master_queue_datagram(master, datagram);
             queue_size = new_queue_size;
         }
@@ -791,15 +765,9 @@ void ec_master_inject_external_datagrams(
                     master->max_queue_size);
         }
         else { // datagram does not fit in the current cycle
-#ifdef EC_HAVE_CYCLES
-            cycles_t cycles_now = get_cycles();
-
-            if (cycles_now - datagram->cycles_sent
-                    > ext_injection_timeout_cycles)
-#else
-            if (jiffies - datagram->jiffies_sent
-                    > ext_injection_timeout_jiffies)
-#endif
+            ec_time_t now = ec_current_time();
+            if (now - datagram->time_sent
+                    > ext_injection_timeout)
             {
 #if defined EC_RT_SYSLOG || DEBUG_INJECT
                 unsigned int time_us;
@@ -808,14 +776,8 @@ void ec_master_inject_external_datagrams(
                 datagram->state = EC_DATAGRAM_ERROR;
 
 #if defined EC_RT_SYSLOG || DEBUG_INJECT
-#ifdef EC_HAVE_CYCLES
                 time_us = (unsigned int)
-                    ((cycles_now - datagram->cycles_sent) * 1000LL)
-                    / cpu_khz;
-#else
-                time_us = (unsigned int)
-                    ((jiffies - datagram->jiffies_sent) * 1000000 / HZ);
-#endif
+                    ec_time_to_us(now - datagram->time_sent);
                 EC_MASTER_ERR(master, "Timeout %u us: Injecting"
                         " external datagram %s size=%zu,"
                         " max_queue_size=%zu\n", time_us, datagram->name,
@@ -939,17 +901,12 @@ int ec_master_send_datagrams(
     size_t datagram_size;
     uint8_t *frame_data, *cur_data = NULL;
     void *follows_word;
-#ifdef EC_HAVE_CYCLES
-    cycles_t cycles_start, cycles_sent, cycles_end;
-#endif
-    unsigned long jiffies_sent;
+    ec_time_t time_start, time_sent, time_end;
     unsigned int frame_count, more_datagrams_waiting;
     struct list_head sent_datagrams;
     int sent_bytes;
 
-#ifdef EC_HAVE_CYCLES
-    cycles_start = get_cycles();
-#endif
+    time_start = ec_current_time();
     frame_count = 0;
     sent_bytes = 0;
     INIT_LIST_HEAD(&sent_datagrams);
@@ -1033,18 +990,12 @@ int ec_master_send_datagrams(
         ec_device_send(&master->devices[device_index],
                 cur_data - frame_data);
         sent_bytes += (cur_data - frame_data);
-#ifdef EC_HAVE_CYCLES
-        cycles_sent = get_cycles();
-#endif
-        jiffies_sent = jiffies;
+        time_sent = ec_current_time();
 
         // set datagram states and sending timestamps
         list_for_each_entry_safe(datagram, next, &sent_datagrams, sent) {
             datagram->state = EC_DATAGRAM_SENT;
-#ifdef EC_HAVE_CYCLES
-            datagram->cycles_sent = cycles_sent;
-#endif
-            datagram->jiffies_sent = jiffies_sent;
+            datagram->time_sent = time_sent;
             list_del_init(&datagram->sent); // empty list of sent datagrams
         }
 
@@ -1052,14 +1003,12 @@ int ec_master_send_datagrams(
     }
     while (more_datagrams_waiting);
 
-#ifdef EC_HAVE_CYCLES
     if (unlikely(master->debug_level > 1)) {
-        cycles_end = get_cycles();
+        time_end = ec_current_time();
         EC_MASTER_DBG(master, 0, "%s()"
                 " sent %u frames in %uus.\n", __func__, frame_count,
-               (unsigned int) (cycles_end - cycles_start) * 1000 / cpu_khz);
+               (unsigned int) ec_time_to_us(time_end - time_start));
     }
-#endif
 
     return sent_bytes;
 }
@@ -1193,12 +1142,8 @@ void ec_master_receive_datagrams(
 
         // dequeue the received datagram
         datagram->state = EC_DATAGRAM_RECEIVED;
-#ifdef EC_HAVE_CYCLES
-        datagram->cycles_received =
-            master->devices[EC_DEVICE_MAIN].cycles_poll;
-#endif
-        datagram->jiffies_received =
-            master->devices[EC_DEVICE_MAIN].jiffies_poll;
+        datagram->time_received =
+            master->devices[EC_DEVICE_MAIN].time_poll;
         list_del_init(&datagram->queue);
     }
 }
@@ -1212,8 +1157,9 @@ void ec_master_receive_datagrams(
  */
 void ec_master_output_stats(ec_master_t *master /**< EtherCAT master */)
 {
-    if (unlikely(jiffies - master->stats.output_jiffies >= HZ)) {
-        master->stats.output_jiffies = jiffies;
+    ec_time_t now = ec_current_time();
+    if (unlikely(now - master->stats.output_time >= ec_ms_to_time(1000))) {
+        master->stats.output_time = now;
 
         if (master->stats.timeouts) {
             EC_MASTER_WARN(master, "%u datagram%s TIMED OUT!\n",
@@ -1282,7 +1228,8 @@ void ec_master_update_device_stats(
     unsigned int i, dev_idx;
 
     // frame statistics
-    if (likely(jiffies - s->last_cycle < HZ)) {
+    ec_time_t now = ec_current_time();
+    if (likely(now - s->last_cycle < ec_ms_to_time(1000))) {
         return;
     }
 
@@ -1317,7 +1264,7 @@ void ec_master_update_device_stats(
         ec_device_update_stats(&master->devices[dev_idx]);
     }
 
-    s->last_cycle = jiffies;
+    s->last_cycle = now;
 }
 
 /****************************************************************************/
@@ -1421,7 +1368,7 @@ static int ec_master_idle_thread(void *priv_data)
     int sent_bytes;
 
     // send interval in IDLE phase
-    ec_master_set_send_interval(master, 1000000 / HZ);
+    ec_master_set_send_interval(master, EC_IDLE_SEND_INTERVAL);
 
     EC_MASTER_DBG(master, 1, "Idle thread running with send interval = %u us,"
             " max data size=%zu\n", master->send_interval,
@@ -2347,15 +2294,8 @@ int ecrt_master_receive(ec_master_t *master)
     list_for_each_entry_safe(datagram, next, &master->datagram_queue, queue) {
         if (datagram->state != EC_DATAGRAM_SENT) continue;
 
-#ifdef EC_HAVE_CYCLES
-        if (master->devices[EC_DEVICE_MAIN].cycles_poll -
-                datagram->cycles_sent > timeout_cycles) {
-#else
-        if (master->devices[EC_DEVICE_MAIN].jiffies_poll -
-                //TODO: restore after real timing problem is fixed
-                datagram->jiffies_sent > (timeout_jiffies + 1)) {
-                //datagram->jiffies_sent > timeout_jiffies) {
-#endif
+        if (master->devices[EC_DEVICE_MAIN].time_poll -
+                datagram->time_sent > datagram_timeout) {
             list_del_init(&datagram->queue);
             datagram->state = EC_DATAGRAM_TIMED_OUT;
             master->stats.timeouts++;
@@ -2365,15 +2305,9 @@ int ecrt_master_receive(ec_master_t *master)
 
             if (unlikely(master->debug_level > 0)) {
                 unsigned int time_us;
-#ifdef EC_HAVE_CYCLES
                 time_us = (unsigned int)
-                    (master->devices[EC_DEVICE_MAIN].cycles_poll -
-                        datagram->cycles_sent) * 1000 / cpu_khz;
-#else
-                time_us = (unsigned int)
-                    ((master->devices[EC_DEVICE_MAIN].jiffies_poll -
-                            datagram->jiffies_sent) * 1000000 / HZ);
-#endif
+                    ec_time_to_us(master->devices[EC_DEVICE_MAIN].time_poll -
+                        datagram->time_sent);
                 EC_MASTER_DBG(master, 0, "TIMED OUT datagram %p,"
                         " index %02X waited %u us.\n",
                         datagram, datagram->index, time_us);

@@ -82,7 +82,7 @@ void ec_fsm_eoe_init(
     fsm->retries = 0;
     fsm->state = NULL;
     fsm->datagram = NULL;
-    fsm->jiffies_start = 0;
+    fsm->time_start = 0;
     fsm->request = NULL;
     fsm->frame_type_retries = 0;
 }
@@ -250,7 +250,7 @@ int ec_fsm_eoe_prepare_set(
         ec_print_data(data, cur - data);
     }
 
-    fsm->request->jiffies_sent = jiffies;
+    fsm->request->time_sent = ec_current_time();
 
     return 0;
 }
@@ -310,8 +310,8 @@ void ec_fsm_eoe_set_ip_request(
     }
 
     if (fsm->datagram->working_counter != 1) {
-        unsigned long diff_ms =
-            (jiffies - fsm->request->jiffies_sent) * 1000 / HZ;
+        unsigned long diff_ms = ec_time_to_ms(
+            ec_current_time() - fsm->request->time_sent);
 
         if (!fsm->datagram->working_counter) {
             if (diff_ms < EC_EOE_RESPONSE_TIMEOUT) {
@@ -329,7 +329,7 @@ void ec_fsm_eoe_set_ip_request(
         return;
     }
 
-    fsm->jiffies_start = fsm->datagram->jiffies_sent;
+    fsm->time_start = fsm->datagram->time_sent;
     ec_slave_mbox_prepare_check(slave, datagram); // can not fail.
     fsm->retries = EC_FSM_RETRIES;
     fsm->state = ec_fsm_eoe_set_ip_check;
@@ -368,9 +368,8 @@ void ec_fsm_eoe_set_ip_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms =
-            (fsm->datagram->jiffies_received - fsm->jiffies_start) *
-            1000 / HZ;
+        unsigned long diff_ms = ec_time_to_ms(
+            fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= EC_EOE_RESPONSE_TIMEOUT) {
             fsm->state = ec_fsm_eoe_error;
             EC_SLAVE_ERR(slave, "Timeout after %lu ms while waiting for"
@@ -460,7 +459,7 @@ void ec_fsm_eoe_set_ip_response(
         if (fsm->frame_type_retries--) {
             // there may be an EoE segment left in the mailbox.
             // discard it and receive again.
-            fsm->jiffies_start = fsm->datagram->jiffies_sent;
+            fsm->time_start = fsm->datagram->time_sent;
             ec_slave_mbox_prepare_check(slave, datagram); // can not fail.
             fsm->retries = EC_FSM_RETRIES;
             fsm->state = ec_fsm_eoe_set_ip_check;

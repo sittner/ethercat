@@ -40,7 +40,7 @@ void ec_eoe_request_init(
 {
     INIT_LIST_HEAD(&req->list);
     req->state = EC_INT_REQUEST_INIT;
-    req->jiffies_sent = 0U;
+    req->time_sent = 0U;
 
     req->mac_address_included = 0;
     req->ip_address_included = 0;

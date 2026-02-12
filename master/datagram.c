@@ -91,16 +91,10 @@ void ec_datagram_init(ec_datagram_t *datagram /**< EtherCAT datagram. */)
     datagram->index = 0x00;
     datagram->working_counter = 0x0000;
     datagram->state = EC_DATAGRAM_INIT;
-#ifdef EC_HAVE_CYCLES
-    datagram->cycles_sent = 0;
-#endif
-    datagram->jiffies_sent = 0;
-#ifdef EC_HAVE_CYCLES
-    datagram->cycles_received = 0;
-#endif
-    datagram->jiffies_received = 0;
+    datagram->time_sent = 0;
+    datagram->time_received = 0;
     datagram->skip_count = 0;
-    datagram->stats_output_jiffies = 0;
+    datagram->stats_output_time = 0;
     memset(datagram->name, 0x00, EC_DATAGRAM_NAME_SIZE);
 }
 
@@ -616,8 +610,9 @@ void ec_datagram_output_stats(
         ec_datagram_t *datagram
         )
 {
-    if (jiffies - datagram->stats_output_jiffies > HZ) {
-        datagram->stats_output_jiffies = jiffies;
+    ec_time_t now = ec_current_time();
+    if (now - datagram->stats_output_time > ec_ms_to_time(1000)) {
+        datagram->stats_output_time = now;
 
         if (unlikely(datagram->skip_count)) {
             EC_WARN("Datagram %p (%s) was SKIPPED %u time%s.\n",

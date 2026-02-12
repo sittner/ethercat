@@ -91,17 +91,11 @@ typedef struct {
     uint8_t index; /**< Index (set by master). */
     uint16_t working_counter; /**< Working counter. */
     ec_datagram_state_t state; /**< State. */
-#ifdef EC_HAVE_CYCLES
-    cycles_t cycles_sent; /**< Time, when the datagram was sent. */
-#endif
-    unsigned long jiffies_sent; /**< Jiffies, when the datagram was sent. */
-#ifdef EC_HAVE_CYCLES
-    cycles_t cycles_received; /**< Time, when the datagram was received. */
-#endif
-    unsigned long jiffies_received; /**< Jiffies, when the datagram was
+    ec_time_t time_sent; /**< Timestamp, when the datagram was sent. */
+    ec_time_t time_received; /**< Timestamp, when the datagram was
                                       received. */
     unsigned int skip_count; /**< Number of requeues when not yet received. */
-    unsigned long stats_output_jiffies; /**< Last statistics output. */
+    ec_time_t stats_output_time; /**< Last statistics output. */
     char name[EC_DATAGRAM_NAME_SIZE]; /**< Description of the datagram. */
 } ec_datagram_t;
 
