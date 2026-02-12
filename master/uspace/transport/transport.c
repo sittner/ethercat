@@ -35,7 +35,11 @@
 /** Transport registry */
 static const ec_transport_ops_t *transport_registry[] = {
     [EC_TRANSPORT_RAW] = &ec_transport_raw_ops,
-    [EC_TRANSPORT_XDP] = NULL,  /* XDP transport not implemented yet */
+#ifdef HAVE_XDP
+    [EC_TRANSPORT_XDP] = &ec_transport_xdp_ops,
+#else
+    [EC_TRANSPORT_XDP] = NULL,
+#endif
 };
 
 /****************************************************************************/
