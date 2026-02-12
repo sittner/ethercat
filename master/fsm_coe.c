@@ -443,7 +443,7 @@ void ec_fsm_coe_dict_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms = ec_ms_to_time(
+        unsigned long diff_ms = ec_time_to_ms(
             fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= EC_FSM_COE_DICT_TIMEOUT) {
             fsm->state = ec_fsm_coe_error;
@@ -724,7 +724,7 @@ void ec_fsm_coe_dict_desc_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms = ec_ms_to_time(
+        unsigned long diff_ms = ec_time_to_ms(
             fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= EC_FSM_COE_DICT_TIMEOUT) {
             fsm->state = ec_fsm_coe_error;
@@ -987,7 +987,7 @@ void ec_fsm_coe_dict_entry_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms = ec_ms_to_time(
+        unsigned long diff_ms = ec_time_to_ms(
             fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= EC_FSM_COE_DICT_TIMEOUT) {
             fsm->state = ec_fsm_coe_error;
@@ -1440,7 +1440,7 @@ void ec_fsm_coe_down_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms = ec_ms_to_time(
+        unsigned long diff_ms = ec_time_to_ms(
             fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= fsm->request->response_timeout) {
             fsm->request->error = EIO;
@@ -1681,7 +1681,7 @@ void ec_fsm_coe_down_seg_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms = ec_ms_to_time(
+        unsigned long diff_ms = ec_time_to_ms(
             fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= fsm->request->response_timeout) {
             fsm->request->error = EIO;
@@ -2009,7 +2009,7 @@ void ec_fsm_coe_up_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms = ec_ms_to_time(
+        unsigned long diff_ms = ec_time_to_ms(
             fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= fsm->request->response_timeout) {
             fsm->request->error = EIO;
@@ -2336,7 +2336,7 @@ void ec_fsm_coe_up_seg_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms = ec_ms_to_time(
+        unsigned long diff_ms = ec_time_to_ms(
             fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= fsm->request->response_timeout) {
             fsm->request->error = EIO;

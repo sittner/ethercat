@@ -1109,7 +1109,7 @@ u64 ec_fsm_master_dc_offset32(
     old_offset32 = (u32) old_offset;
 
     // correct read system time by elapsed time since read operation
-    correction = ec_time_to_us(time_since_read) * 1000L;
+    correction = ec_time_to_ns(time_since_read);
     system_time32 += correction;
     time_diff = (u32) slave->master->app_time - system_time32;
 

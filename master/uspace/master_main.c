@@ -300,7 +300,7 @@ void ec_device_poll(ec_device_t *device)
     }
 
     /* Periodically update link state */
-    if (time_after(device->time_poll, device->pal.last_link_check + 1000)) {
+    if (device->time_poll > device->pal.last_link_check + ec_ms_to_time(1000)) {
         int link_state = ec_transport_get_link_state(device->pal.transport);
         if (link_state >= 0 && link_state != device->pal.last_link_state) {
             device->link_state = (uint8_t)link_state;

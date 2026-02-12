@@ -60,7 +60,7 @@ struct ec_fsm_slave_config
     ec_soe_request_t *soe_request; /**< SDO request for SDO configuration. */
     ec_soe_request_t soe_request_copy; /**< Copied SDO request. */
     ec_time_t time_start; /**< For timeout calculations. */
-    ec_time_t take_time; /**< Store time after datagram reception. */
+    unsigned int take_time; /**< Store time after datagram reception. */
     unsigned long wait_ms; /**< Wait time (used to wait before SAFEOP). */
 };
 

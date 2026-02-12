@@ -282,10 +282,10 @@ static inline void rt_mutex_init(ec_rt_mutex_t *lock)
     pthread_mutexattr_t attr;
 
     pthread_mutexattr_init(&attr);
-    
+
     /* Enable priority inheritance to prevent priority inversion */
     pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT);
-    
+
     pthread_mutex_init(&lock->mutex, &attr);
     pthread_mutexattr_destroy(&attr);
 }
@@ -895,7 +895,7 @@ static inline struct workqueue_struct *create_workqueue(const char *name)
 
     memset(wq, 0, sizeof(*wq));
     strncpy(wq->name, name, sizeof(wq->name) - 1);
-    
+
     pthread_mutex_init(&wq->lock, NULL);
     pthread_cond_init(&wq->cond, NULL);
     wq->head = NULL;
@@ -942,7 +942,7 @@ static inline void destroy_workqueue(struct workqueue_struct *wq)
  *
  * Returns 1 if work was queued, 0 if already pending
  */
-static inline int queue_work(struct workqueue_struct *wq, 
+static inline int queue_work(struct workqueue_struct *wq,
                              ec_work_t *work)
 {
     int ret = 0;
@@ -1011,7 +1011,7 @@ static inline int cancel_work_sync(ec_work_t *work)
 
     /* Mark as not pending (worker will skip if not dequeued yet) */
     was_pending = (work->flags & WORK_STRUCT_PENDING) ? 1 : 0;
-    
+
     /* Wait for completion if running */
     while (work->flags & WORK_STRUCT_RUNNING) {
         sched_yield();
@@ -1126,7 +1126,7 @@ static inline void *__irq_work_worker(void *arg)
             /* Reverse the list to get FIFO order */
             ec_irq_work_t *reversed = NULL;
             work = (ec_irq_work_t *)head;
-            
+       
             while (work) {
                 ec_irq_work_t *next = work->next;
                 work->next = reversed;
@@ -1142,7 +1142,7 @@ static inline void *__irq_work_worker(void *arg)
 
                 /* Mark as running, get previous flags */
                 flags = atomic_fetch_and(&work->flags, ~IRQ_WORK_PENDING);
-    
+
                 /* Only execute if work was actually pending */
                 if (flags & IRQ_WORK_PENDING) {
                     atomic_fetch_or(&work->flags, IRQ_WORK_BUSY);
@@ -1186,7 +1186,7 @@ static inline int create_irq_work_queue(void)
 
     /* Create high-priority worker thread */
     pthread_attr_init(&attr);
-    
+
     /* Try to set real-time priority (may fail without privileges) */
     if (pthread_attr_setschedpolicy(&attr, SCHED_FIFO) == 0) {
         param.sched_priority = sched_get_priority_max(SCHED_FIFO) - 1;
@@ -1198,7 +1198,7 @@ static inline int create_irq_work_queue(void)
         /* Retry without real-time priority */
         pthread_attr_destroy(&attr);
         pthread_attr_init(&attr);
-        
+   
         if (pthread_create(&q->worker, &attr, __irq_work_worker, q) != 0) {
             pthread_attr_destroy(&attr);
             pthread_mutex_destroy(&q->lock);
@@ -1261,7 +1261,7 @@ static inline int irq_work_queue(ec_irq_work_t *work)
     do {
         old_head = atomic_load(&q->head);
         work->next = (ec_irq_work_t *)old_head;
-    } while (!atomic_compare_exchange_weak(&q->head, &old_head, 
+    } while (!atomic_compare_exchange_weak(&q->head, &old_head,
                                            (uintptr_t)work));
 
     /* Signal worker thread */
@@ -1456,10 +1456,10 @@ static inline uint64_t div64_u64(uint64_t dividend, uint64_t divisor)
 static inline void sched_set_normal(ec_thread_t *task, int nice)
 {
     struct sched_param param = { .sched_priority = 0 };
-    
+
     /* SCHED_OTHER (normal) doesn't use priority, uses nice instead */
     pthread_setschedparam(task->thread, SCHED_OTHER, &param);
-    
+
     /* Set nice value - requires appropriate privileges */
     /* Note: setpriority() affects the whole thread group in some cases,
      * but for pthreads this is typically fine */
@@ -1477,7 +1477,7 @@ static inline void sched_set_normal(ec_thread_t *task, int nice)
 static inline void sched_set_fifo(ec_thread_t *task, int priority)
 {
     struct sched_param param;
-    
+
     param.sched_priority = priority;
     pthread_setschedparam(task->thread, SCHED_FIFO, &param);
 }
@@ -1524,10 +1524,11 @@ struct ec_master;
 typedef struct ec_master ec_master_t;
 
 typedef uint64_t ec_time_t;
+#define ec_time_to_ns(time) (time)
 #define ec_time_to_us(time) ((time) / 1000LL)
 #define ec_time_to_ms(time) ((time) / 1000000LL)
-#define ec_us_to_time(us) ((ec_time_t) ((us) * 1000LL)) 
-#define ec_ms_to_time(ms) ((ec_time_t) ((ms) * 1000000LL)) 
+#define ec_us_to_time(us) ((ec_time_t) ((us) * 1000LL))
+#define ec_ms_to_time(ms) ((ec_time_t) ((ms) * 1000000LL))
 
 /** Kernel-specific master fields. */
 typedef struct {

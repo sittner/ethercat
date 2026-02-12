@@ -145,18 +145,20 @@ typedef struct {
 #ifdef EC_HAVE_CYCLES
 
 typedef cycles_t ec_time_t;
-#define ec_time_to_us(time) ((time) * 1000LL / cpu_khz) 
-#define ec_time_to_ms(time) ((time) / cpu_khz) 
-#define ec_us_to_time(us) ((ec_time_t) ((us) * cpu_khz / 1000LL)) 
-#define ec_ms_to_time(ms) ((ec_time_t) ((ms) * cpu_khz)) 
+#define ec_time_to_ns(time) ((time) * 1000000LL / cpu_khz)
+#define ec_time_to_us(time) ((time) * 1000LL / cpu_khz)
+#define ec_time_to_ms(time) ((time) / cpu_khz)
+#define ec_us_to_time(us) ((ec_time_t) ((us) * cpu_khz / 1000LL))
+#define ec_ms_to_time(ms) ((ec_time_t) ((ms) * cpu_khz))
 
 #else
 
 typedef unsigned long ec_time_t;
-#define ec_time_to_us(time) ((time) * 1000000LL / HZ) 
-#define ec_time_to_ms(time) ((time) * 1000LL / HZ) 
-#define ec_us_to_time(us) ((ec_time_t) ((us) * HZ / 1000000LL)) 
-#define ec_us_to_time(ms) ((ec_time_t) ((ms) * HZ / 1000LL)) 
+#define ec_time_to_ns(time) ((time) * 1000000LL / HZ * 1000LL)
+#define ec_time_to_us(time) ((time) * 1000000LL / HZ)
+#define ec_time_to_ms(time) ((time) * 1000LL / HZ)
+#define ec_us_to_time(us) ((ec_time_t) ((us) * HZ / 1000000LL))
+#define ec_ms_to_time(ms) ((ec_time_t) ((ms) * HZ / 1000LL))
 
 #endif
 

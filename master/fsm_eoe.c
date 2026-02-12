@@ -310,8 +310,8 @@ void ec_fsm_eoe_set_ip_request(
     }
 
     if (fsm->datagram->working_counter != 1) {
-        unsigned long diff_ms = (unsigned long) (ec_time_to_us(
-            (ec_current_time() - fsm->request->time_sent)) / 1000LL);
+        unsigned long diff_ms = ec_time_to_ms(
+            ec_current_time() - fsm->request->time_sent);
 
         if (!fsm->datagram->working_counter) {
             if (diff_ms < EC_EOE_RESPONSE_TIMEOUT) {
