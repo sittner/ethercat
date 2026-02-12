@@ -58,7 +58,7 @@ typedef struct {
     void *umem_buffer;
     uint64_t umem_frame_addr[NUM_FRAMES];
     uint32_t umem_frame_free;
-    
+
     int if_index;                      /**< Interface index */
     uint8_t mac_addr[6];               /**< Interface MAC address */
 } ec_transport_xdp_t;
@@ -87,6 +87,10 @@ static uint64_t xsk_alloc_umem_frame(ec_transport_xdp_t *xdp)
  */
 static void xsk_free_umem_frame(ec_transport_xdp_t *xdp, uint64_t frame)
 {
+    if (xdp->umem_frame_free >= NUM_FRAMES) {
+        fprintf(stderr, "Warning: UMEM frame pool overflow\n");
+        return;
+    }
     xdp->umem_frame_addr[xdp->umem_frame_free++] = frame;
 }
 
@@ -270,29 +274,35 @@ static int xdp_send(ec_transport_t *transport, size_t size)
         return -EINVAL;
     }
 
-    /* Reserve TX slot */
-    ret = xsk_ring_prod__reserve(&xdp->tx, 1, &idx);
-    if (ret != 1) {
-        /* TX ring is full, process completions */
+    /* Allocate UMEM frame first */
+    addr = xsk_alloc_umem_frame(xdp);
+    if (addr == INVALID_UMEM_FRAME) {
+        /* Try to process completions to free some frames */
         uint32_t idx_cq = 0;
         unsigned int rcvd;
-        
-        rcvd = xsk_ring_cons__peek(&xdp->cq, 1, &idx_cq);
+
+        rcvd = xsk_ring_cons__peek(&xdp->cq, XSK_RING_CONS__DEFAULT_NUM_DESCS, &idx_cq);
         if (rcvd > 0) {
+            for (unsigned int i = 0; i < rcvd; i++) {
+                uint64_t cq_addr = *xsk_ring_cons__comp_addr(&xdp->cq, idx_cq++);
+                xsk_free_umem_frame(xdp, cq_addr);
+            }
             xsk_ring_cons__release(&xdp->cq, rcvd);
         }
-        
-        /* Try again */
-        ret = xsk_ring_prod__reserve(&xdp->tx, 1, &idx);
-        if (ret != 1) {
-            return -EBUSY;
+
+        /* Try again to allocate */
+        addr = xsk_alloc_umem_frame(xdp);
+        if (addr == INVALID_UMEM_FRAME) {
+            return -ENOMEM;
         }
     }
 
-    /* Allocate UMEM frame */
-    addr = xsk_alloc_umem_frame(xdp);
-    if (addr == INVALID_UMEM_FRAME) {
-        return -ENOMEM;
+    /* Reserve TX slot */
+    ret = xsk_ring_prod__reserve(&xdp->tx, 1, &idx);
+    if (ret != 1) {
+        /* TX ring is full, cannot send */
+        xsk_free_umem_frame(xdp, addr);
+        return -EBUSY;
     }
 
     /* Copy data to UMEM */
@@ -313,7 +323,7 @@ static int xdp_send(ec_transport_t *transport, size_t size)
     /* Process completion queue to free frames */
     uint32_t idx_cq;
     unsigned int rcvd;
-    
+
     rcvd = xsk_ring_cons__peek(&xdp->cq, 1, &idx_cq);
     if (rcvd > 0) {
         for (unsigned int i = 0; i < rcvd; i++) {
