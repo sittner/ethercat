@@ -3,6 +3,7 @@
 
 #include "../device.h"
 #include "../master.h"
+#include "../fsm_master.h"
 
 #ifdef EC_USE_HRTIMER
 
@@ -24,7 +25,7 @@ static enum hrtimer_restart ec_master_nanosleep_wakeup(struct hrtimer *timer)
 
 /****************************************************************************/
 
-void ec_master_nanosleep(const unsigned long nsecs)
+static void ec_master_nanosleep(const unsigned long nsecs)
 {
     struct hrtimer_sleeper t;
     enum hrtimer_mode mode = HRTIMER_MODE_REL;
@@ -53,6 +54,38 @@ void ec_master_nanosleep(const unsigned long nsecs)
 }
 
 #endif // EC_USE_HRTIMER
+
+void ec_master_idle_thread_schedule(ec_master_t *master, int sent_bytes) {
+    if (ec_fsm_master_idle(&master->fsm)) {
+#ifdef EC_USE_HRTIMER
+        ec_master_nanosleep(master->send_interval * 1000);
+#else
+        set_current_state(TASK_INTERRUPTIBLE);
+        schedule_timeout(1);
+#endif
+    } else {
+#ifdef EC_USE_HRTIMER
+        ec_master_nanosleep(sent_bytes * EC_BYTE_TRANSMISSION_TIME_NS);
+#else
+        schedule();
+#endif
+    }
+}
+
+void ec_master_operation_thread_schedule(ec_master_t *master) {
+#ifdef EC_USE_HRTIMER
+    // the op thread should not work faster than the sending RT thread
+    ec_master_nanosleep(master->send_interval * 1000);
+#else
+    if (ec_fsm_master_idle(&master->fsm)) {
+        set_current_state(TASK_INTERRUPTIBLE);
+        schedule_timeout(1);
+    }
+    else {
+        schedule();
+    }
+#endif
+}
 
 enum {
     /* genet driver needs extra headroom in skb for status block */

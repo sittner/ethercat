@@ -1528,7 +1528,6 @@ typedef struct {
   // TODO
 } ec_master_pal_t;
 
-
 /* TODO: Add userspace implementations of kernel APIs */
 
 #endif /* __EC_USPACE_PAL_H__ */

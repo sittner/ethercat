@@ -94,7 +94,7 @@ void ec_master_thread_stop(ec_master_t *);
 void ec_master_inject_external_datagrams(ec_master_t *);
 ec_datagram_t *ec_master_get_external_datagram(ec_master_t *);
 void ec_master_exec_slave_fsms(ec_master_t *);
-void ec_master_send_datagrams(ec_master_t *, ec_device_index_t);
+int ec_master_send_datagrams(ec_master_t *, ec_device_index_t);
 int ec_master_calc_topology_rec(ec_master_t *, ec_slave_t *, unsigned int *);
 void ec_master_calc_topology(ec_master_t *);
 void ec_master_calc_transmission_delays(ec_master_t *);
@@ -930,7 +930,7 @@ void ec_master_queue_datagram_ext(
 /** Sends the datagrams in the queue for a certain device.
  *
  */
-void ec_master_send_datagrams(
+int ec_master_send_datagrams(
         ec_master_t *master, /**< EtherCAT master */
         ec_device_index_t device_index /**< Device index. */
         )
@@ -945,11 +945,13 @@ void ec_master_send_datagrams(
     unsigned long jiffies_sent;
     unsigned int frame_count, more_datagrams_waiting;
     struct list_head sent_datagrams;
+    int sent_bytes;
 
 #ifdef EC_HAVE_CYCLES
     cycles_start = get_cycles();
 #endif
     frame_count = 0;
+    sent_bytes = 0;
     INIT_LIST_HEAD(&sent_datagrams);
 
     EC_MASTER_DBG(master, 2, "%s(device_index = %u)\n",
@@ -1030,6 +1032,7 @@ void ec_master_send_datagrams(
         // send frame
         ec_device_send(&master->devices[device_index],
                 cur_data - frame_data);
+        sent_bytes += (cur_data - frame_data);
 #ifdef EC_HAVE_CYCLES
         cycles_sent = get_cycles();
 #endif
@@ -1057,6 +1060,8 @@ void ec_master_send_datagrams(
                (unsigned int) (cycles_end - cycles_start) * 1000 / cpu_khz);
     }
 #endif
+
+    return sent_bytes;
 }
 
 /****************************************************************************/
@@ -1413,9 +1418,7 @@ static int ec_master_idle_thread(void *priv_data)
 {
     ec_master_t *master = (ec_master_t *) priv_data;
     int fsm_exec;
-#ifdef EC_USE_HRTIMER
-    size_t sent_bytes;
-#endif
+    int sent_bytes;
 
     // send interval in IDLE phase
     ec_master_set_send_interval(master, 1000000 / HZ);
@@ -1450,27 +1453,10 @@ static int ec_master_idle_thread(void *priv_data)
         if (fsm_exec) {
             ec_master_queue_datagram(master, &master->fsm_datagram);
         }
-        ecrt_master_send(master);
-#ifdef EC_USE_HRTIMER
-        sent_bytes = master->devices[EC_DEVICE_MAIN].tx_skb[
-            master->devices[EC_DEVICE_MAIN].tx_ring_index]->len;
-#endif
+        sent_bytes = ecrt_master_send(master);
         rt_mutex_unlock(&master->io_mutex);
 
-        if (ec_fsm_master_idle(&master->fsm)) {
-#ifdef EC_USE_HRTIMER
-            ec_master_nanosleep(master->send_interval * 1000);
-#else
-            set_current_state(TASK_INTERRUPTIBLE);
-            schedule_timeout(1);
-#endif
-        } else {
-#ifdef EC_USE_HRTIMER
-            ec_master_nanosleep(sent_bytes * EC_BYTE_TRANSMISSION_TIME_NS);
-#else
-            schedule();
-#endif
-        }
+        ec_master_idle_thread_schedule(master, sent_bytes);
     }
 
     EC_MASTER_DBG(master, 1, "Master IDLE thread exiting...\n");
@@ -1513,18 +1499,7 @@ static int ec_master_operation_thread(void *priv_data)
             up(&master->master_sem);
         }
 
-#ifdef EC_USE_HRTIMER
-        // the op thread should not work faster than the sending RT thread
-        ec_master_nanosleep(master->send_interval * 1000);
-#else
-        if (ec_fsm_master_idle(&master->fsm)) {
-            set_current_state(TASK_INTERRUPTIBLE);
-            schedule_timeout(1);
-        }
-        else {
-            schedule();
-        }
-#endif
+        ec_master_operation_thread_schedule(master);
     }
 
     EC_MASTER_DBG(master, 1, "Master OP thread exiting...\n");
@@ -2313,6 +2288,7 @@ int ecrt_master_send(ec_master_t *master)
 {
     ec_datagram_t *datagram, *n;
     ec_device_index_t dev_idx;
+    int sent_bytes;
 
     if (master->injection_seq_rt != master->injection_seq_fsm) {
         // inject datagram produced by master FSM
@@ -2322,6 +2298,7 @@ int ecrt_master_send(ec_master_t *master)
 
     ec_master_inject_external_datagrams(master);
 
+    sent_bytes = 0;
     for (dev_idx = EC_DEVICE_MAIN; dev_idx < ec_master_num_devices(master);
             dev_idx++) {
         if (unlikely(!master->devices[dev_idx].link_state)) {
@@ -2347,9 +2324,9 @@ int ecrt_master_send(ec_master_t *master)
         }
 
         // send frames
-        ec_master_send_datagrams(master, dev_idx);
+        sent_bytes += ec_master_send_datagrams(master, dev_idx);
     }
-    return 0;
+    return sent_bytes;
 }
 
 /****************************************************************************/
@@ -2397,9 +2374,8 @@ int ecrt_master_receive(ec_master_t *master)
                     ((master->devices[EC_DEVICE_MAIN].jiffies_poll -
                             datagram->jiffies_sent) * 1000000 / HZ);
 #endif
-                EC_MASTER_DBG(master, 0, "%lu: TIMED OUT datagram %p,"
+                EC_MASTER_DBG(master, 0, "TIMED OUT datagram %p,"
                         " index %02X waited %u us.\n",
-                        get_usecs(),
                         datagram, datagram->index, time_us);
             }
 #endif /* RT_SYSLOG */

@@ -21,6 +21,9 @@
 
 #include "pal.h"
 
+#include "../master.h"
+#include "../fsm_master.h"
+
 static bool printk_newline = false;
 static pthread_mutex_t printk_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -83,8 +86,7 @@ int printk(const char *fmt, ...)
     return ret;
 }
 
-#ifdef EC_USE_HRTIMER
-void ec_master_nanosleep(const unsigned long nsecs) {
+static void ec_master_nanosleep(const unsigned long nsecs) {
     struct timespec ts = {
         .tv_sec = nsecs / 1000000000UL,
         .tv_nsec = nsecs % 1000000000UL
@@ -92,8 +94,19 @@ void ec_master_nanosleep(const unsigned long nsecs) {
 
     clock_nanosleep(CLOCK_MONOTONIC, 0, &ts, NULL);
 }
-#endif
 
+void ec_master_idle_thread_schedule(ec_master_t *master, int sent_bytes) {
+    if (ec_fsm_master_idle(&master->fsm)) {
+        ec_master_nanosleep(master->send_interval * 1000);
+    } else {
+        ec_master_nanosleep(sent_bytes * EC_BYTE_TRANSMISSION_TIME_NS);
+    }
+}
+
+void ec_master_operation_thread_schedule(ec_master_t *master) {
+    // the op thread should not work faster than the sending RT thread
+    ec_master_nanosleep(master->send_interval * 1000);
+}
 
 //TODO
 struct workqueue_struct *system_wq;
