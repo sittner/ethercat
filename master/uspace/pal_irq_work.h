@@ -76,14 +76,7 @@ static inline void init_irq_work(ec_irq_work_t *work, irq_work_func_t func)
     work->next = NULL;
 }
 
-/**
- * irq_work_busy - check if work is pending or running
- * @work: work item to check
- */
-static inline int irq_work_busy(ec_irq_work_t *work)
-{
-    return atomic_load(&work->flags) & (IRQ_WORK_PENDING | IRQ_WORK_BUSY);
-}
+
 
 /* Internal: worker thread function */
 static inline void *__irq_work_worker(void *arg)
@@ -224,41 +217,7 @@ static inline void destroy_irq_work_queue(void)
     irq_work_queue_global = NULL;
 }
 
-/**
- * irq_work_queue - queue work for execution
- * @work: work item to queue
- *
- * Lock-free, safe to call from signal handlers
- * Returns 1 if queued, 0 if already pending
- */
-static inline int irq_work_queue(ec_irq_work_t *work)
-{
-    struct pal_irq_work_queue *q = irq_work_queue_global;
-    uintptr_t old_head;
-    int old_flags;
 
-    if (!q)
-        return 0;
-
-    /* Check if already pending (atomic) */
-    old_flags = atomic_fetch_or(&work->flags, IRQ_WORK_PENDING);
-    if (old_flags & IRQ_WORK_PENDING)
-        return 0;  /* Already queued */
-
-    /* Lock-free push to front of list */
-    do {
-        old_head = atomic_load(&q->head);
-        work->next = (ec_irq_work_t *)old_head;
-    } while (!atomic_compare_exchange_weak(&q->head, &old_head,
-                                           (uintptr_t)work));
-
-    /* Signal worker thread */
-    pthread_mutex_lock(&q->lock);
-    pthread_cond_signal(&q->cond);
-    pthread_mutex_unlock(&q->lock);
-
-    return 1;
-}
 
 /**
  * irq_work_sync - wait for work to complete

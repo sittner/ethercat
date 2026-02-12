@@ -35,9 +35,6 @@ typedef struct {
     pthread_cond_t cond;
 } ec_wait_queue_t;
 
-/* Kernel compatibility name */
-#define wait_queue_head_t ec_wait_queue_t
-
 /**
  * init_waitqueue_head - initialize a wait queue
  * @wq: pointer to wait queue to initialize
