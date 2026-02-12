@@ -104,13 +104,9 @@ int ecrt_master_send_ext(ec_master_t *master);
 void ec_master_init_static(void)
 {
     // one jiffy may always elapse between time measurement
-/*
     datagram_timeout = max(ec_us_to_time(EC_IO_TIMEOUT), 1);
     ext_injection_timeout =
         max(ec_us_to_time(EC_SDO_INJECTION_TIMEOUT), 1);
-*/
-    datagram_timeout = ec_us_to_time(EC_IO_TIMEOUT);
-    ext_injection_timeout = ec_us_to_time(EC_SDO_INJECTION_TIMEOUT);
 }
 
 /****************************************************************************/

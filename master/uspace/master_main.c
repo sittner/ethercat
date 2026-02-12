@@ -96,6 +96,8 @@ int main(int argc, char *argv[])
 
     printk(KERN_INFO "Starting EtherCAT master on interface %s\n", interface);
 
+    ec_master_init_static();
+
     /* Initialize workqueues */
     system_wq = create_workqueue("system_wq");
     if (!system_wq) {
