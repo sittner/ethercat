@@ -1147,7 +1147,7 @@ void ec_fsm_coe_dict_entry_response(
         entry->write_access[EC_SDO_ENTRY_ACCESS_OP] = (word >> 5)  & 0x0001;
 
         if (data_size) {
-            uint8_t *desc;
+            char *desc;
             if (!(desc = kmalloc(data_size + 1, GFP_KERNEL))) {
                 EC_SLAVE_ERR(slave, "Failed to allocate SDO entry name!\n");
                 fsm->state = ec_fsm_coe_error;

@@ -44,7 +44,7 @@ int ec_flag_init(
         return -EINVAL;
     }
 
-    if (!(flag->key = (uint8_t *) kmalloc(strlen(key) + 1, GFP_KERNEL))) {
+    if (!(flag->key = (char *) kmalloc(strlen(key) + 1, GFP_KERNEL))) {
         return -ENOMEM;
     }
 
