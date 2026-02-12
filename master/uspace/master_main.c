@@ -126,8 +126,15 @@ int main(int argc, char *argv[])
 
     printk(KERN_INFO "Transport opened successfully\n");
 
+    // TODO: check if this is the correct way
+	uint8_t main_mac[ETH_ALEN] = {0};
+	uint8_t backup_mac[ETH_ALEN] = {0};
+
+	/* Get MAC address from transport */
+	ec_transport_get_mac(transport, main_mac);
+
     /* Initialize master */
-    ret = ec_master_init(&master, 0, NULL, NULL, 0, 0);
+	ret = ec_master_init(&master, 0, main_mac, backup_mac, 1, 0);
     if (ret < 0) {
         printk(KERN_ERR "Failed to initialize master: %d\n", ret);
         ret = 1;
@@ -163,10 +170,10 @@ int main(int argc, char *argv[])
     /* Main loop - run until signal received */
     while (g_running) {
         /* Poll device for received frames */
-        ec_device_poll(&master.devices[EC_DEVICE_MAIN]);
+        //ec_device_poll(&master.devices[EC_DEVICE_MAIN]);
 
         /* Execute master FSM unconditionally */
-        ec_fsm_master_exec(&master.fsm);
+        //ec_fsm_master_exec(&master.fsm);
 
         /* Small sleep to prevent busy-waiting */
         usleep(1000);  /* 1ms */
@@ -243,12 +250,26 @@ uint8_t *ec_device_tx_data(ec_device_t *device)
 void ec_device_send(ec_device_t *device, size_t size)
 {
     int ret;
+    uint8_t *tx_buffer;
 
     if (!device->pal.transport) {
         return;
     }
 
-    /* Send frame via transport layer (size includes EtherCAT data, not Ethernet header) */
+    // TODO: quick fix for missing ethernet header
+    /* Get the full TX buffer (including Ethernet header) */
+    tx_buffer = ec_transport_get_tx_buffer(device->pal.transport);
+    if (!tx_buffer) {
+        return;
+    }
+
+    /* Fill Ethernet header */
+    memset(tx_buffer, 0xff, ETH_ALEN);              /* Destination: broadcast */
+    memcpy(tx_buffer + ETH_ALEN, device->master->macs[EC_DEVICE_MAIN], ETH_ALEN);  /* Source: our MAC */
+    tx_buffer[12] = 0x88;                            /* EtherType: EtherCAT (0x88A4) */
+    tx_buffer[13] = 0xA4;
+
+    /* Send frame via transport layer */
     ret = ec_transport_send(device->pal.transport, size + ETH_HLEN);
     if (ret < 0) {
         device->tx_errors++;

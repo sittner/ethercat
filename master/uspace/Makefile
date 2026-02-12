@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -I. -I.. -I../.. -Itransport -D_GNU_SOURCE
+CFLAGS = -Wall -g -O0 -I. -I.. -I../.. -Itransport -D_GNU_SOURCE
 LDFLAGS = -lpthread
 
 # Transport sources
