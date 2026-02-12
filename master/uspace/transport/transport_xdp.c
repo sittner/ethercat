@@ -36,7 +36,7 @@
 #include <net/ethernet.h>
 #include <arpa/inet.h>
 #include <linux/if_link.h>
-#include <bpf/xsk.h>
+#include <xdp/xsk.h>
 #include <bpf/bpf.h>
 
 #include "ec_transport.h"
@@ -105,7 +105,6 @@ static int xdp_open(ec_transport_t *transport, const char *interface)
     int ret;
     int sock_fd;
     int i;
-    unsigned int if_index;
 
     /* Allocate private data */
     xdp = calloc(1, sizeof(ec_transport_xdp_t));
@@ -135,7 +134,6 @@ static int xdp_open(ec_transport_t *transport, const char *interface)
         goto err_free;
     }
     xdp->if_index = ifr.ifr_ifindex;
-    if_index = ifr.ifr_ifindex;
 
     /* Get MAC address */
     memset(&ifr, 0, sizeof(ifr));

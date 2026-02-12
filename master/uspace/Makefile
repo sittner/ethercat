@@ -5,7 +5,7 @@ LDFLAGS = -lpthread
 # Optional XDP support (set ENABLE_XDP=1 to enable)
 ifdef ENABLE_XDP
 CFLAGS += -DHAVE_XDP
-LDFLAGS += -lbpf
+LDFLAGS += -lxdp -lbpf
 TRANSPORT_XDP_SRCS = transport/transport_xdp.c
 else
 TRANSPORT_XDP_SRCS =
