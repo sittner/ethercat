@@ -88,10 +88,31 @@ static uint64_t xsk_alloc_umem_frame(ec_transport_xdp_t *xdp)
 static void xsk_free_umem_frame(ec_transport_xdp_t *xdp, uint64_t frame)
 {
     if (xdp->umem_frame_free >= NUM_FRAMES) {
-        fprintf(stderr, "Warning: UMEM frame pool overflow\n");
+        fprintf(stderr, "Warning: UMEM frame pool overflow - frame will be leaked\n");
         return;
     }
     xdp->umem_frame_addr[xdp->umem_frame_free++] = frame;
+}
+
+/****************************************************************************/
+
+/**
+ * Process completion queue and free completed frames.
+ */
+static void process_completion_queue(ec_transport_xdp_t *xdp, unsigned int max_frames)
+{
+    uint32_t idx_cq = 0;
+    unsigned int rcvd;
+    unsigned int i;
+
+    rcvd = xsk_ring_cons__peek(&xdp->cq, max_frames, &idx_cq);
+    if (rcvd > 0) {
+        for (i = 0; i < rcvd; i++) {
+            uint64_t addr = *xsk_ring_cons__comp_addr(&xdp->cq, idx_cq++);
+            xsk_free_umem_frame(xdp, addr);
+        }
+        xsk_ring_cons__release(&xdp->cq, rcvd);
+    }
 }
 
 /****************************************************************************/
@@ -176,7 +197,12 @@ static int xdp_open(ec_transport_t *transport, const char *interface)
         goto err_free_buffer;
     }
 
-    /* Configure socket */
+    /* Configure socket
+     * Use SKB mode and copy mode for maximum compatibility across different
+     * network drivers and kernel versions. While native XDP mode with zero-copy
+     * would provide better performance, SKB mode ensures the transport works
+     * on all network interfaces without requiring driver-specific XDP support.
+     */
     memset(&cfg, 0, sizeof(cfg));
     cfg.rx_size = XSK_RING_CONS__DEFAULT_NUM_DESCS;
     cfg.tx_size = XSK_RING_PROD__DEFAULT_NUM_DESCS;
@@ -264,10 +290,7 @@ static int xdp_send(ec_transport_t *transport, size_t size)
     ec_transport_xdp_t *xdp = transport->priv;
     uint64_t addr;
     uint32_t idx;
-    uint32_t idx_cq;
-    unsigned int rcvd;
     int ret;
-    unsigned int i;
 
     if (!xdp || !xdp->xsk) {
         return -ENODEV;
@@ -281,16 +304,7 @@ static int xdp_send(ec_transport_t *transport, size_t size)
     addr = xsk_alloc_umem_frame(xdp);
     if (addr == INVALID_UMEM_FRAME) {
         /* Try to process completions to free some frames */
-        idx_cq = 0;
-
-        rcvd = xsk_ring_cons__peek(&xdp->cq, XSK_RING_CONS__DEFAULT_NUM_DESCS, &idx_cq);
-        if (rcvd > 0) {
-            for (i = 0; i < rcvd; i++) {
-                uint64_t cq_addr = *xsk_ring_cons__comp_addr(&xdp->cq, idx_cq++);
-                xsk_free_umem_frame(xdp, cq_addr);
-            }
-            xsk_ring_cons__release(&xdp->cq, rcvd);
-        }
+        process_completion_queue(xdp, XSK_RING_CONS__DEFAULT_NUM_DESCS);
 
         /* Try again to allocate */
         addr = xsk_alloc_umem_frame(xdp);
@@ -323,14 +337,7 @@ static int xdp_send(ec_transport_t *transport, size_t size)
     }
 
     /* Process completion queue to free frames */
-    rcvd = xsk_ring_cons__peek(&xdp->cq, 1, &idx_cq);
-    if (rcvd > 0) {
-        for (i = 0; i < rcvd; i++) {
-            uint64_t cq_addr = *xsk_ring_cons__comp_addr(&xdp->cq, idx_cq++);
-            xsk_free_umem_frame(xdp, cq_addr);
-        }
-        xsk_ring_cons__release(&xdp->cq, rcvd);
-    }
+    process_completion_queue(xdp, 1);
 
     return 0;
 }
