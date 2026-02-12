@@ -1364,8 +1364,8 @@ void ec_fsm_coe_down_request(
         return;
     }
 
-    diff_ms = (unsigned long) (ec_time_to_us(ec_current_time() -
-        fsm->request->time_sent) / 1000LL);
+    diff_ms = ec_time_to_ms(ec_current_time() -
+        fsm->request->time_sent);
 
     if (fsm->datagram->working_counter != 1) {
         if (!fsm->datagram->working_counter) {
@@ -1932,8 +1932,8 @@ void ec_fsm_coe_up_request(
         return;
     }
 
-    diff_ms = (unsigned long) (ec_time_to_us(ec_current_time() -
-        fsm->request->time_sent) / 1000LL);
+    diff_ms = ec_time_to_ms(ec_current_time() -
+        fsm->request->time_sent);
 
     if (fsm->datagram->working_counter != 1) {
         if (!fsm->datagram->working_counter) {

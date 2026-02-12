@@ -368,8 +368,8 @@ void ec_fsm_eoe_set_ip_check(
     }
 
     if (!ec_slave_mbox_check(fsm->datagram)) {
-        unsigned long diff_ms = (unsigned long) ec_time_to_us(
-            (fsm->datagram->time_received - fsm->time_start) / 1000LL);
+        unsigned long diff_ms = ec_time_to_ms(
+            fsm->datagram->time_received - fsm->time_start);
         if (diff_ms >= EC_EOE_RESPONSE_TIMEOUT) {
             fsm->state = ec_fsm_eoe_error;
             EC_SLAVE_ERR(slave, "Timeout after %lu ms while waiting for"

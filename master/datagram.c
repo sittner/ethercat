@@ -611,7 +611,7 @@ void ec_datagram_output_stats(
         )
 {
     ec_time_t now = ec_current_time();
-    if (now - datagram->stats_output_time > ec_us_to_time(1000000LL)) {
+    if (now - datagram->stats_output_time > ec_ms_to_time(1000)) {
         datagram->stats_output_time = now;
 
         if (unlikely(datagram->skip_count)) {

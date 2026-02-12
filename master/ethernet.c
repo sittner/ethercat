@@ -340,7 +340,7 @@ void ec_eoe_run(ec_eoe_t *eoe /**< EoE handler */)
 
     // update statistics
     ec_time_t now = ec_current_time();
-    if (now - eoe->rate_time > ec_us_to_time(1000000LL)) {
+    if (now - eoe->rate_time > ec_ms_to_time(1000)) {
         eoe->rx_rate = eoe->rx_counter;
         eoe->tx_rate = eoe->tx_counter;
         eoe->rx_counter = 0;

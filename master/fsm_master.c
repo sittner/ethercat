@@ -984,7 +984,8 @@ void ec_fsm_master_state_scan_slave(
     }
 
     EC_MASTER_INFO(master, "Bus scanning completed in %llu ms.\n",
-            ec_time_to_ms(ec_current_time() - fsm->scan_time));
+            (unsigned long long) ec_time_to_ms(
+                ec_current_time() - fsm->scan_time));
 
     master->scan_busy = 0;
     master->scan_index = master->slave_count;
@@ -1148,7 +1149,7 @@ u64 ec_fsm_master_dc_offset64(
     s64 time_diff;
 
     // correct read system time by elapsed time since read operation
-    correction = (u64) ec_time_to_us(time_since_read) * 1000LL;
+    correction = (u64) ec_time_to_ns(time_since_read);
     system_time += correction;
     time_diff = fsm->slave->master->app_time - system_time;
 

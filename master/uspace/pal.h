@@ -80,8 +80,6 @@ typedef int64_t  s64;
 #include "list.h"
 
 #define GFP_KERNEL  0
-#define GFP_ATOMIC  0
-#define __GFP_ZERO  0
 
 #define kmalloc(size, flags)    malloc(size)
 #define kzalloc(size, flags)    calloc(1, size)
@@ -91,91 +89,12 @@ typedef int64_t  s64;
 #define vzalloc(size)           calloc(1, size)
 #define vfree(ptr)              free(ptr)
 
-#define krealloc(ptr, size, flags)  realloc(ptr, size)
-
-/* kmemdup - allocate and copy */
-static inline void *kmemdup(const void *src, size_t len, unsigned gfp)
-{
-    void *p = malloc(len);
-    if (p)
-        memcpy(p, src, len);
-    return p;
-}
-
-/* kstrdup - duplicate a string */
-static inline char *kstrdup(const char *s, unsigned gfp)
-{
-    return strdup(s);
-}
-
-/* kstrndup - duplicate a string with max length */
-static inline char *kstrndup(const char *s, size_t max, unsigned gfp)
-{
-    return strndup(s, max);
-}
-
-
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #define likely(x)   __builtin_expect(!!(x), 1)
 
 //************************************************************************
 
-typedef unsigned long jiffies_t;
-
-#define jiffies get_jiffies()
-
 #define HZ 150
-
-static inline jiffies_t get_jiffies(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (ts.tv_sec * HZ) + (ts.tv_nsec / (1000000000L / HZ));
-}
-
-/* Conversion macros (trivial since we use ms directly) */
-#define jiffies_to_msecs(j)  ((j) * 1000 / HZ)
-#define msecs_to_jiffies(m)  ((m) * HZ / 1000)
-
-/* Time comparison macros (handle wraparound) */
-#define time_after(a, b)     ((long)((b) - (a)) < 0)
-#define time_before(a, b)    time_after(b, a)
-#define time_after_eq(a, b)  ((long)((a) - (b)) >= 0)
-#define time_before_eq(a, b) time_after_eq(b, a)
-
-static inline uint64_t get_usecs(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000ULL + ts.tv_nsec / 1000;
-}
-
-/****************************************************************************/
-/* Cycle counter support for userspace (replaces kernel's get_cycles())     */
-/****************************************************************************/
-
-/* Define cycles_t as 64-bit unsigned */
-typedef uint64_t cycles_t;
-
-/* cpu_khz equivalent - we'll use a fixed value or calibrate at startup */
-#define cpu_khz 1000000U  /* 1 GHz default = 1000000 kHz */
-
-/**
- * get_cycles - get current timestamp in "cycles" (actually microseconds)
- *
- * In userspace, we use microseconds directly as our "cycle" unit.
- * This simplifies the math: cpu_khz = 1000000 means 1 cycle = 1 microsecond.
- *
- * With cpu_khz = 1000000:
- *   cycles * 1000 / cpu_khz = cycles * 1000 / 1000000 = cycles / 1000
- *   This converts microseconds to milliseconds correctly.
- */
-static inline cycles_t get_cycles(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (cycles_t)ts.tv_sec * 1000000ULL + ts.tv_nsec / 1000;
-}
 
 /****************************************************************************/
 /* Logging */
@@ -1303,26 +1222,6 @@ static inline void irq_work_sync(ec_irq_work_t *work)
         _a > _b ? _a : _b; \
     })
 
-/* Type-specific versions */
-#define min_t(type, a, b) \
-    ({ \
-        type _a = (a); \
-        type _b = (b); \
-        _a < _b ? _a : _b; \
-    })
-
-#define max_t(type, a, b) \
-    ({ \
-        type _a = (a); \
-        type _b = (b); \
-        _a > _b ? _a : _b; \
-    })
-
-/* Clamp a value to a range */
-#define clamp(val, lo, hi) min(max(val, lo), hi)
-
-#define clamp_t(type, val, lo, hi) min_t(type, max_t(type, val, lo), hi)
-
 /****************************************************************************/
 /* 64-bit division helpers */
 /****************************************************************************/
@@ -1345,57 +1244,6 @@ static inline void irq_work_sync(ec_irq_work_t *work)
         (n) = __n / __base; \
         __rem; \
     })
-
-/**
- * div_u64 - unsigned 64-bit divide with 32-bit divisor
- * @dividend: 64-bit dividend
- * @divisor: 32-bit divisor
- *
- * Returns: quotient
- */
-static inline uint64_t div_u64(uint64_t dividend, uint32_t divisor)
-{
-    return dividend / divisor;
-}
-
-/**
- * div_u64_rem - unsigned 64-bit divide with remainder
- * @dividend: 64-bit dividend
- * @divisor: 32-bit divisor
- * @remainder: pointer to store remainder
- *
- * Returns: quotient
- */
-static inline uint64_t div_u64_rem(uint64_t dividend, uint32_t divisor,
-                                   uint32_t *remainder)
-{
-    *remainder = dividend % divisor;
-    return dividend / divisor;
-}
-
-/**
- * div_s64 - signed 64-bit divide
- * @dividend: 64-bit dividend
- * @divisor: 32-bit divisor
- *
- * Returns: quotient
- */
-static inline int64_t div_s64(int64_t dividend, int32_t divisor)
-{
-    return dividend / divisor;
-}
-
-/**
- * div64_u64 - unsigned 64/64 division
- * @dividend: 64-bit dividend
- * @divisor: 64-bit divisor
- *
- * Returns: quotient
- */
-static inline uint64_t div64_u64(uint64_t dividend, uint64_t divisor)
-{
-    return dividend / divisor;
-}
 
 /****************************************************************************/
 /* Ethernet constants */
@@ -1469,28 +1317,6 @@ static inline void sched_set_normal(ec_thread_t *task, int nice)
 #endif
 }
 
-/**
- * sched_set_fifo - set task to FIFO real-time scheduling policy
- * @task: task to modify
- * @priority: RT priority (1-99, higher = more priority)
- */
-static inline void sched_set_fifo(ec_thread_t *task, int priority)
-{
-    struct sched_param param;
-
-    param.sched_priority = priority;
-    pthread_setschedparam(task->thread, SCHED_FIFO, &param);
-}
-
-/**
- * sched_set_fifo_low - set task to FIFO with lowest RT priority
- * @task: task to modify
- */
-static inline void sched_set_fifo_low(ec_thread_t *task)
-{
-    sched_set_fifo(task, sched_get_priority_min(SCHED_FIFO));
-}
-
 #define ec_sched_set_normal(thread, nice) sched_set_normal(thread, nice)
 
 /****************************************************************************/
@@ -1501,6 +1327,15 @@ static inline void sched_set_fifo_low(ec_thread_t *task)
 #define simple_strtol(str, endp, base)   strtol(str, endp, base)
 #define simple_strtoull(str, endp, base) strtoull(str, endp, base)
 #define simple_strtoll(str, endp, base)  strtoll(str, endp, base)
+
+//************************************************************************
+
+typedef uint64_t ec_time_t;
+#define ec_time_to_ns(time) (time)
+#define ec_time_to_us(time) ((time) / 1000LL)
+#define ec_time_to_ms(time) ((time) / 1000000LL)
+#define ec_us_to_time(us) ((ec_time_t) ((us) * 1000LL))
+#define ec_ms_to_time(ms) ((ec_time_t) ((ms) * 1000000LL))
 
 //************************************************************************
 
@@ -1516,19 +1351,13 @@ struct ec_transport;
 
 typedef struct {
     struct ec_transport *transport;      /**< Transport layer. */
-    uint64_t last_link_check;            /**< Time of last link state check (ms). */
+    ec_time_t last_link_check;           /**< Time of last link state check (ms). */
     int last_link_state;                 /**< Last reported link state (-1 = unknown). */
 } ec_device_pal_t;
 
 struct ec_master;
 typedef struct ec_master ec_master_t;
 
-typedef uint64_t ec_time_t;
-#define ec_time_to_ns(time) (time)
-#define ec_time_to_us(time) ((time) / 1000LL)
-#define ec_time_to_ms(time) ((time) / 1000000LL)
-#define ec_us_to_time(us) ((ec_time_t) ((us) * 1000LL))
-#define ec_ms_to_time(ms) ((ec_time_t) ((ms) * 1000000LL))
 
 /** Kernel-specific master fields. */
 typedef struct {
