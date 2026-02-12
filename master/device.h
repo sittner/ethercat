@@ -68,13 +68,10 @@ struct ec_device
     const char *name; /**< device name */
     uint8_t open; /**< true, if the net_device has been opened */
     uint8_t link_state; /**< device link state */
-#ifdef EC_HAVE_CYCLES
-    cycles_t cycles_poll; /**< cycles of last poll */
-#endif
 #ifdef EC_DEBUG_RING
     struct timeval timeval_poll;
 #endif
-    unsigned long jiffies_poll; /**< jiffies of last poll */
+    ec_time_t time_poll; /**< Timestamp of last poll */
 
     // Frame statistics
     u64 tx_count; /**< Number of frames sent. */

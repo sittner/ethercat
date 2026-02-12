@@ -59,8 +59,8 @@ struct ec_fsm_slave_config
     ec_sdo_request_t request_copy; /**< Copied SDO request. */
     ec_soe_request_t *soe_request; /**< SDO request for SDO configuration. */
     ec_soe_request_t soe_request_copy; /**< Copied SDO request. */
-    unsigned long jiffies_start; /**< For timeout calculations. */
-    unsigned int take_time; /**< Store jiffies after datagram reception. */
+    ec_time_t time_start; /**< For timeout calculations. */
+    ec_time_t take_time; /**< Store time after datagram reception. */
     unsigned long wait_ms; /**< Wait time (used to wait before SAFEOP). */
 };
 

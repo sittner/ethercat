@@ -87,6 +87,21 @@ void ec_master_operation_thread_schedule(ec_master_t *master) {
 #endif
 }
 
+/****************************************************************************/
+/****************************************************************************/
+
+ec_time_t ec_current_time(void) {
+#ifdef EC_HAVE_CYCLES
+  return get_cycles();
+#else
+  return jiffies;
+#endif
+}
+
+
+/****************************************************************************/
+/****************************************************************************/
+
 enum {
     /* genet driver needs extra headroom in skb for status block */
     EXTRA_HEADROOM = 64,
@@ -121,14 +136,11 @@ int ec_device_init(
         device->pal.tx_skb[i] = NULL;
     }
     device->pal.tx_ring_index = 0;
-#ifdef EC_HAVE_CYCLES
-    device->cycles_poll = 0;
-#endif
 #ifdef EC_DEBUG_RING
     device->timeval_poll.tv_sec = 0;
     device->timeval_poll.tv_usec = 0;
 #endif
-    device->jiffies_poll = 0;
+    device->time_poll = 0;
 
     ec_device_clear_stats(device);
 

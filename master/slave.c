@@ -147,7 +147,7 @@ void ec_slave_init(
     INIT_LIST_HEAD(&slave->sdo_dictionary);
 
     slave->sdo_dictionary_fetched = 0;
-    slave->jiffies_preop = 0;
+    slave->time_preop = 0;
 
     INIT_LIST_HEAD(&slave->sdo_requests);
     INIT_LIST_HEAD(&slave->reg_requests);

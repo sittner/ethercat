@@ -215,7 +215,7 @@ int ec_device_init(ec_device_t *device, ec_master_t *master)
     device->name = NULL;
     device->open = 0;
     device->link_state = 0;
-    device->jiffies_poll = 0;
+    device->time_poll = 0;
 
     /* Initialize PAL-specific fields */
     device->pal.transport = NULL;
@@ -274,7 +274,7 @@ void ec_device_poll(ec_device_t *device)
     uint8_t rx_buffer[ETH_FRAME_LEN];
     int received;
 
-    device->jiffies_poll = get_jiffies();
+    device->time_poll = ec_current_time();
 
     if (!device->pal.transport) {
         return;
@@ -300,7 +300,7 @@ void ec_device_poll(ec_device_t *device)
     }
 
     /* Periodically update link state */
-    if (time_after(device->jiffies_poll, device->pal.last_link_check + 1000)) {
+    if (time_after(device->time_poll, device->pal.last_link_check + 1000)) {
         int link_state = ec_transport_get_link_state(device->pal.transport);
         if (link_state >= 0 && link_state != device->pal.last_link_state) {
             device->link_state = (uint8_t)link_state;
@@ -311,7 +311,7 @@ void ec_device_poll(ec_device_t *device)
                 printk(KERN_WARNING "Device %s: Link is down\n", device->name ? device->name : "?");
             }
         }
-        device->pal.last_link_check = device->jiffies_poll;
+        device->pal.last_link_check = device->time_poll;
     }
 }
 

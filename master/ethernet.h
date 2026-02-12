@@ -81,7 +81,7 @@ struct ec_eoe
     struct net_device *dev; /**< net_device for virtual ethernet device */
     struct net_device_stats stats; /**< device statistics */
     unsigned int opened; /**< net_device is opened */
-    unsigned long rate_jiffies; /**< time of last rate output */
+    ec_time_t rate_time; /**< time of last rate output */
 
     struct sk_buff *rx_skb; /**< current rx socket buffer */
     off_t rx_skb_offset; /**< current write pointer in the socket buffer */

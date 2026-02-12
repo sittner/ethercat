@@ -28,6 +28,7 @@
 
 #include "pal.h"
 
+#include "master.h"
 #include "sdo_request.h"
 
 /****************************************************************************/
@@ -56,8 +57,8 @@ void ec_sdo_request_init(
     req->response_timeout = EC_SDO_REQUEST_RESPONSE_TIMEOUT;
     req->dir = EC_DIR_INVALID;
     req->state = EC_INT_REQUEST_INIT;
-    req->jiffies_start = 0U;
-    req->jiffies_sent = 0U;
+    req->time_start = 0;
+    req->time_sent = 0;
     req->error = 0;
     req->abort_code = 0x00000000;
 }
@@ -170,7 +171,7 @@ int ec_sdo_request_copy_data(
 int ec_sdo_request_timed_out(const ec_sdo_request_t *req /**< SDO request. */)
 {
     return req->issue_timeout
-        && jiffies - req->jiffies_start > HZ * req->issue_timeout / 1000;
+        && ec_current_time() - req->time_start > ec_ms_to_time(req->issue_timeout);
 }
 
 /*****************************************************************************
@@ -226,7 +227,7 @@ int ecrt_sdo_request_read(ec_sdo_request_t *req)
     req->state = EC_INT_REQUEST_QUEUED;
     req->error = 0;
     req->abort_code = 0x00000000;
-    req->jiffies_start = jiffies;
+    req->time_start = ec_current_time();
     return 0;
 }
 
@@ -238,7 +239,7 @@ int ecrt_sdo_request_write(ec_sdo_request_t *req)
     req->state = EC_INT_REQUEST_QUEUED;
     req->error = 0;
     req->abort_code = 0x00000000;
-    req->jiffies_start = jiffies;
+    req->time_start = ec_current_time();
     return 0;
 }
 

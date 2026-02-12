@@ -78,7 +78,7 @@ void ec_domain_init(
     domain->expected_working_counter = 0x0000;
     domain->working_counter_changes = 0;
     domain->redundancy_active = 0;
-    domain->notify_jiffies = 0;
+    domain->notify_time = 0;
 }
 
 /****************************************************************************/
@@ -609,9 +609,10 @@ int ecrt_domain_process(ec_domain_t *domain)
         domain->working_counter_changes++;
     }
 
+    ec_time_t now = ec_current_time();
     if (domain->working_counter_changes &&
-        jiffies - domain->notify_jiffies > HZ) {
-        domain->notify_jiffies = jiffies;
+        now - domain->notify_time > ec_ms_to_time(1000)) {
+        domain->notify_time = now;
         if (domain->working_counter_changes == 1) {
             EC_MASTER_INFO(domain->master, "Domain %u: Working counter"
                     " changed to %u/%u", domain->index,

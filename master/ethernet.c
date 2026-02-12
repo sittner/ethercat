@@ -125,7 +125,7 @@ int ec_eoe_init(
     eoe->tx_counter = 0;
     eoe->rx_rate = 0;
     eoe->tx_rate = 0;
-    eoe->rate_jiffies = 0;
+    eoe->rate_time = 0;
     eoe->rx_idle = 1;
     eoe->tx_idle = 1;
 
@@ -339,12 +339,13 @@ void ec_eoe_run(ec_eoe_t *eoe /**< EoE handler */)
     eoe->state(eoe);
 
     // update statistics
-    if (jiffies - eoe->rate_jiffies > HZ) {
+    ec_time_t now = ec_current_time();
+    if (now - eoe->rate_time > ec_us_to_time(1000000LL)) {
         eoe->rx_rate = eoe->rx_counter;
         eoe->tx_rate = eoe->tx_counter;
         eoe->rx_counter = 0;
         eoe->tx_counter = 0;
-        eoe->rate_jiffies = jiffies;
+        eoe->rate_time = now;
     }
 
     ec_datagram_output_stats(&eoe->datagram);

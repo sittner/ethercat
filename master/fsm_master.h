@@ -66,7 +66,7 @@ struct ec_fsm_master {
     ec_device_index_t dev_idx; /**< Current device index (for scanning etc.).
                                 */
     int idle; /**< state machine is in idle phase */
-    unsigned long scan_jiffies; /**< beginning of slave scanning */
+    ec_time_t scan_time; /**< beginning of slave scanning */
     uint8_t link_state[EC_MAX_NUM_DEVICES]; /**< Last link state for every
                                               device. */
     unsigned int slaves_responding[EC_MAX_NUM_DEVICES]; /**< Number of

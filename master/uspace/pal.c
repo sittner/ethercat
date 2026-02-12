@@ -108,6 +108,12 @@ void ec_master_operation_thread_schedule(ec_master_t *master) {
     ec_master_nanosleep(master->send_interval * 1000);
 }
 
+ec_time_t ec_current_time(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);  // or CLOCK_REALTIME for wall-clock time
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
 //TODO
 struct workqueue_struct *system_wq;
 struct pal_irq_work_queue *irq_work_queue_global;

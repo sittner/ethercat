@@ -1523,6 +1523,12 @@ typedef struct {
 struct ec_master;
 typedef struct ec_master ec_master_t;
 
+typedef uint64_t ec_time_t;
+#define ec_time_to_us(time) ((time) / 1000LL)
+#define ec_time_to_ms(time) ((time) / 1000000LL)
+#define ec_us_to_time(us) ((ec_time_t) ((us) * 1000LL)) 
+#define ec_ms_to_time(ms) ((ec_time_t) ((ms) * 1000000LL)) 
+
 /** Kernel-specific master fields. */
 typedef struct {
   // TODO

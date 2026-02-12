@@ -46,7 +46,7 @@ struct ec_fsm_soe {
 
     void (*state)(ec_fsm_soe_t *, ec_datagram_t *); /**< CoE state function */
     ec_datagram_t *datagram; /**< Datagram used in the previous step. */
-    unsigned long jiffies_start; /**< Timestamp. */
+    ec_time_t time_start; /**< Timestamp. */
     ec_soe_request_t *request; /**< SoE request */
     off_t offset; /**< IDN data offset during fragmented write. */
     size_t fragment_size; /**< Size of the current fragment. */

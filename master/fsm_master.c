@@ -93,7 +93,7 @@ void ec_fsm_master_init(
     ec_fsm_master_reset(fsm);
 
     fsm->retries = 0;
-    fsm->scan_jiffies = 0;
+    fsm->scan_time = 0;
     fsm->slave = NULL;
     fsm->sii_request = NULL;
     fsm->sii_index = 0;
@@ -361,7 +361,7 @@ void ec_fsm_master_state_broadcast(
             // clear all slaves and scan the bus
             fsm->rescan_required = 0;
             fsm->idle = 0;
-            fsm->scan_jiffies = jiffies;
+            fsm->scan_time = ec_current_time();
 
 #ifdef EC_EOE
             ec_master_eoe_stop(master);
@@ -634,7 +634,8 @@ void ec_fsm_master_action_idle(
                 || slave->sdo_dictionary_fetched
                 || slave->current_state == EC_SLAVE_STATE_INIT
                 || slave->current_state == EC_SLAVE_STATE_UNKNOWN
-                || jiffies - slave->jiffies_preop < EC_WAIT_SDO_DICT * HZ
+                || ec_current_time() - slave->time_preop <
+                        ec_ms_to_time(EC_WAIT_SDO_DICT * 1000)
                 ) continue;
 
         EC_SLAVE_DBG(slave, 1, "Fetching SDO dictionary.\n");
@@ -982,8 +983,8 @@ void ec_fsm_master_state_scan_slave(
         return;
     }
 
-    EC_MASTER_INFO(master, "Bus scanning completed in %lu ms.\n",
-            (jiffies - fsm->scan_jiffies) * 1000 / HZ);
+    EC_MASTER_INFO(master, "Bus scanning completed in %llu ms.\n",
+            ec_time_to_ms(ec_current_time() - fsm->scan_time));
 
     master->scan_busy = 0;
     master->scan_index = master->slave_count;
@@ -1097,7 +1098,7 @@ u64 ec_fsm_master_dc_offset32(
         ec_fsm_master_t *fsm, /**< Master state machine. */
         u64 system_time, /**< System time register. */
         u64 old_offset, /**< Time offset register. */
-        unsigned long jiffies_since_read /**< Jiffies for correction. */
+        ec_time_t time_since_read /**< Time for correction. */
         )
 {
     ec_slave_t *slave = fsm->slave;
@@ -1108,7 +1109,7 @@ u64 ec_fsm_master_dc_offset32(
     old_offset32 = (u32) old_offset;
 
     // correct read system time by elapsed time since read operation
-    correction = jiffies_since_read * 1000 / HZ * 1000000;
+    correction = ec_time_to_us(time_since_read) * 1000L;
     system_time32 += correction;
     time_diff = (u32) slave->master->app_time - system_time32;
 
@@ -1139,7 +1140,7 @@ u64 ec_fsm_master_dc_offset64(
         ec_fsm_master_t *fsm, /**< Master state machine. */
         u64 system_time, /**< System time register. */
         u64 old_offset, /**< Time offset register. */
-        unsigned long jiffies_since_read /**< Jiffies for correction. */
+        ec_time_t time_since_read /**< Time for correction. */
         )
 {
     ec_slave_t *slave = fsm->slave;
@@ -1147,7 +1148,7 @@ u64 ec_fsm_master_dc_offset64(
     s64 time_diff;
 
     // correct read system time by elapsed time since read operation
-    correction = (u64) (jiffies_since_read * 1000 / HZ) * 1000000;
+    correction = (u64) ec_time_to_us(time_since_read) * 1000LL;
     system_time += correction;
     time_diff = fsm->slave->master->app_time - system_time;
 
@@ -1180,7 +1181,7 @@ void ec_fsm_master_state_dc_read_offset(
     ec_datagram_t *datagram = fsm->datagram;
     ec_slave_t *slave = fsm->slave;
     u64 system_time, old_offset, new_offset;
-    unsigned long jiffies_since_read;
+    ec_time_t time_since_read;
 
     if (datagram->state == EC_DATAGRAM_TIMED_OUT && fsm->retries--)
         return;
@@ -1203,14 +1204,14 @@ void ec_fsm_master_state_dc_read_offset(
 
     system_time = EC_READ_U64(datagram->data);     // 0x0910
     old_offset = EC_READ_U64(datagram->data + 16); // 0x0920
-    jiffies_since_read = jiffies - datagram->jiffies_sent;
+    time_since_read = ec_current_time() - datagram->time_sent;
 
     if (slave->base_dc_range == EC_DC_32) {
         new_offset = ec_fsm_master_dc_offset32(fsm,
-                system_time, old_offset, jiffies_since_read);
+                system_time, old_offset, time_since_read);
     } else {
         new_offset = ec_fsm_master_dc_offset64(fsm,
-                system_time, old_offset, jiffies_since_read);
+                system_time, old_offset, time_since_read);
     }
 
     // set DC system time offset and transmission delay

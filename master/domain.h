@@ -64,7 +64,7 @@ struct ec_domain
     unsigned int working_counter_changes; /**< Working counter changes
                                              since last notification. */
     unsigned int redundancy_active; /**< Non-zero, if redundancy is in use. */
-    unsigned long notify_jiffies; /**< Time of last notification. */
+    ec_time_t notify_time; /**< Time of last notification. */
 };
 
 /****************************************************************************/
