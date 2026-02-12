@@ -264,6 +264,8 @@ static int xdp_send(ec_transport_t *transport, size_t size)
     ec_transport_xdp_t *xdp = transport->priv;
     uint64_t addr;
     uint32_t idx;
+    uint32_t idx_cq;
+    unsigned int rcvd;
     int ret;
     unsigned int i;
 
@@ -279,8 +281,7 @@ static int xdp_send(ec_transport_t *transport, size_t size)
     addr = xsk_alloc_umem_frame(xdp);
     if (addr == INVALID_UMEM_FRAME) {
         /* Try to process completions to free some frames */
-        uint32_t idx_cq = 0;
-        unsigned int rcvd;
+        idx_cq = 0;
 
         rcvd = xsk_ring_cons__peek(&xdp->cq, XSK_RING_CONS__DEFAULT_NUM_DESCS, &idx_cq);
         if (rcvd > 0) {
@@ -322,9 +323,6 @@ static int xdp_send(ec_transport_t *transport, size_t size)
     }
 
     /* Process completion queue to free frames */
-    uint32_t idx_cq;
-    unsigned int rcvd;
-
     rcvd = xsk_ring_cons__peek(&xdp->cq, 1, &idx_cq);
     if (rcvd > 0) {
         for (i = 0; i < rcvd; i++) {
