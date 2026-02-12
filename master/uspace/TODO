@@ -1,0 +1,4 @@
+- implement calls to pthread_mutex_destroy(&lock->mutex);
+- rename main files (master_main.c and module.c) both to main.c
+- rename list.h to pal_list.h
+
