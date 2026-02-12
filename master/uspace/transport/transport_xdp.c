@@ -345,6 +345,8 @@ static int xdp_receive(ec_transport_t *transport, uint8_t *buffer, size_t max_si
     ec_transport_xdp_t *xdp = transport->priv;
     uint32_t idx_rx = 0;
     uint32_t idx_fq = 0;
+    uint64_t addr;
+    uint32_t len;
     unsigned int rcvd;
     int ret;
 
@@ -359,8 +361,8 @@ static int xdp_receive(ec_transport_t *transport, uint8_t *buffer, size_t max_si
     }
 
     /* Get received packet */
-    uint64_t addr = xsk_ring_cons__rx_desc(&xdp->rx, idx_rx)->addr;
-    uint32_t len = xsk_ring_cons__rx_desc(&xdp->rx, idx_rx)->len;
+    addr = xsk_ring_cons__rx_desc(&xdp->rx, idx_rx)->addr;
+    len = xsk_ring_cons__rx_desc(&xdp->rx, idx_rx)->len;
 
     if (len > max_size) {
         len = max_size;
