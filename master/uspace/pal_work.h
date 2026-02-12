@@ -180,8 +180,6 @@ static inline void destroy_workqueue(struct workqueue_struct *wq)
     free(wq);
 }
 
-
-
 /**
  * queue_work - queue work to a workqueue
  * @wq: target workqueue
