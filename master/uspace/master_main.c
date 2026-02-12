@@ -249,24 +249,10 @@ uint8_t *ec_device_tx_data(ec_device_t *device)
 void ec_device_send(ec_device_t *device, size_t size)
 {
     int ret;
-    uint8_t *tx_buffer;
 
     if (!device->pal.transport) {
         return;
     }
-
-    // TODO: quick fix for missing ethernet header
-    /* Get the full TX buffer (including Ethernet header) */
-    tx_buffer = ec_transport_get_tx_buffer(device->pal.transport);
-    if (!tx_buffer) {
-        return;
-    }
-
-    /* Fill Ethernet header */
-    memset(tx_buffer, 0xff, ETH_ALEN);              /* Destination: broadcast */
-    memcpy(tx_buffer + ETH_ALEN, device->master->macs[EC_DEVICE_MAIN], ETH_ALEN);  /* Source: our MAC */
-    tx_buffer[12] = 0x88;                            /* EtherType: EtherCAT (0x88A4) */
-    tx_buffer[13] = 0xA4;
 
     /* Send frame via transport layer */
     ret = ec_transport_send(device->pal.transport, size + ETH_HLEN);
@@ -332,11 +318,23 @@ void ec_device_poll(ec_device_t *device)
 /** Open device. */
 int ec_device_open(ec_device_t *device)
 {
+    uint8_t *tx_buffer;
+
     /* Transport is already opened in main(), just set state */
     device->open = 1;
     device->link_state = 0;
     ec_device_clear_stats(device);
     
+    /* Initialize Ethernet header in TX buffer */
+    tx_buffer = ec_transport_get_tx_buffer(device->pal.transport);
+    if (tx_buffer) {
+        /* Fill Ethernet header (matches kernel ec_device_init + ec_device_attach) */
+        memset(tx_buffer, 0xFF, ETH_ALEN);                                    /* h_dest: broadcast */
+        memcpy(tx_buffer + ETH_ALEN, device->master->macs[EC_DEVICE_MAIN], ETH_ALEN);  /* h_source: our MAC */
+        tx_buffer[12] = 0x88;                                                 /* h_proto: EtherCAT (0x88A4) */
+        tx_buffer[13] = 0xA4;
+    }
+
     printk(KERN_INFO "Device %s opened\n", device->name ? device->name : "?");
     return 0;
 }
