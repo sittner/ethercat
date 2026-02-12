@@ -409,7 +409,8 @@ static int xdp_get_link_state(ec_transport_t *transport)
     }
 
     memset(&ifr, 0, sizeof(ifr));
-    snprintf(ifr.ifr_name, IFNAMSIZ, "%s", transport->interface);
+    strncpy(ifr.ifr_name, transport->interface, IFNAMSIZ - 1);
+    ifr.ifr_name[IFNAMSIZ - 1] = '\0';
 
     if (ioctl(sock_fd, SIOCGIFFLAGS, &ifr) < 0) {
         ret = -errno;
