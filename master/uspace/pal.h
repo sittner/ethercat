@@ -122,27 +122,60 @@ static inline char *kstrndup(const char *s, size_t max, unsigned gfp)
 
 typedef unsigned long jiffies_t;
 
+#define jiffies get_jiffies()
+
+#define HZ 150
+
 static inline jiffies_t get_jiffies(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (ts.tv_sec * 1000) + (ts.tv_nsec / 1000000);
+    return (ts.tv_sec * HZ) + (ts.tv_nsec / (1000000000L / HZ));
 }
 
-#define jiffies get_jiffies()
-
-/* HZ equivalent - we're using milliseconds directly */
-#define HZ 1000
-
 /* Conversion macros (trivial since we use ms directly) */
-#define jiffies_to_msecs(j)  (j)
-#define msecs_to_jiffies(m)  (m)
+#define jiffies_to_msecs(j)  ((j) * 1000 / HZ)
+#define msecs_to_jiffies(m)  ((m) * HZ / 1000)
 
 /* Time comparison macros (handle wraparound) */
 #define time_after(a, b)     ((long)((b) - (a)) < 0)
 #define time_before(a, b)    time_after(b, a)
 #define time_after_eq(a, b)  ((long)((a) - (b)) >= 0)
 #define time_before_eq(a, b) time_after_eq(b, a)
+
+static inline uint64_t get_usecs(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000ULL + ts.tv_nsec / 1000;
+}
+
+/****************************************************************************/
+/* Cycle counter support for userspace (replaces kernel's get_cycles())     */
+/****************************************************************************/
+
+/* Define cycles_t as 64-bit unsigned */
+typedef uint64_t cycles_t;
+
+/* cpu_khz equivalent - we'll use a fixed value or calibrate at startup */
+#define cpu_khz 1000000U  /* 1 GHz default = 1000000 kHz */
+
+/**
+ * get_cycles - get current timestamp in "cycles" (actually microseconds)
+ *
+ * In userspace, we use microseconds directly as our "cycle" unit.
+ * This simplifies the math: cpu_khz = 1000000 means 1 cycle = 1 microsecond.
+ *
+ * With cpu_khz = 1000000:
+ *   cycles * 1000 / cpu_khz = cycles * 1000 / 1000000 = cycles / 1000
+ *   This converts microseconds to milliseconds correctly.
+ */
+static inline cycles_t get_cycles(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (cycles_t)ts.tv_sec * 1000000ULL + ts.tv_nsec / 1000;
+}
 
 /****************************************************************************/
 /* Logging */
@@ -688,6 +721,7 @@ static inline int kthread_should_stop(void)
  */
 static inline void kthread_bind(ec_thread_t *task, unsigned int cpu)
 {
+	return; // TODO: Store cpu and apply in kthread_wrapper
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     CPU_SET(cpu, &cpuset);
@@ -1477,9 +1511,11 @@ struct net_device_stats {
 struct ec_device;
 typedef struct ec_device ec_device_t;
 
+/* Forward declaration of transport type */
+struct ec_transport;
+
 typedef struct {
-//    ec_transport_t *transport;           /**< Transport layer. */
-    uint64_t jiffies_poll;               /**< Time of last poll (ms). */
+    struct ec_transport *transport;      /**< Transport layer. */
     uint64_t last_link_check;            /**< Time of last link state check (ms). */
     int last_link_state;                 /**< Last reported link state (-1 = unknown). */
 } ec_device_pal_t;

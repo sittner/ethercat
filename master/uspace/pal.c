@@ -21,7 +21,7 @@
 
 #include "pal.h"
 
-static bool printk_newline = true;
+static bool printk_newline = false;
 static pthread_mutex_t printk_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static const char *loglevel_names[] = {
@@ -62,9 +62,9 @@ int printk(const char *fmt, ...)
 
     /* Force newline if starting new message but previous wasn't complete */
     if (!is_cont) {
-        if (!printk_newline) {
+        if (printk_newline) {
             putchar('\n');
-            printk_newline = true;
+            printk_newline = false;
         }
         printf("%s: ", loglevel_names[priority]);
     }

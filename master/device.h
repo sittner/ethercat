@@ -114,6 +114,8 @@ struct ec_device
 
 int ec_device_init(ec_device_t *, ec_master_t *);
 void ec_device_clear(ec_device_t *);
+int ec_device_open(ec_device_t *);
+int ec_device_close(ec_device_t *);
 
 void ec_device_poll(ec_device_t *);
 uint8_t *ec_device_tx_data(ec_device_t *);

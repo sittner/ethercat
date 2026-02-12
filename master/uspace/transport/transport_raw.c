@@ -211,22 +211,34 @@ static int raw_send(ec_transport_t *transport, size_t size)
 static int raw_receive(ec_transport_t *transport, uint8_t *buffer, size_t max_size)
 {
     ec_transport_raw_t *raw = transport->priv;
+    struct sockaddr_ll addr;
+    socklen_t addr_len = sizeof(addr);
     ssize_t ret;
 
     if (!raw || raw->socket_fd < 0) {
         return -ENODEV;
     }
 
-    ret = recv(raw->socket_fd, buffer, max_size, MSG_DONTWAIT);
+    /* Keep trying until we get a real packet or no more data */
+    while (1) {
+        addr_len = sizeof(addr);  /* Reset for each call */
+        ret = recvfrom(raw->socket_fd, buffer, max_size, MSG_DONTWAIT,
+                       (struct sockaddr *)&addr, &addr_len);
 
-    if (ret < 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            return 0;  /* No data available */
+        if (ret < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return 0;  /* No data available */
+            }
+            return -errno;
         }
-        return -errno;
-    }
 
-    return (int)ret;
+        /* Filter out our own transmitted packets - try again */
+        if (addr.sll_pkttype == PACKET_OUTGOING) {
+            continue;  /* Skip this packet, try next */
+        }
+
+        return (int)ret;
+    }
 }
 
 /****************************************************************************/
