@@ -33,16 +33,12 @@
 #define TASK_RUNNING         0x0000
 #define TASK_INTERRUPTIBLE   0x0001
 #define TASK_UNINTERRUPTIBLE 0x0002
-#define TASK_STOPPED         0x0004
 #define TASK_DEAD            0x0080
 
 /* Error pointer macros */
-#define MAX_ERRNO           4095
-#define IS_ERR_VALUE(x)     ((unsigned long)(void *)(x) >= (unsigned long)-MAX_ERRNO)
 #define ERR_PTR(err)        ((void *)((long)(err)))
 #define PTR_ERR(ptr)        ((long)(ptr))
-#define IS_ERR(ptr)         IS_ERR_VALUE((unsigned long)(ptr))
-#define IS_ERR_OR_NULL(ptr) (!(ptr) || IS_ERR(ptr))
+#define IS_ERR(ptr)         ((unsigned long)(void *)(ptr) >= (unsigned long)-4095) /* MAX_ERRNO = 4095 */
 
 /* Portable gettid */
 #if defined(__GLIBC__) && \
@@ -287,8 +283,6 @@ static inline void kthread_bind(ec_thread_t *task, unsigned int cpu)
         if (__t)                                \
             __t->state = (state_value);         \
     } while (0)
-
-#define __set_current_state(state_value) set_current_state(state_value)
 
 /**
  * schedule - yield the processor

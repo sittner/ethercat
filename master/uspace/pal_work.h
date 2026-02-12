@@ -78,23 +78,7 @@ extern struct workqueue_struct *system_wq;
         (_work)->next = NULL;                       \
     } while (0)
 
-/**
- * work_pending - check if work is queued
- * @work: work item to check
- */
-static inline int work_pending(ec_work_t *work)
-{
-    return work->flags & WORK_STRUCT_PENDING;
-}
 
-/**
- * work_busy - check if work is pending or running
- * @work: work item to check
- */
-static inline int work_busy(ec_work_t *work)
-{
-    return work->flags & (WORK_STRUCT_PENDING | WORK_STRUCT_RUNNING);
-}
 
 /* Internal: worker thread function */
 static inline void *__workqueue_worker(void *arg)
@@ -241,24 +225,7 @@ static inline int schedule_work(ec_work_t *work)
     return queue_work(system_wq, work);
 }
 
-/**
- * flush_work - wait for work item to complete
- * @work: work item to wait for
- *
- * Returns 1 if work was pending, 0 if not
- */
-static inline int flush_work(ec_work_t *work)
-{
-    int was_pending = 0;
 
-    /* Spin until work is no longer pending or running */
-    while (work->flags & (WORK_STRUCT_PENDING | WORK_STRUCT_RUNNING)) {
-        was_pending = 1;
-        sched_yield();
-    }
-
-    return was_pending;
-}
 
 /**
  * cancel_work_sync - cancel work and wait for completion
@@ -284,20 +251,7 @@ static inline int cancel_work_sync(ec_work_t *work)
     return was_pending;
 }
 
-/**
- * flush_workqueue - wait for all pending work to complete
- * @wq: workqueue to flush
- */
-static inline void flush_workqueue(struct workqueue_struct *wq)
-{
-    pthread_mutex_lock(&wq->lock);
-    while (wq->head) {
-        pthread_mutex_unlock(&wq->lock);
-        sched_yield();
-        pthread_mutex_lock(&wq->lock);
-    }
-    pthread_mutex_unlock(&wq->lock);
-}
+
 
 #endif /* __EC_USPACE_PAL_WORK_H__ */
 

@@ -57,16 +57,7 @@ static inline void rt_mutex_init(ec_rt_mutex_t *lock)
     pthread_mutexattr_destroy(&attr);
 }
 
-/**
- * rt_mutex_destroy - clean up rt_mutex resources
- * @lock: the mutex to destroy
- *
- * Note: No kernel equivalent, but needed in userspace
- */
-static inline void rt_mutex_destroy(ec_rt_mutex_t *lock)
-{
-    pthread_mutex_destroy(&lock->mutex);
-}
+
 
 /**
  * rt_mutex_lock - acquire the mutex
@@ -98,16 +89,7 @@ static inline int rt_mutex_lock_interruptible(ec_rt_mutex_t *lock)
 
 #define ec_rt_lock_interruptible(lock) rt_mutex_lock_interruptible(lock)
 
-/**
- * rt_mutex_trylock - try to acquire without blocking
- * @lock: the mutex to acquire
- *
- * Returns 1 if acquired, 0 if not (opposite of pthread!)
- */
-static inline int rt_mutex_trylock(ec_rt_mutex_t *lock)
-{
-    return (pthread_mutex_trylock(&lock->mutex) == 0) ? 1 : 0;
-}
+
 
 /**
  * rt_mutex_unlock - release the mutex
@@ -118,20 +100,7 @@ static inline void rt_mutex_unlock(ec_rt_mutex_t *lock)
     pthread_mutex_unlock(&lock->mutex);
 }
 
-/**
- * rt_mutex_is_locked - check if mutex is locked
- * @lock: the mutex to check
- *
- * Returns 1 if locked, 0 if not
- */
-static inline int rt_mutex_is_locked(ec_rt_mutex_t *lock)
-{
-    if (pthread_mutex_trylock(&lock->mutex) == 0) {
-        pthread_mutex_unlock(&lock->mutex);
-        return 0;  /* Was not locked */
-    }
-    return 1;  /* Is locked */
-}
+
 
 #endif /* __EC_USPACE_PAL_MTX_H__ */
 

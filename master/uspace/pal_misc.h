@@ -45,16 +45,6 @@ typedef int64_t  s64;
 /* Kernel module exports - not needed in userspace */
 #define EXPORT_SYMBOL(x)
 #define EXPORT_SYMBOL_GPL(x)
-#define MODULE_LICENSE(x)
-#define MODULE_AUTHOR(x)
-#define MODULE_DESCRIPTION(x)
-#define MODULE_VERSION(x)
-#define MODULE_PARM_DESC(x, y)
-#define module_param(name, type, perm)
-#define module_param_named(name, var, type, perm)
-#define module_param_array(name, type, nump, perm)
-#define module_init(fn)
-#define module_exit(fn)
 
 #include "list.h"
 
@@ -65,7 +55,6 @@ typedef int64_t  s64;
 #define kfree(ptr)              free(ptr)
 
 #define vmalloc(size)           malloc(size)
-#define vzalloc(size)           calloc(1, size)
 #define vfree(ptr)              free(ptr)
 
 #define unlikely(x) __builtin_expect(!!(x), 0)
@@ -77,12 +66,8 @@ typedef int64_t  s64;
 /* Logging */
 /****************************************************************************/
 
-#define KERN_EMERG		"<0>"	/* system is unusable			*/
-#define KERN_ALERT		"<1>"	/* action must be taken immediately	*/
-#define KERN_CRIT		"<2>"	/* critical conditions			*/
 #define KERN_ERR		"<3>"	/* error conditions			*/
 #define KERN_WARNING	"<4>"	/* warning conditions			*/
-#define KERN_NOTICE		"<5>"	/* normal but significant condition	*/
 #define KERN_INFO		"<6>"	/* informational			*/
 #define KERN_DEBUG		"<7>"	/* debug-level messages			*/
 
@@ -161,30 +146,11 @@ int printk(const char *fmt, ...);
 #define ETH_FRAME_LEN   1514    /* Max octets in frame sans FCS */
 #endif
 
-#ifndef ETH_FCS_LEN
-#define ETH_FCS_LEN     4       /* Octets in the FCS (frame check sequence) */
-#endif
-
-/* EtherCAT specific */
-#ifndef ETH_P_ETHERCAT
-#define ETH_P_ETHERCAT  0x88A4  /* EtherCAT protocol */
-#endif
-
-#define EC_ETH_ALEN 6
-#ifdef ETH_ALEN
-#if ETH_ALEN != EC_ETH_ALEN
-#error Ethernet address length mismatch
-#endif
-#endif
-
 /****************************************************************************/
 /* String conversion functions */
 /****************************************************************************/
 
 #define simple_strtoul(str, endp, base)  strtoul(str, endp, base)
-#define simple_strtol(str, endp, base)   strtol(str, endp, base)
-#define simple_strtoull(str, endp, base) strtoull(str, endp, base)
-#define simple_strtoll(str, endp, base)  strtoll(str, endp, base)
 
 #endif /* __EC_USPACE_PAL_MISC_H__ */
 
