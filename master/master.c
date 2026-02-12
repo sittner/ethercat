@@ -193,7 +193,7 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     }
 
     // send interval in IDLE phase
-    ec_master_set_send_interval(master, 1000000 / HZ);
+    ec_master_set_send_interval(master, EC_IDLE_SEND_INTERVAL);
 
     master->fsm_slave = NULL;
     INIT_LIST_HEAD(&master->fsm_exec_list);
@@ -534,8 +534,6 @@ void ec_master_thread_stop(
         ec_master_t *master /**< EtherCAT master */
         )
 {
-    unsigned long sleep_jiffies;
-
     if (!master->thread) {
         EC_MASTER_WARN(master, "%s(): Already finished!\n", __func__);
         return;
@@ -552,8 +550,7 @@ void ec_master_thread_stop(
     }
 
     // wait for FSM datagram
-    sleep_jiffies = max(HZ / 100, 1); // 10 ms, at least 1 jiffy
-    schedule_timeout(sleep_jiffies);
+    ec_schedule_ms(10);
 }
 
 /****************************************************************************/
@@ -1371,7 +1368,7 @@ static int ec_master_idle_thread(void *priv_data)
     int sent_bytes;
 
     // send interval in IDLE phase
-    ec_master_set_send_interval(master, 1000000 / HZ);
+    ec_master_set_send_interval(master, EC_IDLE_SEND_INTERVAL);
 
     EC_MASTER_DBG(master, 1, "Idle thread running with send interval = %u us,"
             " max data size=%zu\n", master->send_interval,

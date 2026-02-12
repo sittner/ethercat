@@ -299,23 +299,6 @@ static inline void schedule(void)
 }
 
 /**
- * schedule_timeout - sleep for jiffies
- */
-static inline long schedule_timeout(long timeout)
-{
-    struct timespec ts;
-
-    if (timeout <= 0)
-        return 0;
-
-    ts.tv_sec = timeout / HZ;
-    ts.tv_nsec = (timeout % HZ) * (1000000000L / HZ);
-
-    nanosleep(&ts, NULL);
-    return 0;
-}
-
-/**
  * sched_set_normal - set task to normal scheduling policy
  * @task: task to modify
  * @nice: nice value (-20 to 19)

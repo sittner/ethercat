@@ -104,36 +104,5 @@ static inline void wake_up_all(ec_wait_queue_t *wq)
         __ret;                                          \
     })
 
-/**
- * wait_event_timeout - sleep until condition or timeout
- * @wq: wait queue (passed by VALUE)
- * @condition: condition to wait for
- * @timeout_jiffies: timeout in jiffies
- *
- * Returns remaining jiffies (>0) if condition met, 0 on timeout
- */
-#define wait_event_timeout(wq, condition, timeout_jiffies)              \
-    ({                                                                  \
-        long __ret = (timeout_jiffies);                                 \
-        struct timespec __ts;                                           \
-        clock_gettime(CLOCK_REALTIME, &__ts);                           \
-        __ts.tv_sec += (__ret) / HZ;                                    \
-        __ts.tv_nsec += ((__ret) % HZ) * (1000000000L / HZ);            \
-        if (__ts.tv_nsec >= 1000000000L) {                              \
-            __ts.tv_sec++;                                              \
-            __ts.tv_nsec -= 1000000000L;                                \
-        }                                                               \
-        pthread_mutex_lock(&(wq).lock);                                 \
-        while (!(condition)) {                                          \
-            if (pthread_cond_timedwait(&(wq).cond, &(wq).lock, &__ts)   \
-                    == ETIMEDOUT) {                                     \
-                __ret = 0;                                              \
-                break;                                                  \
-            }                                                           \
-        }                                                               \
-        pthread_mutex_unlock(&(wq).lock);                               \
-        __ret;                                                          \
-    })
-
 #endif /* __EC_USPACE_PAL_QUEUE_H__ */
 

@@ -162,8 +162,14 @@ typedef unsigned long ec_time_t;
 
 #endif
 
+static inline void ec_schedule_ms(unsigned long ms) {
+    unsigned long sleep_jiffies;
 
+    sleep_jiffies = max(ms * HZ / 1000, 1); at least 1 jiffy
+    schedule_timeout(sleep_jiffies);
+}
 
+#define EC_IDLE_SEND_INTERVAL (1000000 / HZ)
 
 /****************************************************************************/
 

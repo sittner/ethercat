@@ -69,6 +69,19 @@ typedef uint64_t ec_time_t;
 
 //************************************************************************
 
+static inline void ec_schedule_ms(unsigned long ms) {
+    struct timespec ts;
+
+    ts.tv_sec = ms / 1000;
+    ts.tv_nsec = (ms % 1000) * 1000000L;
+
+    nanosleep(&ts, NULL);
+}
+
+//************************************************************************
+
+#define EC_IDLE_SEND_INTERVAL 4000
+
 struct net_device_stats {
   int dummy;
 };
