@@ -2375,7 +2375,9 @@ int ecrt_master_receive(ec_master_t *master)
                 datagram->cycles_sent > timeout_cycles) {
 #else
         if (master->devices[EC_DEVICE_MAIN].jiffies_poll -
-                datagram->jiffies_sent > timeout_jiffies) {
+                //TODO: restore after real timing problem is fixed
+                datagram->jiffies_sent > (timeout_jiffies + 1)) {
+                //datagram->jiffies_sent > timeout_jiffies) {
 #endif
             list_del_init(&datagram->queue);
             datagram->state = EC_DATAGRAM_TIMED_OUT;
@@ -2395,8 +2397,9 @@ int ecrt_master_receive(ec_master_t *master)
                     ((master->devices[EC_DEVICE_MAIN].jiffies_poll -
                             datagram->jiffies_sent) * 1000000 / HZ);
 #endif
-                EC_MASTER_DBG(master, 0, "TIMED OUT datagram %p,"
+                EC_MASTER_DBG(master, 0, "%lu: TIMED OUT datagram %p,"
                         " index %02X waited %u us.\n",
+                        get_usecs(),
                         datagram, datagram->index, time_us);
             }
 #endif /* RT_SYSLOG */

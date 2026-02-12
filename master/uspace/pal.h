@@ -124,9 +124,7 @@ typedef unsigned long jiffies_t;
 
 #define jiffies get_jiffies()
 
-/* HZ equivalent - we're using milliseconds directly */
-//TODO: should be 150
-#define HZ 50
+#define HZ 150
 
 static inline jiffies_t get_jiffies(void)
 {
@@ -152,6 +150,32 @@ static inline uint64_t get_usecs(void)
     return (uint64_t)ts.tv_sec * 1000000ULL + ts.tv_nsec / 1000;
 }
 
+/****************************************************************************/
+/* Cycle counter support for userspace (replaces kernel's get_cycles())     */
+/****************************************************************************/
+
+/* Define cycles_t as 64-bit unsigned */
+typedef uint64_t cycles_t;
+
+/* cpu_khz equivalent - we'll use a fixed value or calibrate at startup */
+#define cpu_khz 1000000U  /* 1 GHz default = 1000000 kHz */
+
+/**
+ * get_cycles - get current timestamp in "cycles" (actually microseconds)
+ *
+ * In userspace, we use microseconds directly as our "cycle" unit.
+ * This simplifies the math: cpu_khz = 1000000 means 1 cycle = 1 microsecond.
+ *
+ * With cpu_khz = 1000000:
+ *   cycles * 1000 / cpu_khz = cycles * 1000 / 1000000 = cycles / 1000
+ *   This converts microseconds to milliseconds correctly.
+ */
+static inline cycles_t get_cycles(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (cycles_t)ts.tv_sec * 1000000ULL + ts.tv_nsec / 1000;
+}
 
 /****************************************************************************/
 /* Logging */
