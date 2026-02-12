@@ -2,10 +2,20 @@ CC = gcc
 CFLAGS = -Wall -g -O0 -I. -I.. -I../.. -Itransport -D_GNU_SOURCE
 LDFLAGS = -lpthread
 
+# Optional XDP support (set ENABLE_XDP=1 to enable)
+ifdef ENABLE_XDP
+CFLAGS += -DHAVE_XDP
+LDFLAGS += -lbpf
+TRANSPORT_XDP_SRCS = transport/transport_xdp.c
+else
+TRANSPORT_XDP_SRCS =
+endif
+
 # Transport sources
 TRANSPORT_SRCS = \
 	transport/transport.c \
-	transport/transport_raw.c
+	transport/transport_raw.c \
+	$(TRANSPORT_XDP_SRCS)
 
 # All .c files from parent /master/ directory
 MASTER_SRCS = \
