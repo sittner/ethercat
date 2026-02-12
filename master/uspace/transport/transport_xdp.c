@@ -265,6 +265,7 @@ static int xdp_send(ec_transport_t *transport, size_t size)
     uint64_t addr;
     uint32_t idx;
     int ret;
+    unsigned int i;
 
     if (!xdp || !xdp->xsk) {
         return -ENODEV;
@@ -283,7 +284,7 @@ static int xdp_send(ec_transport_t *transport, size_t size)
 
         rcvd = xsk_ring_cons__peek(&xdp->cq, XSK_RING_CONS__DEFAULT_NUM_DESCS, &idx_cq);
         if (rcvd > 0) {
-            for (unsigned int i = 0; i < rcvd; i++) {
+            for (i = 0; i < rcvd; i++) {
                 uint64_t cq_addr = *xsk_ring_cons__comp_addr(&xdp->cq, idx_cq++);
                 xsk_free_umem_frame(xdp, cq_addr);
             }
@@ -326,7 +327,7 @@ static int xdp_send(ec_transport_t *transport, size_t size)
 
     rcvd = xsk_ring_cons__peek(&xdp->cq, 1, &idx_cq);
     if (rcvd > 0) {
-        for (unsigned int i = 0; i < rcvd; i++) {
+        for (i = 0; i < rcvd; i++) {
             uint64_t cq_addr = *xsk_ring_cons__comp_addr(&xdp->cq, idx_cq++);
             xsk_free_umem_frame(xdp, cq_addr);
         }
