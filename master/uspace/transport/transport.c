@@ -45,6 +45,9 @@ static const struct {
 #endif
 };
 
+/** Number of entries in transport registry */
+#define TRANSPORT_REGISTRY_SIZE (sizeof(transport_registry) / sizeof(transport_registry[0]))
+
 /****************************************************************************/
 
 /**
@@ -62,7 +65,7 @@ ec_transport_t *ec_transport_create(ec_transport_type_t type)
 
     /* Find transport ops in registry */
     ops = NULL;
-    for (i = 0; i < sizeof(transport_registry) / sizeof(transport_registry[0]); i++) {
+    for (i = 0; i < TRANSPORT_REGISTRY_SIZE; i++) {
         if (transport_registry[i].type == type) {
             ops = transport_registry[i].ops;
             break;
@@ -247,7 +250,7 @@ int ec_transport_available(ec_transport_type_t type)
         return 0;
     }
 
-    for (i = 0; i < sizeof(transport_registry) / sizeof(transport_registry[0]); i++) {
+    for (i = 0; i < TRANSPORT_REGISTRY_SIZE; i++) {
         if (transport_registry[i].type == type) {
             return 1;
         }
@@ -263,20 +266,8 @@ int ec_transport_available(ec_transport_type_t type)
  */
 const char *ec_transport_type_name(ec_transport_type_t type)
 {
-    unsigned int i;
-
-    if (type >= EC_TRANSPORT_EOT) {
-        return "unknown";
-    }
-
-    for (i = 0; i < sizeof(transport_registry) / sizeof(transport_registry[0]); i++) {
-        if (transport_registry[i].type == type) {
-            const ec_transport_ops_t *ops = transport_registry[i].ops;
-            return ops && ops->name ? ops->name : "unknown";
-        }
-    }
-
-    return "unknown";
+    const char *name = ec_transport_get_name(type);
+    return name ? name : "unknown";
 }
 
 /****************************************************************************/
@@ -292,7 +283,7 @@ ec_transport_type_t ec_transport_find_by_name(const char *name)
         return EC_TRANSPORT_EOT;
     }
 
-    for (i = 0; i < sizeof(transport_registry) / sizeof(transport_registry[0]); i++) {
+    for (i = 0; i < TRANSPORT_REGISTRY_SIZE; i++) {
         const ec_transport_ops_t *ops = transport_registry[i].ops;
         if (ops && ops->name && strcmp(ops->name, name) == 0) {
             return transport_registry[i].type;
@@ -315,7 +306,7 @@ const char *ec_transport_get_name(ec_transport_type_t type)
         return NULL;
     }
 
-    for (i = 0; i < sizeof(transport_registry) / sizeof(transport_registry[0]); i++) {
+    for (i = 0; i < TRANSPORT_REGISTRY_SIZE; i++) {
         if (transport_registry[i].type == type) {
             const ec_transport_ops_t *ops = transport_registry[i].ops;
             return ops ? ops->name : NULL;
@@ -338,7 +329,7 @@ const ec_transport_ops_t *ec_transport_get_ops(ec_transport_type_t type)
         return NULL;
     }
 
-    for (i = 0; i < sizeof(transport_registry) / sizeof(transport_registry[0]); i++) {
+    for (i = 0; i < TRANSPORT_REGISTRY_SIZE; i++) {
         if (transport_registry[i].type == type) {
             return transport_registry[i].ops;
         }
@@ -357,7 +348,7 @@ void ec_transport_print_available(void)
     unsigned int i;
     int first = 1;
 
-    for (i = 0; i < sizeof(transport_registry) / sizeof(transport_registry[0]); i++) {
+    for (i = 0; i < TRANSPORT_REGISTRY_SIZE; i++) {
         const ec_transport_ops_t *ops = transport_registry[i].ops;
         if (ops && ops->name) {
             if (!first) {

@@ -206,7 +206,7 @@ const char *ec_transport_type_name(ec_transport_type_t type);
 
 /**
  * Find transport type by name.
- * 
+ *
  * @param name Transport name (e.g., "raw", "xdp-skb", "xdp-native")
  * @return Transport type, or EC_TRANSPORT_EOT if not found
  */
@@ -214,7 +214,7 @@ ec_transport_type_t ec_transport_find_by_name(const char *name);
 
 /**
  * Get transport name by type.
- * 
+ *
  * @param type Transport type
  * @return Transport name string, or NULL if invalid
  */
@@ -222,7 +222,7 @@ const char *ec_transport_get_name(ec_transport_type_t type);
 
 /**
  * Get transport ops by type.
- * 
+ *
  * @param type Transport type
  * @return Pointer to transport ops, or NULL if invalid
  */
