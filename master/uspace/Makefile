@@ -2,6 +2,8 @@ CC = gcc
 CFLAGS = -Wall -g -O0 -I. -I.. -I../.. -Itransport -D_GNU_SOURCE
 LDFLAGS = -lpthread
 
+ENABLE_XDP = 1
+
 # Optional XDP support (set ENABLE_XDP=1 to enable)
 ifdef ENABLE_XDP
 CFLAGS += -DHAVE_XDP
@@ -26,6 +28,7 @@ MASTER_SRCS = \
 	../domain.c \
 	../doxygen.c \
 	../eoe_request.c \
+	../ethernet.c \
 	../flag.c \
 	../fmmu_config.c \
 	../foe_request.c \
@@ -57,9 +60,7 @@ MASTER_SRCS = \
 	../sync.c \
 	../sync_config.c \
 	../utils.c \
-	../voe_handler.c \
-	../ethernet.c
-
+	../voe_handler.c
 
 # Userspace sources
 USPACE_SRCS = master_main.c pal.c pal_eoe.c $(TRANSPORT_SRCS)
