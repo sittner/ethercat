@@ -95,7 +95,7 @@ int main(int argc, char *argv[])
                 fprintf(stdout, "  -i, --interface <name>    Network interface (required)\n");
                 fprintf(stdout, "  -t, --transport <type>    Transport type (default: raw)\n");
                 fprintf(stdout, "                            Available: ");
-                fflush(stdout);
+                fflush(stdout);  /* Flush before stderr to ensure correct output order */
                 ec_transport_print_available();
                 fprintf(stdout, "\n");
                 fprintf(stdout, "  -h, --help                Show this help\n");
