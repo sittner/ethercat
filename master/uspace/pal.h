@@ -57,6 +57,7 @@
 #include "pal_thread.h"
 #include "pal_work.h"
 #include "pal_irq_work.h"
+#include "pal_eoe_compat.h"
 
 //************************************************************************
 
@@ -81,10 +82,6 @@ static inline void ec_schedule_ms(unsigned long ms) {
 //************************************************************************
 
 #define EC_IDLE_SEND_INTERVAL 4000
-
-struct net_device_stats {
-  int dummy;
-};
 
 struct ec_device;
 typedef struct ec_device ec_device_t;

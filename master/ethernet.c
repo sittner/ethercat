@@ -77,17 +77,6 @@ struct net_device_stats *ec_eoedev_stats(struct net_device *);
 
 /****************************************************************************/
 
-/** Device operations for EoE interfaces.
- */
-static const struct net_device_ops ec_eoedev_ops = {
-    .ndo_open = ec_eoedev_open,
-    .ndo_stop = ec_eoedev_stop,
-    .ndo_start_xmit = ec_eoedev_tx,
-    .ndo_get_stats = ec_eoedev_stats,
-};
-
-/****************************************************************************/
-
 /** EoE constructor.
  *
  * Initializes the EoE handler, creates a net_device and registers it.
@@ -141,12 +130,8 @@ int ec_eoe_init(
 
     snprintf(eoe->datagram.name, EC_DATAGRAM_NAME_SIZE, name);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0)
     eoe->dev = alloc_netdev(sizeof(ec_eoe_t *), name, NET_NAME_UNKNOWN,
             ether_setup);
-#else
-    eoe->dev = alloc_netdev(sizeof(ec_eoe_t *), name, ether_setup);
-#endif
     if (!eoe->dev) {
         EC_SLAVE_ERR(slave, "Unable to allocate net_device %s"
                 " for EoE handler!\n", name);
@@ -155,13 +140,7 @@ int ec_eoe_init(
     }
 
     // initialize net_device
-    eoe->dev->netdev_ops = &ec_eoedev_ops;
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) || (SUSE_VERSION == 15 && SUSE_PATCHLEVEL >= 5)
     eth_hw_addr_set(eoe->dev, mac_addr);
-#else
-    memcpy(eoe->dev->dev_addr, mac_addr, sizeof(mac_addr));
-#endif
 
     // initialize private data
     priv = netdev_priv(eoe->dev);
@@ -185,11 +164,7 @@ int ec_eoe_init(
 
     // make the last address octet unique
     mac_addr[ETH_ALEN - 1] = (uint8_t) eoe->dev->ifindex;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0) || (SUSE_VERSION == 15 && SUSE_PATCHLEVEL >= 5)
     eth_hw_addr_set(eoe->dev, mac_addr);
-#else
-    memcpy(eoe->dev->dev_addr, mac_addr, sizeof(mac_addr));
-#endif
 
     return 0;
 
@@ -829,8 +804,7 @@ int ec_eoedev_tx(struct sk_buff *skb, /**< transmit socket buffer */
     WARN_ON_ONCE(skb_get_queue_mapping(skb) != 0);
     lockdep_assert_held(&netdev_get_tx_queue(dev, 0)->_xmit_lock);
 
-    if (!(frame =
-          (ec_eoe_frame_t *) kmalloc(sizeof(ec_eoe_frame_t), GFP_ATOMIC))) {
+    if (!(frame = kmalloc(sizeof(ec_eoe_frame_t), GFP_ATOMIC))) {
         if (printk_ratelimit())
             EC_SLAVE_WARN(eoe->slave, "EoE TX: low on mem. frame dropped.\n");
         return 1;

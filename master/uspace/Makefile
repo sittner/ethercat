@@ -57,9 +57,8 @@ MASTER_SRCS = \
 	../sync.c \
 	../sync_config.c \
 	../utils.c \
-	../voe_handler.c
-
-#	../ethernet.c \
+	../voe_handler.c \
+	../ethernet.c
 
 
 # Userspace sources
