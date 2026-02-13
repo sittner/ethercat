@@ -201,14 +201,7 @@ int main(int argc, char *argv[])
 
     /* Main loop - run until signal received */
     while (g_running) {
-        /* Poll device for received frames */
-        //ec_device_poll(&master.devices[EC_DEVICE_MAIN]);
-
-        /* Execute master FSM unconditionally */
-        //ec_fsm_master_exec(&master.fsm);
-
-        /* Small sleep to prevent busy-waiting */
-        usleep(1000);  /* 1ms */
+        pause();  /* Sleep until signal - uses ~0% CPU */
     }
 
     printk(KERN_INFO "Shutting down EtherCAT master\n");
