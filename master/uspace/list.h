@@ -127,6 +127,21 @@ static inline int list_empty(const struct list_head *head)
 }
 
 /**
+ * list_replace_init - replace old entry by new one and initialize the old one
+ * @old: the element to be replaced
+ * @new: the new element to insert
+ */
+static inline void list_replace_init(struct list_head *old,
+                                     struct list_head *new)
+{
+    new->next = old->next;
+    new->next->prev = new;
+    new->prev = old->prev;
+    new->prev->next = new;
+    INIT_LIST_HEAD(old);
+}
+
+/**
  * container_of - cast a member of a structure out to the containing structure
  * @ptr:    the pointer to the member.
  * @type:   the type of the container struct this is embedded in.
