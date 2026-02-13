@@ -66,7 +66,7 @@ static inline void ether_setup(ec_netdev_t *dev) {
     dev->mtu = 1500;
 }
 
-/* Error pointer macros */
+/* Error pointer macros (error range is [-4095, -1], like kernel MAX_ERRNO) */
 #define IS_ERR(ptr)     ((unsigned long)(ptr) > (unsigned long)-4096UL)
 #define PTR_ERR(ptr)    ((long)(ptr))
 #define ERR_PTR(err)    ((void *)((long)(err))))
