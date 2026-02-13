@@ -63,7 +63,7 @@ MASTER_SRCS = \
 
 
 # Userspace sources
-USPACE_SRCS = master_main.c pal.c $(TRANSPORT_SRCS)
+USPACE_SRCS = master_main.c pal.c pal_eoe.c $(TRANSPORT_SRCS)
 
 # All sources combined
 SRCS = $(MASTER_SRCS) $(USPACE_SRCS)
