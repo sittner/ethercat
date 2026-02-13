@@ -233,7 +233,7 @@ static int xdp_open(ec_transport_t *transport, const char *interface)
     };
 
     ret = -1;
-    for (i = 0; i < 3; i++) {
+    for (i = 0; i < (int)(sizeof(modes) / sizeof(modes[0])); i++) {
         cfg.xdp_flags = modes[i].xdp_flags;
         cfg.bind_flags = modes[i].bind_flags;
 
