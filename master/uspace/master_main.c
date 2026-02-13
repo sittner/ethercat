@@ -80,14 +80,16 @@ int main(int argc, char *argv[])
                 interface = optarg;
                 break;
             case 't':
-                transport_type = ec_transport_find_by_name(optarg);
-                if (transport_type == EC_TRANSPORT_EOT) {
+                ret = ec_transport_find_by_name(optarg);
+                if (ret < 0) {
                     fprintf(stderr, "Unknown transport type: %s\n", optarg);
                     fprintf(stderr, "Available transports: ");
                     ec_transport_print_available();
                     fprintf(stderr, "\n");
                     return 1;
                 }
+                transport_type = ret;
+                ret = 0;
                 break;
             case 'h':
                 fprintf(stdout, "Usage: %s [OPTIONS]\n", argv[0]);

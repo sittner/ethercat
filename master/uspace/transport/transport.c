@@ -43,10 +43,8 @@ static const struct {
     { EC_TRANSPORT_XDP_SKB,    &ec_transport_xdp_skb_ops },
     { EC_TRANSPORT_XDP_NATIVE, &ec_transport_xdp_native_ops },
 #endif
+    { 0, NULL }  /* End of table marker */
 };
-
-/** Number of entries in transport registry */
-#define TRANSPORT_REGISTRY_SIZE (sizeof(transport_registry) / sizeof(transport_registry[0]))
 
 /****************************************************************************/
 
@@ -59,13 +57,9 @@ ec_transport_t *ec_transport_create(ec_transport_type_t type)
     const ec_transport_ops_t *ops;
     unsigned int i;
 
-    if (type >= EC_TRANSPORT_EOT) {
-        return NULL;
-    }
-
     /* Find transport ops in registry */
     ops = NULL;
-    for (i = 0; i < TRANSPORT_REGISTRY_SIZE; i++) {
+    for (i = 0; transport_registry[i].ops != NULL; i++) {
         if (transport_registry[i].type == type) {
             ops = transport_registry[i].ops;
             break;
@@ -246,11 +240,7 @@ int ec_transport_available(ec_transport_type_t type)
 {
     unsigned int i;
 
-    if (type >= EC_TRANSPORT_EOT) {
-        return 0;
-    }
-
-    for (i = 0; i < TRANSPORT_REGISTRY_SIZE; i++) {
+    for (i = 0; transport_registry[i].ops != NULL; i++) {
         if (transport_registry[i].type == type) {
             return 1;
         }
@@ -275,22 +265,22 @@ const char *ec_transport_type_name(ec_transport_type_t type)
 /**
  * Find transport type by name.
  */
-ec_transport_type_t ec_transport_find_by_name(const char *name)
+int ec_transport_find_by_name(const char *name)
 {
     unsigned int i;
 
     if (!name) {
-        return EC_TRANSPORT_EOT;
+        return -EINVAL;
     }
 
-    for (i = 0; i < TRANSPORT_REGISTRY_SIZE; i++) {
+    for (i = 0; transport_registry[i].ops != NULL; i++) {
         const ec_transport_ops_t *ops = transport_registry[i].ops;
-        if (ops && ops->name && strcmp(ops->name, name) == 0) {
+        if (ops->name && strcmp(ops->name, name) == 0) {
             return transport_registry[i].type;
         }
     }
 
-    return EC_TRANSPORT_EOT;
+    return -ENOENT;
 }
 
 /****************************************************************************/
@@ -302,14 +292,9 @@ const char *ec_transport_get_name(ec_transport_type_t type)
 {
     unsigned int i;
 
-    if (type >= EC_TRANSPORT_EOT) {
-        return NULL;
-    }
-
-    for (i = 0; i < TRANSPORT_REGISTRY_SIZE; i++) {
+    for (i = 0; transport_registry[i].ops != NULL; i++) {
         if (transport_registry[i].type == type) {
-            const ec_transport_ops_t *ops = transport_registry[i].ops;
-            return ops ? ops->name : NULL;
+            return transport_registry[i].ops->name;
         }
     }
 
@@ -325,11 +310,7 @@ const ec_transport_ops_t *ec_transport_get_ops(ec_transport_type_t type)
 {
     unsigned int i;
 
-    if (type >= EC_TRANSPORT_EOT) {
-        return NULL;
-    }
-
-    for (i = 0; i < TRANSPORT_REGISTRY_SIZE; i++) {
+    for (i = 0; transport_registry[i].ops != NULL; i++) {
         if (transport_registry[i].type == type) {
             return transport_registry[i].ops;
         }
@@ -348,9 +329,9 @@ void ec_transport_print_available(void)
     unsigned int i;
     int needs_separator = 0;
 
-    for (i = 0; i < TRANSPORT_REGISTRY_SIZE; i++) {
+    for (i = 0; transport_registry[i].ops != NULL; i++) {
         const ec_transport_ops_t *ops = transport_registry[i].ops;
-        if (ops && ops->name) {
+        if (ops->name) {
             if (needs_separator) {
                 fprintf(stderr, " ");
             }
