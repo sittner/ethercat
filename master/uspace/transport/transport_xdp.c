@@ -522,7 +522,7 @@ static int xdp_get_fd(ec_transport_t *transport)
 
 /** XDP transport operations */
 const ec_transport_ops_t ec_transport_xdp_skb_ops = {
-    .name = "xdp",
+    .name = "xdp-skb",
     .open = xdp_open_skb,
     .close = xdp_close,
     .get_tx_buffer = xdp_get_tx_buffer,
@@ -534,7 +534,7 @@ const ec_transport_ops_t ec_transport_xdp_skb_ops = {
 };
 
 const ec_transport_ops_t ec_transport_xdp_native_ops = {
-    .name = "xdp",
+    .name = "xdp-native",
     .open = xdp_open_native,
     .close = xdp_close,
     .get_tx_buffer = xdp_get_tx_buffer,
