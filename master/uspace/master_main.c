@@ -60,6 +60,7 @@ static void signal_handler(int signum)
 int main(int argc, char *argv[])
 {
     const char *interface = NULL;
+    ec_transport_type_t transport_type = EC_TRANSPORT_RAW;  /* DEFAULT: raw */
     ec_transport_t *transport = NULL;
     ec_master_t master;
     int ret = 0;
@@ -68,29 +69,48 @@ int main(int argc, char *argv[])
     /* Parse command line arguments */
     static struct option long_options[] = {
         {"interface", required_argument, 0, 'i'},
+        {"transport", required_argument, 0, 't'},
         {"help",      no_argument,       0, 'h'},
         {0, 0, 0, 0}
     };
 
-    while ((c = getopt_long(argc, argv, "i:h", long_options, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "i:t:h", long_options, NULL)) != -1) {
         switch (c) {
             case 'i':
                 interface = optarg;
                 break;
+            case 't':
+                ret = ec_transport_find_by_name(optarg);
+                if (ret < 0) {
+                    fprintf(stderr, "Unknown transport type: %s\n", optarg);
+                    fprintf(stderr, "Available transports: ");
+                    ec_transport_print_available();
+                    fprintf(stderr, "\n");
+                    return 1;
+                }
+                transport_type = ret;
+                ret = 0;
+                break;
             case 'h':
-                printf("Usage: %s -i <interface>\n", argv[0]);
-                printf("  -i, --interface <name>   Network interface (required)\n");
-                printf("  -h, --help               Show this help\n");
+                fprintf(stdout, "Usage: %s [OPTIONS]\n", argv[0]);
+                fprintf(stdout, "Options:\n");
+                fprintf(stdout, "  -i, --interface <name>    Network interface (required)\n");
+                fprintf(stdout, "  -t, --transport <type>    Transport type (default: raw)\n");
+                fprintf(stdout, "                            Available: ");
+                fflush(stdout);  /* Flush before stderr to ensure correct output order */
+                ec_transport_print_available();
+                fprintf(stdout, "\n");
+                fprintf(stdout, "  -h, --help                Show this help\n");
                 return 0;
             default:
-                fprintf(stderr, "Usage: %s -i <interface>\n", argv[0]);
+                fprintf(stderr, "Usage: %s -i <interface> [-t <transport>]\n", argv[0]);
                 return 1;
         }
     }
 
     if (!interface) {
         fprintf(stderr, "Error: Network interface required (-i option)\n");
-        fprintf(stderr, "Usage: %s -i <interface>\n", argv[0]);
+        fprintf(stderr, "Usage: %s -i <interface> [-t <transport>]\n", argv[0]);
         return 1;
     }
 
@@ -111,9 +131,18 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    /* Get transport ops */
+    const ec_transport_ops_t *transport_ops = ec_transport_get_ops(transport_type);
+    if (!transport_ops) {
+        printk(KERN_ERR "Failed to get transport ops\n");
+        ret = 1;
+        goto out_cleanup_queues;
+    }
+
+    printk(KERN_INFO "Using transport: %s\n", ec_transport_get_name(transport_type));
+
     /* Create and open transport */
-    //transport = ec_transport_create(EC_TRANSPORT_RAW);
-    transport = ec_transport_create(EC_TRANSPORT_XDP_SKB);
+    transport = ec_transport_create(transport_type);
     if (!transport) {
         printk(KERN_ERR "Failed to create transport\n");
         ret = 1;

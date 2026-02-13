@@ -27,18 +27,23 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <stdio.h>
 
 #include "ec_transport.h"
 
 /****************************************************************************/
 
-/** Transport registry */
-static const ec_transport_ops_t *transport_registry[] = {
-    [EC_TRANSPORT_RAW] = &ec_transport_raw_ops,
+/** Transport registry - maps enum to ops */
+static const struct {
+    ec_transport_type_t type;
+    const ec_transport_ops_t *ops;
+} transport_registry[] = {
+    { EC_TRANSPORT_RAW,        &ec_transport_raw_ops },
 #ifdef HAVE_XDP
-    [EC_TRANSPORT_XDP_SKB] = &ec_transport_xdp_skb_ops,
-    [EC_TRANSPORT_XDP_NATIVE] = &ec_transport_xdp_native_ops,
+    { EC_TRANSPORT_XDP_SKB,    &ec_transport_xdp_skb_ops },
+    { EC_TRANSPORT_XDP_NATIVE, &ec_transport_xdp_native_ops },
 #endif
+    { 0, NULL }  /* End of table marker */
 };
 
 /****************************************************************************/
@@ -50,12 +55,17 @@ ec_transport_t *ec_transport_create(ec_transport_type_t type)
 {
     ec_transport_t *transport;
     const ec_transport_ops_t *ops;
+    unsigned int i;
 
-    if (type >= sizeof(transport_registry) / sizeof(transport_registry[0])) {
-        return NULL;
+    /* Find transport ops in registry */
+    ops = NULL;
+    for (i = 0; transport_registry[i].ops != NULL; i++) {
+        if (transport_registry[i].type == type) {
+            ops = transport_registry[i].ops;
+            break;
+        }
     }
 
-    ops = transport_registry[type];
     if (!ops) {
         return NULL;
     }
@@ -228,11 +238,15 @@ int ec_transport_get_fd(ec_transport_t *transport)
  */
 int ec_transport_available(ec_transport_type_t type)
 {
-    if (type >= sizeof(transport_registry) / sizeof(transport_registry[0])) {
-        return 0;
+    unsigned int i;
+
+    for (i = 0; transport_registry[i].ops != NULL; i++) {
+        if (transport_registry[i].type == type) {
+            return 1;
+        }
     }
 
-    return transport_registry[type] != NULL;
+    return 0;
 }
 
 /****************************************************************************/
@@ -242,18 +256,89 @@ int ec_transport_available(ec_transport_type_t type)
  */
 const char *ec_transport_type_name(ec_transport_type_t type)
 {
-    const ec_transport_ops_t *ops;
+    const char *name = ec_transport_get_name(type);
+    return name ? name : "unknown";
+}
 
-    if (type >= sizeof(transport_registry) / sizeof(transport_registry[0])) {
-        return "unknown";
+/****************************************************************************/
+
+/**
+ * Find transport type by name.
+ */
+int ec_transport_find_by_name(const char *name)
+{
+    unsigned int i;
+
+    if (!name) {
+        return -EINVAL;
     }
 
-    ops = transport_registry[type];
-    if (!ops) {
-        return "unknown";
+    for (i = 0; transport_registry[i].ops != NULL; i++) {
+        const ec_transport_ops_t *ops = transport_registry[i].ops;
+        if (ops->name && strcmp(ops->name, name) == 0) {
+            return transport_registry[i].type;
+        }
     }
 
-    return ops->name ? ops->name : "unknown";
+    return -ENOENT;
+}
+
+/****************************************************************************/
+
+/**
+ * Get transport name by type.
+ */
+const char *ec_transport_get_name(ec_transport_type_t type)
+{
+    unsigned int i;
+
+    for (i = 0; transport_registry[i].ops != NULL; i++) {
+        if (transport_registry[i].type == type) {
+            return transport_registry[i].ops->name;
+        }
+    }
+
+    return NULL;
+}
+
+/****************************************************************************/
+
+/**
+ * Get transport ops by type.
+ */
+const ec_transport_ops_t *ec_transport_get_ops(ec_transport_type_t type)
+{
+    unsigned int i;
+
+    for (i = 0; transport_registry[i].ops != NULL; i++) {
+        if (transport_registry[i].type == type) {
+            return transport_registry[i].ops;
+        }
+    }
+
+    return NULL;
+}
+
+/****************************************************************************/
+
+/**
+ * Print available transports to stderr.
+ */
+void ec_transport_print_available(void)
+{
+    unsigned int i;
+    int needs_separator = 0;
+
+    for (i = 0; transport_registry[i].ops != NULL; i++) {
+        const ec_transport_ops_t *ops = transport_registry[i].ops;
+        if (ops->name) {
+            if (needs_separator) {
+                fprintf(stderr, " ");
+            }
+            fprintf(stderr, "%s", ops->name);
+            needs_separator = 1;
+        }
+    }
 }
 
 /****************************************************************************/

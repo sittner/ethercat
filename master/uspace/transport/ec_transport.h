@@ -42,7 +42,7 @@
 
 /** Transport type enumeration */
 typedef enum {
-    EC_TRANSPORT_RAW,   /**< AF_PACKET raw socket */
+    EC_TRANSPORT_RAW = 0,   /**< AF_PACKET raw socket */
 #ifdef HAVE_XDP
     EC_TRANSPORT_XDP_SKB,   /**< AF_XDP Generic SKB mode (universal compatibility) */
     EC_TRANSPORT_XDP_NATIVE,   /**< AF_XDP Native driver mode with copy */
@@ -202,6 +202,35 @@ int ec_transport_available(ec_transport_type_t type);
  * @return Transport type name string, or "unknown" if invalid
  */
 const char *ec_transport_type_name(ec_transport_type_t type);
+
+/**
+ * Find transport type by name.
+ *
+ * @param name Transport name (e.g., "raw", "xdp-skb", "xdp-native")
+ * @return Transport type on success, negative error code on failure
+ */
+int ec_transport_find_by_name(const char *name);
+
+/**
+ * Get transport name by type.
+ *
+ * @param type Transport type
+ * @return Transport name string, or NULL if invalid
+ */
+const char *ec_transport_get_name(ec_transport_type_t type);
+
+/**
+ * Get transport ops by type.
+ *
+ * @param type Transport type
+ * @return Pointer to transport ops, or NULL if invalid
+ */
+const ec_transport_ops_t *ec_transport_get_ops(ec_transport_type_t type);
+
+/**
+ * Print available transports to stderr.
+ */
+void ec_transport_print_available(void);
 
 /****************************************************************************/
 
