@@ -62,6 +62,7 @@ typedef struct {
     int if_index;                      /**< Interface index */
     uint8_t mac_addr[6];               /**< Interface MAC address */
     int ioctl_sock;                    /**< Socket for ioctl operations (link state, etc.) */
+    uint64_t tx_frame_addr;            /**< Pre-allocated TX frame for zero-copy */
 } ec_transport_xdp_t;
 
 /****************************************************************************/
@@ -139,6 +140,7 @@ static int xdp_open(ec_transport_t *transport, const char *interface)
     }
 
     xdp->ioctl_sock = -1;
+    xdp->tx_frame_addr = INVALID_UMEM_FRAME;
     transport->priv = xdp;
 
     /* Create temporary socket to get interface info */
@@ -286,6 +288,32 @@ static void xdp_close(ec_transport_t *transport)
  */
 static uint8_t *xdp_get_tx_buffer(ec_transport_t *transport)
 {
+    ec_transport_xdp_t *xdp = transport->priv;
+    uint64_t addr;
+
+    if (!xdp) {
+        return transport->tx_buffer;
+    }
+
+    /* Process completion queue to reclaim frames before allocating new one
+     * This moves variable-time operation out of the TX critical path */
+    process_completion_queue(xdp, XSK_RING_CONS__DEFAULT_NUM_DESCS);
+
+    /* If we don't have a pre-allocated frame, try to get one */
+    if (xdp->tx_frame_addr == INVALID_UMEM_FRAME) {
+        addr = xsk_alloc_umem_frame(xdp);
+        if (addr != INVALID_UMEM_FRAME) {
+            /* Successfully allocated a frame - return direct UMEM pointer for zero-copy */
+            xdp->tx_frame_addr = addr;
+            return (uint8_t *)xsk_umem__get_data(xdp->umem_buffer, addr);
+        }
+        /* Fall through to fallback buffer if allocation failed */
+    } else {
+        /* Already have a pre-allocated frame - return direct UMEM pointer */
+        return (uint8_t *)xsk_umem__get_data(xdp->umem_buffer, xdp->tx_frame_addr);
+    }
+
+    /* Fallback to transport->tx_buffer if UMEM allocation failed */
     return transport->tx_buffer;
 }
 
@@ -300,6 +328,7 @@ static int xdp_send(ec_transport_t *transport, size_t size)
     uint64_t addr;
     uint32_t idx;
     int ret;
+    int is_zero_copy = 0;
 
     if (!xdp || !xdp->xsk) {
         return -ENODEV;
@@ -309,44 +338,50 @@ static int xdp_send(ec_transport_t *transport, size_t size)
         return -EINVAL;
     }
 
-    /* Allocate UMEM frame first */
-    addr = xsk_alloc_umem_frame(xdp);
-    if (addr == INVALID_UMEM_FRAME) {
-        /* Try to process completions to free some frames */
-        process_completion_queue(xdp, XSK_RING_CONS__DEFAULT_NUM_DESCS);
-
-        /* Try again to allocate */
+    /* Check if we have a pre-allocated frame (zero-copy path) */
+    if (xdp->tx_frame_addr != INVALID_UMEM_FRAME) {
+        /* Zero-copy path: use the pre-allocated frame directly */
+        addr = xdp->tx_frame_addr;
+        is_zero_copy = 1;
+    } else {
+        /* Fallback path: allocate frame and copy data from transport->tx_buffer */
         addr = xsk_alloc_umem_frame(xdp);
         if (addr == INVALID_UMEM_FRAME) {
             return -ENOMEM;
         }
+
+        /* Copy data to UMEM */
+        memcpy(xsk_umem__get_data(xdp->umem_buffer, addr),
+               transport->tx_buffer, size);
     }
 
     /* Reserve TX slot */
     ret = xsk_ring_prod__reserve(&xdp->tx, 1, &idx);
     if (ret != 1) {
         /* TX ring is full, cannot send */
-        xsk_free_umem_frame(xdp, addr);
+        if (!is_zero_copy) {
+            /* We just allocated this frame in fallback path, free it */
+            xsk_free_umem_frame(xdp, addr);
+        }
+        /* For zero-copy, keep tx_frame_addr valid so it can be reused */
         return -EBUSY;
     }
-
-    /* Copy data to UMEM */
-    memcpy(xsk_umem__get_data(xdp->umem_buffer, addr),
-           transport->tx_buffer, size);
 
     /* Submit TX descriptor */
     xsk_ring_prod__tx_desc(&xdp->tx, idx)->addr = addr;
     xsk_ring_prod__tx_desc(&xdp->tx, idx)->len = size;
     xsk_ring_prod__submit(&xdp->tx, 1);
 
-    /* Trigger send */
+    /* Mark frame as consumed (will be reclaimed from completion queue later) */
+    if (is_zero_copy) {
+        xdp->tx_frame_addr = INVALID_UMEM_FRAME;
+    }
+
+    /* Trigger send - critical for immediate transmission in EtherCAT */
     ret = sendto(xsk_socket__fd(xdp->xsk), NULL, 0, MSG_DONTWAIT, NULL, 0);
     if (ret < 0 && errno != ENOBUFS && errno != EAGAIN) {
         return -errno;
     }
-
-    /* Process completion queue to free frames */
-    process_completion_queue(xdp, 1);
 
     return 0;
 }
