@@ -70,10 +70,10 @@ void ec_eoe_state_tx_start(ec_eoe_t *);
 void ec_eoe_state_tx_sent(ec_eoe_t *);
 
 // net_device functions
-int ec_eoedev_open(ec_netdev_t *);
-int ec_eoedev_stop(ec_netdev_t *);
-int ec_eoedev_tx(ec_skb_t *, ec_netdev_t *);
-ec_netdev_stats_t *ec_eoedev_stats(ec_netdev_t *);
+int ec_eoedev_open(struct net_device *);
+int ec_eoedev_stop(struct net_device *);
+int ec_eoedev_tx(struct sk_buff *, struct net_device *);
+struct net_device_stats *ec_eoedev_stats(struct net_device *);
 
 /****************************************************************************/
 
@@ -91,7 +91,7 @@ int ec_eoe_init(
     ec_eoe_t **priv;
     int ret = 0;
     char name[EC_DATAGRAM_NAME_SIZE];
-    uint8_t mac_addr[ETH_ALEN] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+    u8 mac_addr[ETH_ALEN] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
 
     eoe->slave = slave;
 
@@ -108,7 +108,7 @@ int ec_eoe_init(
     eoe->tx_queued_frames = 0;
 
     eoe->tx_frame_number = 0xFF;
-    memset(&eoe->stats, 0, sizeof(ec_netdev_stats_t));
+    memset(&eoe->stats, 0, sizeof(struct net_device_stats));
 
     eoe->rx_counter = 0;
     eoe->tx_counter = 0;
@@ -130,7 +130,8 @@ int ec_eoe_init(
 
     snprintf(eoe->datagram.name, EC_DATAGRAM_NAME_SIZE, name);
 
-    eoe->dev = ec_netdev_alloc(name, sizeof(ec_eoe_t *));
+    eoe->dev = alloc_netdev(sizeof(ec_eoe_t *), name, NET_NAME_UNKNOWN,
+            ether_setup);
     if (!eoe->dev) {
         EC_SLAVE_ERR(slave, "Unable to allocate net_device %s"
                 " for EoE handler!\n", name);
@@ -139,10 +140,10 @@ int ec_eoe_init(
     }
 
     // initialize net_device
-    ec_netdev_set_mac(eoe->dev, mac_addr);
+    eth_hw_addr_set(eoe->dev, mac_addr);
 
     // initialize private data
-    priv = ec_netdev_priv(eoe->dev);
+    priv = netdev_priv(eoe->dev);
     *priv = eoe;
 
     // Usually setting the MTU appropriately makes the upper layers
@@ -154,7 +155,7 @@ int ec_eoe_init(
 #endif
 
     // connect the net_device to the kernel
-    ret = ec_netdev_register(eoe->dev);
+    ret = register_netdev(eoe->dev);
     if (ret) {
         EC_SLAVE_ERR(slave, "Unable to register net_device:"
                 " error %i\n", ret);
@@ -163,12 +164,12 @@ int ec_eoe_init(
 
     // make the last address octet unique
     mac_addr[ETH_ALEN - 1] = (uint8_t) eoe->dev->ifindex;
-    ec_netdev_set_mac(eoe->dev, mac_addr);
+    eth_hw_addr_set(eoe->dev, mac_addr);
 
     return 0;
 
  out_free:
-    ec_netdev_free(eoe->dev);
+    free_netdev(eoe->dev);
     eoe->dev = NULL;
  out_return:
     return ret;
@@ -182,20 +183,20 @@ int ec_eoe_init(
  */
 void ec_eoe_clear(ec_eoe_t *eoe /**< EoE handler */)
 {
-    ec_netdev_unregister(eoe->dev); // possibly calls close callback
+    unregister_netdev(eoe->dev); // possibly calls close callback
 
     // empty transmit queue
     ec_eoe_flush(eoe);
 
     if (eoe->tx_frame) {
-        ec_skb_free(eoe->tx_frame->skb);
-        free(eoe->tx_frame);
+        dev_kfree_skb(eoe->tx_frame->skb);
+        kfree(eoe->tx_frame);
     }
 
     if (eoe->rx_skb)
-        ec_skb_free(eoe->rx_skb);
+        dev_kfree_skb(eoe->rx_skb);
 
-    ec_netdev_free(eoe->dev);
+    free_netdev(eoe->dev);
 
     ec_datagram_clear(&eoe->datagram);
 }
@@ -209,17 +210,17 @@ void ec_eoe_flush(ec_eoe_t *eoe /**< EoE handler */)
     ec_eoe_frame_t *frame, *next;
     struct list_head tx_queue;
 
-    ec_netdev_tx_lock(eoe->dev);
+    netif_tx_lock_bh(eoe->dev);
 
     list_replace_init(&eoe->tx_queue, &tx_queue);
     eoe->tx_queued_frames = 0;
 
-    ec_netdev_tx_unlock(eoe->dev);
+    netif_tx_unlock_bh(eoe->dev);
 
     list_for_each_entry_safe(frame, next, &tx_queue, queue) {
         list_del(&frame->queue);
-        ec_skb_free(frame->skb);
-        free(frame);
+        dev_kfree_skb(frame->skb);
+        kfree(frame);
     }
 }
 
@@ -515,12 +516,12 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
     if (!fragment_number) {
         if (eoe->rx_skb) {
             EC_SLAVE_WARN(eoe->slave, "EoE RX freeing old socket buffer.\n");
-            ec_skb_free(eoe->rx_skb);
+            dev_kfree_skb(eoe->rx_skb);
         }
 
         // new socket buffer
-        if (!(eoe->rx_skb = ec_skb_alloc(fragment_offset * 32))) {
-            if (ec_printk_ratelimit())
+        if (!(eoe->rx_skb = dev_alloc_skb(fragment_offset * 32))) {
+            if (printk_ratelimit())
                 EC_SLAVE_WARN(eoe->slave, "EoE RX low on mem,"
                         " frame dropped.\n");
             eoe->stats.rx_dropped++;
@@ -543,7 +544,7 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
         if (offset != eoe->rx_skb_offset ||
             offset + data_size > eoe->rx_skb_size ||
             fragment_number != eoe->rx_expected_fragment) {
-            ec_skb_free(eoe->rx_skb);
+            dev_kfree_skb(eoe->rx_skb);
             eoe->rx_skb = NULL;
             eoe->stats.rx_errors++;
 #if EOE_DEBUG_LEVEL >= 1
@@ -556,7 +557,7 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
     }
 
     // copy fragment into socket buffer
-    memcpy(ec_skb_put(eoe->rx_skb, data_size), data + 4, data_size);
+    memcpy(skb_put(eoe->rx_skb, data_size), data + 4, data_size);
     eoe->rx_skb_offset += data_size;
 
     if (last_fragment) {
@@ -572,9 +573,9 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
 
         // pass socket buffer to network stack
         eoe->rx_skb->dev = eoe->dev;
-        eoe->rx_skb->protocol = ec_eth_type_trans(eoe->rx_skb, eoe->dev);
-        eoe->rx_skb->ip_summed = EC_CHECKSUM_UNNECESSARY;
-        if (ec_netif_rx(eoe->rx_skb)) {
+        eoe->rx_skb->protocol = eth_type_trans(eoe->rx_skb, eoe->dev);
+        eoe->rx_skb->ip_summed = CHECKSUM_UNNECESSARY;
+        if (netif_rx(eoe->rx_skb)) {
             EC_SLAVE_WARN(eoe->slave, "EoE RX netif_rx failed.\n");
         }
         eoe->rx_skb = NULL;
@@ -613,10 +614,10 @@ void ec_eoe_state_tx_start(ec_eoe_t *eoe /**< EoE handler */)
         return;
     }
 
-    ec_netdev_tx_lock(eoe->dev);
+    netif_tx_lock_bh(eoe->dev);
 
     if (!eoe->tx_queued_frames || list_empty(&eoe->tx_queue)) {
-        ec_netdev_tx_unlock(eoe->dev);
+        netif_tx_unlock_bh(eoe->dev);
         eoe->tx_idle = 1;
         // no data available.
         // start a new receive immediately.
@@ -629,7 +630,7 @@ void ec_eoe_state_tx_start(ec_eoe_t *eoe /**< EoE handler */)
     list_del(&eoe->tx_frame->queue);
     if (!eoe->tx_queue_active &&
         eoe->tx_queued_frames == eoe->tx_queue_size / 2) {
-        ec_netdev_wake_queue(eoe->dev);
+        netif_wake_queue(eoe->dev);
         eoe->tx_queue_active = 1;
 #if EOE_DEBUG_LEVEL >= 2
         wakeup = 1;
@@ -637,7 +638,7 @@ void ec_eoe_state_tx_start(ec_eoe_t *eoe /**< EoE handler */)
     }
 
     eoe->tx_queued_frames--;
-    ec_netdev_tx_unlock(eoe->dev);
+    netif_tx_unlock_bh(eoe->dev);
 
     eoe->tx_idle = 0;
 
@@ -647,8 +648,8 @@ void ec_eoe_state_tx_start(ec_eoe_t *eoe /**< EoE handler */)
     eoe->tx_offset = 0;
 
     if (ec_eoe_send(eoe)) {
-        ec_skb_free(eoe->tx_frame->skb);
-        free(eoe->tx_frame);
+        dev_kfree_skb(eoe->tx_frame->skb);
+        kfree(eoe->tx_frame);
         eoe->tx_frame = NULL;
         eoe->stats.tx_errors++;
         eoe->state = ec_eoe_state_rx_start;
@@ -714,15 +715,15 @@ void ec_eoe_state_tx_sent(ec_eoe_t *eoe /**< EoE handler */)
         eoe->stats.tx_packets++;
         eoe->stats.tx_bytes += eoe->tx_frame->skb->len;
         eoe->tx_counter += eoe->tx_frame->skb->len;
-        ec_skb_free(eoe->tx_frame->skb);
-        free(eoe->tx_frame);
+        dev_kfree_skb(eoe->tx_frame->skb);
+        kfree(eoe->tx_frame);
         eoe->tx_frame = NULL;
         eoe->state = ec_eoe_state_rx_start;
     }
     else { // send next fragment
         if (ec_eoe_send(eoe)) {
-            ec_skb_free(eoe->tx_frame->skb);
-            free(eoe->tx_frame);
+            dev_kfree_skb(eoe->tx_frame->skb);
+            kfree(eoe->tx_frame);
             eoe->tx_frame = NULL;
             eoe->stats.tx_errors++;
 #if EOE_DEBUG_LEVEL >= 1
@@ -741,14 +742,14 @@ void ec_eoe_state_tx_sent(ec_eoe_t *eoe /**< EoE handler */)
  *
  * \return Always zero (success).
  */
-int ec_eoedev_open(ec_netdev_t *dev /**< EoE net_device */)
+int ec_eoedev_open(struct net_device *dev /**< EoE net_device */)
 {
-    ec_eoe_t *eoe = *((ec_eoe_t **) ec_netdev_priv(dev));
+    ec_eoe_t *eoe = *((ec_eoe_t **) netdev_priv(dev));
     ec_eoe_flush(eoe);
     eoe->opened = 1;
     eoe->rx_idle = 0;
     eoe->tx_idle = 0;
-    ec_netdev_start_queue(dev);
+    netif_start_queue(dev);
     eoe->tx_queue_active = 1;
 #if EOE_DEBUG_LEVEL >= 2
     EC_SLAVE_DBG(eoe->slave, 0, "%s opened.\n", dev->name);
@@ -762,10 +763,10 @@ int ec_eoedev_open(ec_netdev_t *dev /**< EoE net_device */)
  *
  * \return Always zero (success).
  */
-int ec_eoedev_stop(ec_netdev_t *dev /**< EoE net_device */)
+int ec_eoedev_stop(struct net_device *dev /**< EoE net_device */)
 {
-    ec_eoe_t *eoe = *((ec_eoe_t **) ec_netdev_priv(dev));
-    ec_netdev_stop_queue(dev);
+    ec_eoe_t *eoe = *((ec_eoe_t **) netdev_priv(dev));
+    netif_stop_queue(dev);
     eoe->rx_idle = 1;
     eoe->tx_idle = 1;
     eoe->tx_queue_active = 0;
@@ -783,25 +784,28 @@ int ec_eoedev_stop(ec_netdev_t *dev /**< EoE net_device */)
  *
  * \return Zero on success, non-zero on failure.
  */
-int ec_eoedev_tx(ec_skb_t *skb, /**< transmit socket buffer */
-                 ec_netdev_t *dev /**< EoE net_device */
+int ec_eoedev_tx(struct sk_buff *skb, /**< transmit socket buffer */
+                 struct net_device *dev /**< EoE net_device */
                 )
 {
-    ec_eoe_t *eoe = *((ec_eoe_t **) ec_netdev_priv(dev));
+    ec_eoe_t *eoe = *((ec_eoe_t **) netdev_priv(dev));
     ec_eoe_frame_t *frame;
 
 #if 0
     if (skb->len > eoe->slave->configured_tx_mailbox_size - 10) {
         EC_SLAVE_WARN(eoe->slave, "EoE TX frame (%u octets)"
                 " exceeds MTU. dropping.\n", skb->len);
-        ec_skb_free(skb);
+        dev_kfree_skb(skb);
         eoe->stats.tx_dropped++;
         return 0;
     }
 #endif
 
-    if (!(frame = malloc(sizeof(ec_eoe_frame_t)))) {
-        if (ec_printk_ratelimit())
+    WARN_ON_ONCE(skb_get_queue_mapping(skb) != 0);
+    lockdep_assert_held(&netdev_get_tx_queue(dev, 0)->_xmit_lock);
+
+    if (!(frame = kmalloc(sizeof(ec_eoe_frame_t), GFP_ATOMIC))) {
+        if (printk_ratelimit())
             EC_SLAVE_WARN(eoe->slave, "EoE TX: low on mem. frame dropped.\n");
         return 1;
     }
@@ -811,7 +815,7 @@ int ec_eoedev_tx(ec_skb_t *skb, /**< transmit socket buffer */
     list_add_tail(&frame->queue, &eoe->tx_queue);
     eoe->tx_queued_frames++;
     if (eoe->tx_queued_frames == eoe->tx_queue_size) {
-        ec_netdev_stop_queue(dev);
+        netif_stop_queue(dev);
         eoe->tx_queue_active = 0;
     }
 
@@ -832,11 +836,11 @@ int ec_eoedev_tx(ec_skb_t *skb, /**< transmit socket buffer */
  *
  * \return Statistics.
  */
-ec_netdev_stats_t *ec_eoedev_stats(
-        ec_netdev_t *dev /**< EoE net_device */
+struct net_device_stats *ec_eoedev_stats(
+        struct net_device *dev /**< EoE net_device */
         )
 {
-    ec_eoe_t *eoe = *((ec_eoe_t **) ec_netdev_priv(dev));
+    ec_eoe_t *eoe = *((ec_eoe_t **) netdev_priv(dev));
     return &eoe->stats;
 }
 

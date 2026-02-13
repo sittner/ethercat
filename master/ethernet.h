@@ -57,7 +57,7 @@ enum {
 typedef struct
 {
     struct list_head queue; /**< list item */
-    ec_skb_t *skb; /**< socket buffer */
+    struct sk_buff *skb; /**< socket buffer */
 }
 ec_eoe_frame_t;
 
@@ -78,12 +78,12 @@ struct ec_eoe
     ec_datagram_t datagram; /**< datagram */
     unsigned int queue_datagram; /**< the datagram is ready for queuing */
     void (*state)(ec_eoe_t *); /**< state function for the state machine */
-    ec_netdev_t *dev; /**< net_device for virtual ethernet device */
-    ec_netdev_stats_t stats; /**< device statistics */
+    struct net_device *dev; /**< net_device for virtual ethernet device */
+    struct net_device_stats stats; /**< device statistics */
     unsigned int opened; /**< net_device is opened */
     ec_time_t rate_time; /**< time of last rate output */
 
-    ec_skb_t *rx_skb; /**< current rx socket buffer */
+    struct sk_buff *rx_skb; /**< current rx socket buffer */
     off_t rx_skb_offset; /**< current write pointer in the socket buffer */
     size_t rx_skb_size; /**< size of the allocated socket buffer memory */
     uint8_t rx_expected_fragment; /**< next expected fragment number */

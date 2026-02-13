@@ -13,8 +13,8 @@
 #include "pal_eoe.h"
 
 /* Type mappings */
-#define net_device          ec_netdev_t
-#define sk_buff             ec_skb_t
+#define net_device          ec_netdev
+#define sk_buff             ec_skb
 /* net_device_stats is embedded in ec_netdev_t->stats */
 
 /* net_device functions */
@@ -66,9 +66,18 @@ static inline void ether_setup(ec_netdev_t *dev) {
     dev->mtu = 1500;
 }
 
-/* Error pointer macros (error range is [-4095, -1], like kernel MAX_ERRNO) */
-#define IS_ERR(ptr)     ((unsigned long)(ptr) > (unsigned long)-4096UL)
-#define PTR_ERR(ptr)    ((long)(ptr))
-#define ERR_PTR(err)    ((void *)((long)(err))))
+/* struct net_device_stats definition for userspace */
+struct net_device_stats {
+    unsigned long rx_packets;
+    unsigned long tx_packets;
+    unsigned long rx_bytes;
+    unsigned long tx_bytes;
+    unsigned long rx_errors;
+    unsigned long tx_errors;
+    unsigned long rx_dropped;
+    unsigned long tx_dropped;
+};
+
+/* IS_ERR and ERR_PTR are already defined in pal_thread.h */
 
 #endif /* __EC_USPACE_PAL_EOE_COMPAT_H__ */
