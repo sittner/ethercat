@@ -112,7 +112,8 @@ int main(int argc, char *argv[])
     }
 
     /* Create and open transport */
-    transport = ec_transport_create(EC_TRANSPORT_RAW);
+    //transport = ec_transport_create(EC_TRANSPORT_RAW);
+    transport = ec_transport_create(EC_TRANSPORT_XDP_SKB);
     if (!transport) {
         printk(KERN_ERR "Failed to create transport\n");
         ret = 1;

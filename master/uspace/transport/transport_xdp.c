@@ -122,7 +122,8 @@ static void process_completion_queue(ec_transport_xdp_t *xdp, unsigned int max_f
 /**
  * Open XDP transport on interface.
  */
-static int xdp_open(ec_transport_t *transport, const char *interface)
+static int xdp_open(ec_transport_t *transport, const char *interface,
+    uint32_t xdp_flags, uint16_t bind_flags)
 {
     ec_transport_xdp_t *xdp;
     struct ifreq ifr;
@@ -211,8 +212,8 @@ static int xdp_open(ec_transport_t *transport, const char *interface)
     memset(&cfg, 0, sizeof(cfg));
     cfg.rx_size = XSK_RING_CONS__DEFAULT_NUM_DESCS;
     cfg.tx_size = XSK_RING_PROD__DEFAULT_NUM_DESCS;
-    cfg.xdp_flags = XDP_FLAGS_SKB_MODE;
-    cfg.bind_flags = XDP_COPY;
+    cfg.xdp_flags = xdp_flags;
+    cfg.bind_flags = bind_flags;
     cfg.libbpf_flags = 0;
 
     /* Create XSK socket (queue 0) */
@@ -252,6 +253,22 @@ err_free:
     free(xdp);
     transport->priv = NULL;
     return ret;
+}
+
+/**
+ * Open XDP transport on interface (SKB mode).
+ */
+static int xdp_open_skb(ec_transport_t *transport, const char *interface)
+{
+    return xdp_open(transport, interface, XDP_FLAGS_SKB_MODE, XDP_COPY);
+}
+
+/**
+ * Open XDP transport on interface (Native mode).
+ */
+static int xdp_open_native(ec_transport_t *transport, const char *interface)
+{
+    return xdp_open(transport, interface, XDP_FLAGS_DRV_MODE, XDP_COPY);
 }
 
 /****************************************************************************/
@@ -504,9 +521,21 @@ static int xdp_get_fd(ec_transport_t *transport)
 /****************************************************************************/
 
 /** XDP transport operations */
-const ec_transport_ops_t ec_transport_xdp_ops = {
+const ec_transport_ops_t ec_transport_xdp_skb_ops = {
     .name = "xdp",
-    .open = xdp_open,
+    .open = xdp_open_skb,
+    .close = xdp_close,
+    .get_tx_buffer = xdp_get_tx_buffer,
+    .send = xdp_send,
+    .receive = xdp_receive,
+    .get_link_state = xdp_get_link_state,
+    .get_mac = xdp_get_mac,
+    .get_fd = xdp_get_fd,
+};
+
+const ec_transport_ops_t ec_transport_xdp_native_ops = {
+    .name = "xdp",
+    .open = xdp_open_native,
     .close = xdp_close,
     .get_tx_buffer = xdp_get_tx_buffer,
     .send = xdp_send,
