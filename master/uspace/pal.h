@@ -57,6 +57,7 @@
 #include "pal_thread.h"
 #include "pal_work.h"
 #include "pal_irq_work.h"
+#include "pal_eoe.h"
 
 //************************************************************************
 
@@ -82,9 +83,17 @@ static inline void ec_schedule_ms(unsigned long ms) {
 
 #define EC_IDLE_SEND_INTERVAL 4000
 
-struct net_device_stats {
-  int dummy;
-};
+/* Network device statistics type */
+typedef struct {
+    unsigned long rx_packets;
+    unsigned long tx_packets;
+    unsigned long rx_bytes;
+    unsigned long tx_bytes;
+    unsigned long rx_errors;
+    unsigned long tx_errors;
+    unsigned long rx_dropped;
+    unsigned long tx_dropped;
+} ec_netdev_stats_t;
 
 struct ec_device;
 typedef struct ec_device ec_device_t;
