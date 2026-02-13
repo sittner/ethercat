@@ -1557,6 +1557,7 @@ static int ec_master_eoe_thread(void *priv_data)
 schedule:
         if (all_idle) {
             set_current_state(TASK_INTERRUPTIBLE);
+            // TODO: this must go (better scheduling strategy needed)
             schedule_timeout(1);
         } else {
             schedule();

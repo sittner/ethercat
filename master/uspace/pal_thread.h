@@ -318,5 +318,27 @@ static inline void sched_set_normal(ec_thread_t *task, int nice)
 
 #define ec_sched_set_normal(thread, nice) sched_set_normal(thread, nice)
 
+/**
+ * schedule_timeout - sleep for a specified number of time units
+ * @timeout: timeout value (treated as units of 4 milliseconds in userspace)
+ *
+ * Returns 0 (remaining time, always 0 in userspace).
+ */
+static inline long schedule_timeout(long timeout) {
+    struct timespec ts;
+
+    if (timeout <= 0) {
+        sched_yield();
+        return 0;
+    }
+
+    /* Treat timeout as ~1ms units (similar to HZ=250) */
+    ts.tv_sec = timeout / 250;
+    ts.tv_nsec = (timeout % 250) * 4000000L;
+
+    nanosleep(&ts, NULL);
+    return 0;
+}
+
 #endif /* __EC_USPACE_PAL_THREAD_H__ */
 

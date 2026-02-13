@@ -59,40 +59,7 @@
 #include "pal_irq_work.h"
 #include "pal_eoe_compat.h"
 
-//************************************************************************
-// Task scheduling (kernel compatibility)
-//************************************************************************
-
-/**
- * schedule_timeout - sleep for a specified number of time units
- * @timeout: timeout value (treated as milliseconds in userspace)
- *
- * Returns 0 (remaining time, always 0 in userspace).
- */
-static inline long schedule_timeout(long timeout) {
-    struct timespec ts;
-    
-    if (timeout <= 0) {
-        sched_yield();
-        return 0;
-    }
-    
-    /* Treat timeout as ~1ms units (similar to HZ=1000) */
-    ts.tv_sec = timeout / 1000;
-    ts.tv_nsec = (timeout % 1000) * 1000000L;
-    
-    nanosleep(&ts, NULL);
-    return 0;
-}
-
-//************************************************************************
-// Ethernet definitions
-//************************************************************************
-
-/** Ethernet address length */
 #define EC_ETH_ALEN 6
-
-/* Verify against system ETH_ALEN if defined */
 #ifdef ETH_ALEN
 #if ETH_ALEN != EC_ETH_ALEN
 #error Ethernet address length mismatch
