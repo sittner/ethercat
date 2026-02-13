@@ -15,7 +15,7 @@
 /* Type mappings */
 #define net_device          ec_netdev_t
 #define sk_buff             ec_skb_t
-#define net_device_stats    /* embedded in ec_netdev_t */
+/* net_device_stats is embedded in ec_netdev_t->stats */
 
 /* net_device functions */
 #define alloc_netdev(priv_size, name, name_type, setup) \
@@ -67,8 +67,8 @@ static inline void ether_setup(ec_netdev_t *dev) {
 }
 
 /* Error pointer macros */
-#define IS_ERR(ptr)     ((unsigned long)(ptr) >= (unsigned long)-4096)
+#define IS_ERR(ptr)     ((unsigned long)(ptr) > (unsigned long)-4096UL)
 #define PTR_ERR(ptr)    ((long)(ptr))
-#define ERR_PTR(err)    ((void *)((long)(err)))
+#define ERR_PTR(err)    ((void *)((long)(err))))
 
 #endif /* __EC_USPACE_PAL_EOE_COMPAT_H__ */

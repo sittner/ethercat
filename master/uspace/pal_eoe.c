@@ -82,7 +82,8 @@ int ec_netdev_register(ec_netdev_t *dev)
     }
     
     /* Update device name (kernel may have modified it) */
-    strncpy(dev->name, ifr.ifr_name, IFNAMSIZ);
+    strncpy(dev->name, ifr.ifr_name, IFNAMSIZ - 1);
+    dev->name[IFNAMSIZ - 1] = '\0';
     dev->fd = fd;
     
     /* Get interface index */
@@ -263,12 +264,17 @@ int ec_netif_rx(ec_skb_t *skb)
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
             fprintf(stderr, "EoE: TAP write error on %s: %s\n",
                     dev->name, strerror(errno));
+            dev->stats.rx_errors++;
             return -errno;
         }
         /* Would block - frame dropped */
         dev->stats.rx_dropped++;
         return -EAGAIN;
     }
+    
+    /* Update statistics for successful RX */
+    dev->stats.rx_packets++;
+    dev->stats.rx_bytes += ret;
     
     return 0;
 }
@@ -292,12 +298,19 @@ ec_skb_t *ec_netdev_rx_from_tap(ec_netdev_t *dev)
     len = read(dev->fd, skb->head, ETH_FRAME_LEN);
     if (len <= 0) {
         ec_skb_free(skb);
+        if (len < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+            dev->stats.tx_errors++;
+        }
         return NULL;
     }
     
     skb->tail = skb->head + len;
     skb->len = len;
     skb->dev = dev;
+    
+    /* Update statistics for successful TX */
+    dev->stats.tx_packets++;
+    dev->stats.tx_bytes += len;
     
     return skb;
 }
