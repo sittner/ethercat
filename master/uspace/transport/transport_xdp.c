@@ -138,8 +138,8 @@ static int xdp_open(ec_transport_t *transport, const char *interface)
         return -ENOMEM;
     }
 
-    transport->priv = xdp;
     xdp->ioctl_sock = -1;
+    transport->priv = xdp;
 
     /* Create temporary socket to get interface info */
     sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
