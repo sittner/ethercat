@@ -346,16 +346,16 @@ const ec_transport_ops_t *ec_transport_get_ops(ec_transport_type_t type)
 void ec_transport_print_available(void)
 {
     unsigned int i;
-    int first = 1;
+    int needs_separator = 0;
 
     for (i = 0; i < TRANSPORT_REGISTRY_SIZE; i++) {
         const ec_transport_ops_t *ops = transport_registry[i].ops;
         if (ops && ops->name) {
-            if (!first) {
+            if (needs_separator) {
                 fprintf(stderr, " ");
             }
             fprintf(stderr, "%s", ops->name);
-            first = 0;
+            needs_separator = 1;
         }
     }
 }
