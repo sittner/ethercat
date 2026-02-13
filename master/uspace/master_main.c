@@ -90,14 +90,15 @@ int main(int argc, char *argv[])
                 }
                 break;
             case 'h':
-                printf("Usage: %s [OPTIONS]\n", argv[0]);
-                printf("Options:\n");
-                printf("  -i, --interface <name>    Network interface (required)\n");
-                printf("  -t, --transport <type>    Transport type (default: raw)\n");
-                printf("                            Available: ");
+                fprintf(stdout, "Usage: %s [OPTIONS]\n", argv[0]);
+                fprintf(stdout, "Options:\n");
+                fprintf(stdout, "  -i, --interface <name>    Network interface (required)\n");
+                fprintf(stdout, "  -t, --transport <type>    Transport type (default: raw)\n");
+                fprintf(stdout, "                            Available: ");
+                fflush(stdout);
                 ec_transport_print_available();
-                printf("\n");
-                printf("  -h, --help                Show this help\n");
+                fprintf(stdout, "\n");
+                fprintf(stdout, "  -h, --help                Show this help\n");
                 return 0;
             default:
                 fprintf(stderr, "Usage: %s -i <interface> [-t <transport>]\n", argv[0]);
