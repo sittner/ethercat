@@ -800,8 +800,7 @@ int ec_eoedev_tx(ec_skb_t *skb, /**< transmit socket buffer */
     }
 #endif
 
-    if (!(frame =
-          (ec_eoe_frame_t *) malloc(sizeof(ec_eoe_frame_t)))) {
+    if (!(frame = malloc(sizeof(ec_eoe_frame_t)))) {
         if (ec_printk_ratelimit())
             EC_SLAVE_WARN(eoe->slave, "EoE TX: low on mem. frame dropped.\n");
         return 1;
