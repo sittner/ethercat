@@ -38,6 +38,7 @@
 #include <linux/if_link.h>
 #include <xdp/xsk.h>
 #include <bpf/bpf.h>
+#include <bpf/libbpf.h>
 
 #include "ec_transport.h"
 
@@ -46,6 +47,13 @@
 #define NUM_FRAMES 4096
 #define FRAME_SIZE XSK_UMEM__DEFAULT_FRAME_SIZE
 #define INVALID_UMEM_FRAME UINT64_MAX
+
+/** XDP operation modes */
+typedef enum {
+    XDP_MODE_SKB = 0,        /**< Generic SKB mode (universal compatibility) */
+    XDP_MODE_NATIVE_COPY,    /**< Native driver mode with copy */
+    XDP_MODE_NATIVE_ZEROCOPY /**< Native driver mode with zero-copy (future) */
+} ec_xdp_mode_t;
 
 /** Private data for XDP transport */
 typedef struct {
@@ -63,6 +71,7 @@ typedef struct {
     uint8_t mac_addr[6];               /**< Interface MAC address */
     int ioctl_sock;                    /**< Socket for ioctl operations (link state, etc.) */
     uint64_t tx_frame_addr;            /**< Pre-allocated TX frame for zero-copy */
+    ec_xdp_mode_t mode;                /**< Detected XDP mode */
 } ec_transport_xdp_t;
 
 /****************************************************************************/
@@ -202,24 +211,43 @@ static int xdp_open(ec_transport_t *transport, const char *interface)
         goto err_free_buffer;
     }
 
-    /* Configure socket
-     * Use SKB mode and copy mode for maximum compatibility across different
-     * network drivers and kernel versions. While native XDP mode with zero-copy
-     * would provide better performance, SKB mode ensures the transport works
-     * on all network interfaces without requiring driver-specific XDP support.
-     */
+    /* Suppress libbpf warnings about unrecognized ELF sections */
+    libbpf_set_print(NULL);
+
+    /* Configure socket base settings */
     memset(&cfg, 0, sizeof(cfg));
     cfg.rx_size = XSK_RING_CONS__DEFAULT_NUM_DESCS;
     cfg.tx_size = XSK_RING_PROD__DEFAULT_NUM_DESCS;
-    cfg.xdp_flags = XDP_FLAGS_SKB_MODE;
-    cfg.bind_flags = XDP_COPY;
     cfg.libbpf_flags = 0;
 
-    /* Create XSK socket (queue 0) */
-    ret = xsk_socket__create(&xdp->xsk, interface, 0, xdp->umem,
-                            &xdp->rx, &xdp->tx, &cfg);
-    if (ret) {
-        fprintf(stderr, "Failed to create XSK socket: %s\n", strerror(-ret));
+    /* Probe XDP modes at init time - try best mode first */
+    static const struct {
+        ec_xdp_mode_t mode;
+        uint32_t xdp_flags;
+        uint16_t bind_flags;
+        const char *name;
+    } modes[] = {
+        { XDP_MODE_NATIVE_ZEROCOPY, XDP_FLAGS_DRV_MODE, XDP_ZEROCOPY, "native + zero-copy" },
+        { XDP_MODE_NATIVE_COPY,     XDP_FLAGS_DRV_MODE, XDP_COPY,     "native + copy" },
+        { XDP_MODE_SKB,             XDP_FLAGS_SKB_MODE, XDP_COPY,     "SKB + copy" },
+    };
+
+    ret = -1;
+    for (i = 0; i < 3; i++) {
+        cfg.xdp_flags = modes[i].xdp_flags;
+        cfg.bind_flags = modes[i].bind_flags;
+
+        ret = xsk_socket__create(&xdp->xsk, interface, 0, xdp->umem,
+                                 &xdp->rx, &xdp->tx, &cfg);
+        if (ret == 0) {
+            xdp->mode = modes[i].mode;
+            fprintf(stderr, "XDP: Using %s mode\n", modes[i].name);
+            break;
+        }
+    }
+
+    if (ret < 0) {
+        fprintf(stderr, "Failed to create XSK socket in any mode\n");
         goto err_free_umem;
     }
 
@@ -499,6 +527,27 @@ static int xdp_get_fd(ec_transport_t *transport)
     }
 
     return xsk_socket__fd(xdp->xsk);
+}
+
+/****************************************************************************/
+
+/**
+ * Get XDP mode name (for debugging/diagnostics).
+ */
+__attribute__((unused))
+static const char *xdp_get_mode_name(ec_transport_t *transport)
+{
+    ec_transport_xdp_t *xdp = transport->priv;
+    static const char *mode_names[] = {
+        [XDP_MODE_SKB] = "SKB + copy",
+        [XDP_MODE_NATIVE_COPY] = "native + copy",
+        [XDP_MODE_NATIVE_ZEROCOPY] = "native + zero-copy",
+    };
+
+    if (!xdp || xdp->mode > XDP_MODE_NATIVE_ZEROCOPY) {
+        return "unknown";
+    }
+    return mode_names[xdp->mode];
 }
 
 /****************************************************************************/
