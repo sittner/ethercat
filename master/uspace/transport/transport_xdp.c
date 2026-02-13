@@ -61,6 +61,7 @@ typedef struct {
 
     int if_index;                      /**< Interface index */
     uint8_t mac_addr[6];               /**< Interface MAC address */
+    int ioctl_sock;                    /**< Socket for ioctl operations (link state, etc.) */
 } ec_transport_xdp_t;
 
 /****************************************************************************/
@@ -137,6 +138,7 @@ static int xdp_open(ec_transport_t *transport, const char *interface)
         return -ENOMEM;
     }
 
+    xdp->ioctl_sock = -1;
     transport->priv = xdp;
 
     /* Create temporary socket to get interface info */
@@ -173,7 +175,8 @@ static int xdp_open(ec_transport_t *transport, const char *interface)
     }
     memcpy(xdp->mac_addr, ifr.ifr_hwaddr.sa_data, 6);
 
-    close(sock_fd);
+    /* Store socket for later ioctl operations */
+    xdp->ioctl_sock = sock_fd;
 
     /* Allocate UMEM buffer */
     xdp->umem_buffer = aligned_alloc(getpagesize(), NUM_FRAMES * FRAME_SIZE);
@@ -241,6 +244,9 @@ err_free_umem:
 err_free_buffer:
     free(xdp->umem_buffer);
 err_free:
+    if (xdp->ioctl_sock >= 0) {
+        close(xdp->ioctl_sock);
+    }
     free(xdp);
     transport->priv = NULL;
     return ret;
@@ -264,6 +270,9 @@ static void xdp_close(ec_transport_t *transport)
         }
         if (xdp->umem_buffer) {
             free(xdp->umem_buffer);
+        }
+        if (xdp->ioctl_sock >= 0) {
+            close(xdp->ioctl_sock);
         }
         free(xdp);
         transport->priv = NULL;
@@ -403,30 +412,18 @@ static int xdp_get_link_state(ec_transport_t *transport)
 {
     ec_transport_xdp_t *xdp = transport->priv;
     struct ifreq ifr;
-    int sock_fd;
-    int ret;
 
-    if (!xdp) {
+    if (!xdp || xdp->ioctl_sock < 0) {
         return -ENODEV;
-    }
-
-    /* Create temporary socket */
-    sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock_fd < 0) {
-        return -errno;
     }
 
     memset(&ifr, 0, sizeof(ifr));
     strncpy(ifr.ifr_name, transport->interface, IFNAMSIZ - 1);
     ifr.ifr_name[IFNAMSIZ - 1] = '\0';
 
-    if (ioctl(sock_fd, SIOCGIFFLAGS, &ifr) < 0) {
-        ret = -errno;
-        close(sock_fd);
-        return ret;
+    if (ioctl(xdp->ioctl_sock, SIOCGIFFLAGS, &ifr) < 0) {
+        return -errno;
     }
-
-    close(sock_fd);
 
     /* Check if interface is up and running */
     if ((ifr.ifr_flags & IFF_UP) && (ifr.ifr_flags & IFF_RUNNING)) {
