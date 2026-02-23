@@ -191,6 +191,8 @@ static inline void ec_schedule_ms(unsigned long ms) {
 #define ec_log(level, fmt, args...) \
     printk(_EC_KERN_LVL_##level fmt, ##args)
 
+#define ec_log_ratelimit() printk_ratelimit()
+
 /****************************************************************************/
 
 #endif // __EC_PAL_H__
