@@ -93,11 +93,14 @@ void ec_fsm_pdo_entry_print(
         const ec_fsm_pdo_entry_t *fsm /**< PDO mapping state machine. */
         )
 {
-    printk(KERN_CONT "Currently mapped PDO entries: ");
-    ec_pdo_print_entries(fsm->cur_pdo);
-    printk(KERN_CONT ". Entries to map: ");
-    ec_pdo_print_entries(fsm->source_pdo);
-    printk(KERN_CONT "\n");
+    char cur_buf[256], new_buf[256];
+
+    cur_buf[0] = '\0';
+    new_buf[0] = '\0';
+    ec_pdo_print_entries(fsm->cur_pdo, cur_buf, sizeof(cur_buf));
+    ec_pdo_print_entries(fsm->source_pdo, new_buf, sizeof(new_buf));
+    EC_SLAVE_DBG(fsm->slave, 1, "Currently mapped PDO entries: %s."
+            " Entries to map: %s\n", cur_buf, new_buf);
 }
 
 /****************************************************************************/

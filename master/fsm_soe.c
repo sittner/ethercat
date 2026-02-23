@@ -197,15 +197,9 @@ void ec_fsm_soe_print_error(ec_fsm_soe_t *fsm /**< Finite state machine */)
 {
     ec_soe_request_t *request = fsm->request;
 
-    EC_SLAVE_ERR(fsm->slave, "");
-
-    if (request->dir == EC_DIR_OUTPUT) {
-        printk(KERN_CONT "Writing");
-    } else {
-        printk(KERN_CONT "Reading");
-    }
-
-    printk(KERN_CONT " IDN 0x%04X failed.\n", request->idn);
+    EC_SLAVE_ERR(fsm->slave, "%s IDN 0x%04X failed.\n",
+            request->dir == EC_DIR_OUTPUT ? "Writing" : "Reading",
+            request->idn);
 }
 
 /*****************************************************************************
@@ -300,8 +294,7 @@ void ec_fsm_soe_read_request(
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_soe_error;
-        EC_SLAVE_ERR(slave, "Failed to receive SoE read request: ");
-        ec_datagram_print_state(fsm->datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive SoE read request: Datagram %s.\n", ec_datagram_state_str(fsm->datagram));
         ec_fsm_soe_print_error(fsm);
         return;
     }
@@ -320,9 +313,12 @@ void ec_fsm_soe_read_request(
             }
         }
         fsm->state = ec_fsm_soe_error;
-        EC_SLAVE_ERR(slave, "Reception of SoE read request"
-                " failed after %lu ms: ", diff_ms);
-        ec_datagram_print_wc_error(fsm->datagram);
+        {
+            char _wc[32];
+            ec_datagram_wc_error_str(fsm->datagram, _wc, sizeof(_wc));
+            EC_SLAVE_ERR(slave, "Reception of SoE read request"
+                    " failed after %lu ms: %s\n", diff_ms, _wc);
+        }
         ec_fsm_soe_print_error(fsm);
         return;
     }
@@ -351,17 +347,17 @@ void ec_fsm_soe_read_check(
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_soe_error;
-        EC_SLAVE_ERR(slave, "Failed to receive SoE mailbox check datagram: ");
-        ec_datagram_print_state(fsm->datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive SoE mailbox check datagram: Datagram %s.\n", ec_datagram_state_str(fsm->datagram));
         ec_fsm_soe_print_error(fsm);
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
         fsm->state = ec_fsm_soe_error;
+        char _wc[32];
+        ec_datagram_wc_error_str(fsm->datagram, _wc, sizeof(_wc));
         EC_SLAVE_ERR(slave, "Reception of SoE mailbox check"
-                " datagram failed: ");
-        ec_datagram_print_wc_error(fsm->datagram);
+                " datagram failed: %s\n", _wc);
         ec_fsm_soe_print_error(fsm);
         return;
     }
@@ -411,16 +407,16 @@ void ec_fsm_soe_read_response(
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_soe_error;
-        EC_SLAVE_ERR(slave, "Failed to receive SoE read response datagram: ");
-        ec_datagram_print_state(fsm->datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive SoE read response datagram: Datagram %s.\n", ec_datagram_state_str(fsm->datagram));
         ec_fsm_soe_print_error(fsm);
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
         fsm->state = ec_fsm_soe_error;
-        EC_SLAVE_ERR(slave, "Reception of SoE read response failed: ");
-        ec_datagram_print_wc_error(fsm->datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(fsm->datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Reception of SoE read response failed: %s\n", _wc);
         ec_fsm_soe_print_error(fsm);
         return;
     }
@@ -616,8 +612,7 @@ void ec_fsm_soe_write_request(
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_soe_error;
-        EC_SLAVE_ERR(slave, "Failed to receive SoE write request: ");
-        ec_datagram_print_state(fsm->datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive SoE write request: Datagram %s.\n", ec_datagram_state_str(fsm->datagram));
         ec_fsm_soe_print_error(fsm);
         return;
     }
@@ -634,9 +629,12 @@ void ec_fsm_soe_write_request(
             }
         }
         fsm->state = ec_fsm_soe_error;
-        EC_SLAVE_ERR(slave, "Reception of SoE write request"
-                " failed after %lu ms: ", diff_ms);
-        ec_datagram_print_wc_error(fsm->datagram);
+        {
+            char _wc[32];
+            ec_datagram_wc_error_str(fsm->datagram, _wc, sizeof(_wc));
+            EC_SLAVE_ERR(slave, "Reception of SoE write request"
+                    " failed after %lu ms: %s\n", diff_ms, _wc);
+        }
         ec_fsm_soe_print_error(fsm);
         return;
     }
@@ -676,16 +674,16 @@ void ec_fsm_soe_write_check(
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_soe_error;
-        EC_SLAVE_ERR(slave, "Failed to receive SoE write request datagram: ");
-        ec_datagram_print_state(fsm->datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive SoE write request datagram: Datagram %s.\n", ec_datagram_state_str(fsm->datagram));
         ec_fsm_soe_print_error(fsm);
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
         fsm->state = ec_fsm_soe_error;
-        EC_SLAVE_ERR(slave, "Reception of SoE write request datagram: ");
-        ec_datagram_print_wc_error(fsm->datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(fsm->datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Reception of SoE write request datagram: %s\n", _wc);
         ec_fsm_soe_print_error(fsm);
         return;
     }
@@ -736,16 +734,16 @@ void ec_fsm_soe_write_response(
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_soe_error;
         EC_SLAVE_ERR(slave, "Failed to receive SoE write"
-                " response datagram: ");
-        ec_datagram_print_state(fsm->datagram);
+                " response datagram: Datagram %s.\n", ec_datagram_state_str(fsm->datagram));
         ec_fsm_soe_print_error(fsm);
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
         fsm->state = ec_fsm_soe_error;
-        EC_SLAVE_ERR(slave, "Reception of SoE write response failed: ");
-        ec_datagram_print_wc_error(fsm->datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(fsm->datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Reception of SoE write response failed: %s\n", _wc);
         ec_fsm_soe_print_error(fsm);
         return;
     }

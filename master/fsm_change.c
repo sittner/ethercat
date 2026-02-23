@@ -215,8 +215,7 @@ void ec_fsm_change_state_check(ec_fsm_change_t *fsm
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_change_state_error;
-        EC_SLAVE_ERR(slave, "Failed to receive state datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive state datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
@@ -230,8 +229,9 @@ void ec_fsm_change_state_check(ec_fsm_change_t *fsm
             char state_str[EC_STATE_STRING_SIZE];
             ec_state_string(fsm->requested_state, state_str, 0);
             fsm->state = ec_fsm_change_state_error;
-            EC_SLAVE_ERR(slave, "Failed to set state %s: ", state_str);
-            ec_datagram_print_wc_error(datagram);
+            char _wc[32];
+            ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+            EC_SLAVE_ERR(slave, "Failed to set state %s: %s\n", state_str, _wc);
             return;
         }
 
@@ -246,8 +246,11 @@ void ec_fsm_change_state_check(ec_fsm_change_t *fsm
         char state_str[EC_STATE_STRING_SIZE];
         ec_state_string(fsm->requested_state, state_str, 0);
         fsm->state = ec_fsm_change_state_error;
-        EC_SLAVE_ERR(slave, "Failed to set state %s: ", state_str);
-        ec_datagram_print_wc_error(datagram);
+        {
+            char _wc[32];
+            ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+            EC_SLAVE_ERR(slave, "Failed to set state %s: %s\n", state_str, _wc);
+        }
         return;
     }
 
@@ -279,8 +282,7 @@ void ec_fsm_change_state_status(ec_fsm_change_t *fsm
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_change_state_error;
-        EC_SLAVE_ERR(slave, "Failed to receive state checking datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive state checking datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
@@ -288,8 +290,11 @@ void ec_fsm_change_state_status(ec_fsm_change_t *fsm
         char req_state[EC_STATE_STRING_SIZE];
         ec_state_string(fsm->requested_state, req_state, 0);
         fsm->state = ec_fsm_change_state_error;
-        EC_SLAVE_ERR(slave, "Failed to check state %s: ", req_state);
-        ec_datagram_print_wc_error(datagram);
+        {
+            char _wc[32];
+            ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+            EC_SLAVE_ERR(slave, "Failed to check state %s: %s\n", req_state, _wc);
+        }
         return;
     }
 
@@ -452,15 +457,15 @@ void ec_fsm_change_state_code(ec_fsm_change_t *fsm
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_change_state_error;
         EC_SLAVE_ERR(fsm->slave, "Failed to receive"
-                " AL status code datagram: ");
-        ec_datagram_print_state(datagram);
+                " AL status code datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
         EC_SLAVE_WARN(fsm->slave, "Reception of AL status code"
-                " datagram failed: ");
-        ec_datagram_print_wc_error(datagram);
+                " datagram failed: %s\n", _wc);
     } else {
         code = EC_READ_U16(datagram->data);
         for (al_msg = al_status_messages; al_msg->code != 0xffff; al_msg++) {
@@ -501,15 +506,15 @@ void ec_fsm_change_state_ack(ec_fsm_change_t *fsm /**< finite state machine */)
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_change_state_error;
-        EC_SLAVE_ERR(slave, "Failed to receive state ack datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive state ack datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         fsm->state = ec_fsm_change_state_error;
-        EC_SLAVE_ERR(slave, "Reception of state ack datagram failed: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Reception of state ack datagram failed: %s\n", _wc);
         return;
     }
 
@@ -540,15 +545,15 @@ void ec_fsm_change_state_check_ack(ec_fsm_change_t *fsm
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_change_state_error;
-        EC_SLAVE_ERR(slave, "Failed to receive state ack check datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive state ack check datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         fsm->state = ec_fsm_change_state_error;
-        EC_SLAVE_ERR(slave, "Reception of state ack check datagram failed: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Reception of state ack check datagram failed: %s\n", _wc);
         return;
     }
 

@@ -304,8 +304,7 @@ void ec_fsm_eoe_set_ip_request(
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_eoe_error;
         EC_SLAVE_ERR(slave, "Failed to receive EoE set IP parameter"
-                " request: ");
-        ec_datagram_print_state(fsm->datagram);
+                " request: Datagram %s.\n", ec_datagram_state_str(fsm->datagram));
         return;
     }
 
@@ -323,9 +322,12 @@ void ec_fsm_eoe_set_ip_request(
             }
         }
         fsm->state = ec_fsm_eoe_error;
-        EC_SLAVE_ERR(slave, "Reception of EoE set IP parameter request"
-                " failed after %lu ms: ", diff_ms);
-        ec_datagram_print_wc_error(fsm->datagram);
+        {
+            char _wc[32];
+            ec_datagram_wc_error_str(fsm->datagram, _wc, sizeof(_wc));
+            EC_SLAVE_ERR(slave, "Reception of EoE set IP parameter request"
+                    " failed after %lu ms: %s\n", diff_ms, _wc);
+        }
         return;
     }
 
@@ -354,16 +356,16 @@ void ec_fsm_eoe_set_ip_check(
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_eoe_error;
-        EC_SLAVE_ERR(slave, "Failed to receive EoE mailbox check datagram: ");
-        ec_datagram_print_state(fsm->datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive EoE mailbox check datagram: Datagram %s.\n", ec_datagram_state_str(fsm->datagram));
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
         fsm->state = ec_fsm_eoe_error;
+        char _wc[32];
+        ec_datagram_wc_error_str(fsm->datagram, _wc, sizeof(_wc));
         EC_SLAVE_ERR(slave, "Reception of EoE mailbox check"
-                " datagram failed: ");
-        ec_datagram_print_wc_error(fsm->datagram);
+                " datagram failed: %s\n", _wc);
         return;
     }
 
@@ -410,15 +412,15 @@ void ec_fsm_eoe_set_ip_response(
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_eoe_error;
-        EC_SLAVE_ERR(slave, "Failed to receive EoE read response datagram: ");
-        ec_datagram_print_state(fsm->datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive EoE read response datagram: Datagram %s.\n", ec_datagram_state_str(fsm->datagram));
         return;
     }
 
     if (fsm->datagram->working_counter != 1) {
         fsm->state = ec_fsm_eoe_error;
-        EC_SLAVE_ERR(slave, "Reception of EoE read response failed: ");
-        ec_datagram_print_wc_error(fsm->datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(fsm->datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Reception of EoE read response failed: %s\n", _wc);
         return;
     }
 

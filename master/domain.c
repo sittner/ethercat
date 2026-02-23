@@ -613,31 +613,47 @@ int ecrt_domain_process(ec_domain_t *domain)
     if (domain->working_counter_changes &&
         now - domain->notify_time > ec_ms_to_time(1000)) {
         domain->notify_time = now;
+#if EC_MAX_NUM_DEVICES > 1
+        {
+            char _wc_dev[128];
+            int _off = 0;
+            _wc_dev[0] = '\0';
+            if (ec_master_num_devices(domain->master) > 1) {
+                _off += snprintf(_wc_dev + _off, sizeof(_wc_dev) - _off, " (");
+                for (dev_idx = EC_DEVICE_MAIN;
+                        dev_idx < ec_master_num_devices(domain->master);
+                        dev_idx++) {
+                    _off += snprintf(_wc_dev + _off, sizeof(_wc_dev) - _off,
+                            "%u", domain->working_counter[dev_idx]);
+                    if (dev_idx + 1 < ec_master_num_devices(domain->master))
+                        _off += snprintf(_wc_dev + _off, sizeof(_wc_dev) - _off,
+                                "+");
+                }
+                _off += snprintf(_wc_dev + _off, sizeof(_wc_dev) - _off, ")");
+            }
+            if (domain->working_counter_changes == 1) {
+                EC_MASTER_INFO(domain->master, "Domain %u: Working counter"
+                        " changed to %u/%u%s.\n", domain->index,
+                        wc_total, domain->expected_working_counter, _wc_dev);
+            } else {
+                EC_MASTER_INFO(domain->master, "Domain %u: %u working counter"
+                        " changes - now %u/%u%s.\n", domain->index,
+                        domain->working_counter_changes,
+                        wc_total, domain->expected_working_counter, _wc_dev);
+            }
+        }
+#else
         if (domain->working_counter_changes == 1) {
             EC_MASTER_INFO(domain->master, "Domain %u: Working counter"
-                    " changed to %u/%u", domain->index,
+                    " changed to %u/%u.\n", domain->index,
                     wc_total, domain->expected_working_counter);
         } else {
             EC_MASTER_INFO(domain->master, "Domain %u: %u working counter"
-                    " changes - now %u/%u", domain->index,
+                    " changes - now %u/%u.\n", domain->index,
                     domain->working_counter_changes,
                     wc_total, domain->expected_working_counter);
         }
-#if EC_MAX_NUM_DEVICES > 1
-        if (ec_master_num_devices(domain->master) > 1) {
-            printk(KERN_CONT " (");
-            for (dev_idx = EC_DEVICE_MAIN;
-                    dev_idx < ec_master_num_devices(domain->master);
-                    dev_idx++) {
-                printk(KERN_CONT "%u", domain->working_counter[dev_idx]);
-                if (dev_idx + 1 < ec_master_num_devices(domain->master)) {
-                    printk(KERN_CONT "+");
-                }
-            }
-            printk(KERN_CONT ")");
-        }
 #endif
-        printk(KERN_CONT ".\n");
 
         domain->working_counter_changes = 0;
     }

@@ -190,24 +190,25 @@ void ec_print_data(const uint8_t *data, /**< pointer to data */
                    size_t size /**< number of bytes to output */
                    )
 {
+    char line[3 * 16 + 1];
     unsigned int i;
+    int off = 0;
 
-    EC_DBG("");
+    line[0] = '\0';
     for (i = 0; i < size; i++) {
-        printk(KERN_CONT "%02X ", data[i]);
+        off += snprintf(line + off, sizeof(line) - off, "%02X ", data[i]);
 
-        if ((i + 1) % 16 == 0 && i < size - 1) {
-            printk(KERN_CONT "\n");
-            EC_DBG("");
+        if ((i + 1) % 16 == 0 || i + 1 == size) {
+            EC_DBG("%s\n", line);
+            off = 0;
+            line[0] = '\0';
         }
 
         if (i + 1 == 128 && size > 256) {
-            printk(KERN_CONT "dropped %zu bytes\n", size - 128 - i);
+            EC_DBG("dropped %zu bytes\n", size - 128 - i);
             i = size - 128;
-            EC_DBG("");
         }
     }
-    printk(KERN_CONT "\n");
 }
 
 /****************************************************************************/
@@ -219,22 +220,23 @@ void ec_print_data_diff(const uint8_t *d1, /**< first data */
                         size_t size /** number of bytes to output */
                         )
 {
+    char line[3 * 16 + 1];
     unsigned int i;
+    int off = 0;
 
-    EC_DBG("");
+    line[0] = '\0';
     for (i = 0; i < size; i++) {
         if (d1[i] == d2[i]) {
-            printk(KERN_CONT ".. ");
+            off += snprintf(line + off, sizeof(line) - off, ".. ");
+        } else {
+            off += snprintf(line + off, sizeof(line) - off, "%02X ", d2[i]);
         }
-        else {
-            printk(KERN_CONT "%02X ", d2[i]);
-        }
-        if ((i + 1) % 16 == 0) {
-            printk(KERN_CONT "\n");
-            EC_DBG("");
+        if ((i + 1) % 16 == 0 || i + 1 == size) {
+            EC_DBG("%s\n", line);
+            off = 0;
+            line[0] = '\0';
         }
     }
-    printk(KERN_CONT "\n");
 }
 
 /****************************************************************************/

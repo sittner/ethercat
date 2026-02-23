@@ -301,8 +301,9 @@ void ec_fsm_slave_config_state_clear_fmmus(
     if (datagram->working_counter != 1) {
         fsm->slave->error_flag = 1;
         fsm->state = ec_fsm_slave_config_state_error;
-        EC_SLAVE_ERR(fsm->slave, "Failed to clear FMMUs: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(fsm->slave, "Failed to clear FMMUs: %s\n", _wc);
         return;
     }
 
@@ -361,9 +362,10 @@ void ec_fsm_slave_config_state_clear_sync(
     if (datagram->working_counter != 1) {
         fsm->slave->error_flag = 1;
         fsm->state = ec_fsm_slave_config_state_error;
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
         EC_SLAVE_ERR(fsm->slave,
-                "Failed to clear sync manager configurations: ");
-        ec_datagram_print_wc_error(datagram);
+                "Failed to clear sync manager configurations: %s\n", _wc);
         return;
     }
 
@@ -416,8 +418,9 @@ void ec_fsm_slave_config_state_dc_clear_assign(
 
     if (datagram->working_counter != 1) {
         // clearing the DC assignment does not succeed on simple slaves
-        EC_SLAVE_DBG(fsm->slave, 1, "Failed to clear DC assignment: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_DBG(fsm->slave, 1, "Failed to clear DC assignment: %s\n", _wc);
     }
 
     ec_fsm_slave_config_enter_mbox_sync(fsm);
@@ -572,8 +575,7 @@ void ec_fsm_slave_config_state_mbox_sync(
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_config_state_error;
         EC_SLAVE_ERR(slave, "Failed to receive sync manager"
-                " configuration datagram: ");
-        ec_datagram_print_state(datagram);
+                " configuration datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
@@ -608,8 +610,9 @@ void ec_fsm_slave_config_state_mbox_sync(
     else if (datagram->working_counter != 1) {
         slave->error_flag = 1;
         fsm->state = ec_fsm_slave_config_state_error;
-        EC_SLAVE_ERR(slave, "Failed to set sync managers: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Failed to set sync managers: %s\n", _wc);
         return;
     }
 
@@ -662,14 +665,14 @@ void ec_fsm_slave_config_state_assign_pdi(
     }
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
-        EC_SLAVE_WARN(slave, "Failed receive SII assignment datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_WARN(slave, "Failed receive SII assignment datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         goto cont_preop;
     }
 
     if (datagram->working_counter != 1) {
-        EC_SLAVE_WARN(slave, "Failed to assign SII to PDI: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_WARN(slave, "Failed to assign SII to PDI: %s\n", _wc);
     }
 
 cont_preop:
@@ -788,14 +791,14 @@ void ec_fsm_slave_config_state_assign_ethercat(
     }
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
-        EC_SLAVE_WARN(slave, "Failed receive SII assignment datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_WARN(slave, "Failed receive SII assignment datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         goto cont_sdo_conf;
     }
 
     if (datagram->working_counter != 1) {
-        EC_SLAVE_WARN(slave, "Failed to assign SII back to EtherCAT: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_WARN(slave, "Failed to assign SII back to EtherCAT: %s\n", _wc);
     }
 
 cont_sdo_conf:
@@ -1091,15 +1094,15 @@ void ec_fsm_slave_config_state_watchdog_divider(
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_config_state_error;
         EC_SLAVE_ERR(slave, "Failed to receive watchdog divider"
-                " configuration datagram: ");
-        ec_datagram_print_state(datagram);
+                " configuration datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         slave->error_flag = 1;
-        EC_SLAVE_WARN(slave, "Failed to set watchdog divider: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_WARN(slave, "Failed to set watchdog divider: %s\n", _wc);
         return;
     }
 
@@ -1150,15 +1153,15 @@ void ec_fsm_slave_config_state_watchdog(
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_config_state_error;
         EC_SLAVE_ERR(slave, "Failed to receive sync manager"
-                " watchdog configuration datagram: ");
-        ec_datagram_print_state(datagram);
+                " watchdog configuration datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
         EC_SLAVE_WARN(slave, "Failed to set process data"
-                " watchdog intervals: ");
-        ec_datagram_print_wc_error(datagram);
+                " watchdog intervals: %s\n", _wc);
     }
 
     ec_fsm_slave_config_enter_pdo_sync(fsm);
@@ -1249,16 +1252,16 @@ void ec_fsm_slave_config_state_pdo_sync(
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_config_state_error;
         EC_SLAVE_ERR(slave, "Failed to receive process data sync"
-                " manager configuration datagram: ");
-        ec_datagram_print_state(datagram);
+                " manager configuration datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         slave->error_flag = 1;
         fsm->state = ec_fsm_slave_config_state_error;
-        EC_SLAVE_ERR(slave, "Failed to set process data sync managers: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Failed to set process data sync managers: %s\n", _wc);
         return;
     }
 
@@ -1335,16 +1338,16 @@ void ec_fsm_slave_config_state_fmmu(
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_config_state_error;
-        EC_SLAVE_ERR(slave, "Failed to receive FMMUs datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive FMMUs datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         slave->error_flag = 1;
         fsm->state = ec_fsm_slave_config_state_error;
-        EC_SLAVE_ERR(slave, "Failed to set FMMUs: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Failed to set FMMUs: %s\n", _wc);
         return;
     }
 
@@ -1411,16 +1414,16 @@ void ec_fsm_slave_config_state_dc_cycle(
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_config_state_error;
-        EC_SLAVE_ERR(slave, "Failed to receive DC cycle times datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive DC cycle times datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         slave->error_flag = 1;
         fsm->state = ec_fsm_slave_config_state_error;
-        EC_SLAVE_ERR(slave, "Failed to set DC cycle times: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Failed to set DC cycle times: %s\n", _wc);
         return;
     }
 
@@ -1460,16 +1463,16 @@ void ec_fsm_slave_config_state_dc_sync_check(
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_config_state_error;
-        EC_SLAVE_ERR(slave, "Failed to receive DC sync check datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive DC sync check datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         slave->error_flag = 1;
         fsm->state = ec_fsm_slave_config_state_error;
-        EC_SLAVE_ERR(slave, "Failed to check DC synchrony: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Failed to check DC synchrony: %s\n", _wc);
         return;
     }
 
@@ -1555,16 +1558,16 @@ void ec_fsm_slave_config_state_dc_start(
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_config_state_error;
-        EC_SLAVE_ERR(slave, "Failed to receive DC start time datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive DC start time datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         slave->error_flag = 1;
         fsm->state = ec_fsm_slave_config_state_error;
-        EC_SLAVE_ERR(slave, "Failed to set DC start time: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Failed to set DC start time: %s\n", _wc);
         return;
     }
 
@@ -1594,16 +1597,16 @@ void ec_fsm_slave_config_state_dc_assign(
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_config_state_error;
-        EC_SLAVE_ERR(slave, "Failed to receive DC activation datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive DC activation datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         slave->error_flag = 1;
         fsm->state = ec_fsm_slave_config_state_error;
-        EC_SLAVE_ERR(slave, "Failed to activate DC: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Failed to activate DC: %s\n", _wc);
         return;
     }
 

@@ -406,8 +406,7 @@ void ec_fsm_slave_state_reg_request(
 
     if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
         EC_SLAVE_ERR(slave, "Failed to receive register"
-                " request datagram: ");
-        ec_datagram_print_state(fsm->datagram);
+                " request datagram: Datagram %s.\n", ec_datagram_state_str(fsm->datagram));
         reg->state = EC_INT_REQUEST_FAILURE;
         wake_up_all(&slave->master->request_queue);
         fsm->reg_request = NULL;
@@ -424,9 +423,9 @@ void ec_fsm_slave_state_reg_request(
         EC_SLAVE_DBG(slave, 1, "Register request successful.\n");
     } else {
         reg->state = EC_INT_REQUEST_FAILURE;
-        ec_datagram_print_state(fsm->datagram);
         EC_SLAVE_ERR(slave, "Register request failed"
-                " (working counter is %u).\n",
+                " (datagram %s, working counter is %u).\n",
+                ec_datagram_state_str(fsm->datagram),
                 fsm->datagram->working_counter);
     }
 

@@ -320,18 +320,21 @@ unsigned int ec_pdo_list_count(
 /** Outputs the PDOs in the list.
  */
 void ec_pdo_list_print(
-        const ec_pdo_list_t *pl /**< PDO list. */
+        const ec_pdo_list_t *pl, /**< PDO list. */
+        char *buf, /**< Output buffer. */
+        size_t len /**< Buffer size. */
         )
 {
     const ec_pdo_t *pdo;
+    int off = 0;
 
     if (list_empty(&pl->list)) {
-        printk(KERN_CONT "(none)");
+        snprintf(buf + off, len - off, "(none)");
     } else {
         list_for_each_entry(pdo, &pl->list, list) {
-            printk(KERN_CONT "0x%04X", pdo->index);
+            off += snprintf(buf + off, len - off, "0x%04X", pdo->index);
             if (pdo->list.next != &pl->list)
-                printk(KERN_CONT " ");
+                off += snprintf(buf + off, len - off, " ");
         }
     }
 }
