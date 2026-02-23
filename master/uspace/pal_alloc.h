@@ -38,6 +38,11 @@ static inline void *ec_alloc(size_t size)
     return malloc(size);
 }
 
+static inline void *ec_alloc_atomic(size_t size)
+{
+    return malloc(size);
+}
+
 static inline void *ec_zalloc(size_t size)
 {
     return calloc(1, size);

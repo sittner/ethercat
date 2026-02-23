@@ -39,6 +39,11 @@ static inline void *ec_alloc(size_t size)
     return kmalloc(size, GFP_KERNEL);
 }
 
+static inline void *ec_alloc_atomic(size_t size)
+{
+    return kmalloc(size, GFP_ATOMIC);
+}
+
 static inline void *ec_zalloc(size_t size)
 {
     return kzalloc(size, GFP_KERNEL);

@@ -804,7 +804,7 @@ int ec_eoedev_tx(struct sk_buff *skb, /**< transmit socket buffer */
     WARN_ON_ONCE(skb_get_queue_mapping(skb) != 0);
     lockdep_assert_held(&netdev_get_tx_queue(dev, 0)->_xmit_lock);
 
-    if (!(frame = ec_alloc(sizeof(ec_eoe_frame_t)))) {
+    if (!(frame = ec_alloc_atomic(sizeof(ec_eoe_frame_t)))) {
         if (printk_ratelimit())
             EC_SLAVE_WARN(eoe->slave, "EoE TX: low on mem. frame dropped.\n");
         return 1;
