@@ -1,8 +1,8 @@
 #!/bin/sh
 set -e
 #DEBHELPER#
-getent group ethercat >/dev/null || groupadd -r ethercat
 if [ "$1" = "configure" ] ; then
+  getent group ethercat >/dev/null || addgroup --system ethercat
   depmod -a
   update-ethercat-config
 fi

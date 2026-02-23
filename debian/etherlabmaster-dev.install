@@ -1,3 +1,2 @@
 usr/include/*.h
 usr/lib/*/*.a
-usr/lib/*/*.la
