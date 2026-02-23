@@ -1,5 +1,4 @@
 debian/extras/* /
-etc/ethercat.conf etc/default/
 etc/sysconfig/* etc/default/
 usr/bin/*
 usr/sbin/*
