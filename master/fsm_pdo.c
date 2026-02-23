@@ -548,7 +548,8 @@ void ec_fsm_pdo_conf_action_check_mapping(
                 " changing the PDO mapping!\n");
         {
             char _cur[256], _new[256];
-            _cur[0] = '\0'; _new[0] = '\0';
+            _cur[0] = '\0';
+            _new[0] = '\0';
             ec_pdo_print_entries(&fsm->slave_pdo, _cur, sizeof(_cur));
             ec_pdo_print_entries(fsm->pdo, _new, sizeof(_new));
             EC_SLAVE_WARN(fsm->slave, "Currently mapped PDO entries: %s."
