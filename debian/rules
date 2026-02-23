@@ -35,8 +35,7 @@ override_dh_install:
 	dh_install -petherlabmaster devices/Kbuild devices/ecdev.h devices/generic.c usr/src/etherlabmaster-$(VERSION)/devices
 	dh_install -petherlabmaster devices/r8169* usr/src/etherlabmaster-$(VERSION)/devices
 	dh_install -petherlabmaster -X.o -X.ko -XMakefile -X.in -X.am devices/ccat/ usr/src/etherlabmaster-$(VERSION)/devices
-	dh_install -petherlabmaster -X.o -X.ko -XMakefile -X.in -X.am devices/e1000e/ usr/src/etherlabmaster-$(VERSION)/devices
-	dh_install -petherlabmaster -X.o -X.ko -XMakefile -X.in -X.am devices/igb/ usr/src/etherlabmaster-$(VERSION)/devices
+	dh_install -petherlabmaster -X.o -X.ko -XMakefile -X.in -X.am devices/genet/ usr/src/etherlabmaster-$(VERSION)/devices
 
 override_dh_dkms:
 	dh_dkms -V $(VERSION)

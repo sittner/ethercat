@@ -56,3 +56,4 @@ debian/etherlabmaster-dev
 debian/etherlabmaster
 debian/files
 debian/tmp
+debian/debhelper-build-stamp
