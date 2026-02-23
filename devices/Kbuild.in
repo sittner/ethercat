@@ -74,6 +74,10 @@ ifeq (@ENABLE_GENET@,1)
 	obj-m += genet/
 endif
 
+ifeq (@ENABLE_MACB@,1)
+	obj-m += macb/
+endif
+
 ifeq (@ENABLE_IGB@,1)
 	obj-m += igb/
 endif
