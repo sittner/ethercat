@@ -47,11 +47,6 @@
 /* Rate limiting */
 #define printk_ratelimit()          ec_printk_ratelimit()
 
-/* Memory (direct mapping) */
-#define kmalloc(size, flags)        malloc(size)
-#define kfree(ptr)                  free(ptr)
-#define GFP_ATOMIC                  0
-
 /* Stubs for kernel-only APIs */
 #define WARN_ON_ONCE(x)             ((void)(x))
 #define lockdep_assert_held(x)      ((void)0)
