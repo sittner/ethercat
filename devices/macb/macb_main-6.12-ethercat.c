@@ -3103,8 +3103,10 @@ static int macb_open(struct net_device *dev)
 
 	netif_tx_start_all_queues(dev);
 
-	if (bp->ptp_info)
-		bp->ptp_info->ptp_init(dev);
+	if (!get_ecdev(bp)) {
+		if (bp->ptp_info)
+			bp->ptp_info->ptp_init(dev);
+	}
 
 	return 0;
 
@@ -3157,8 +3159,10 @@ static int macb_close(struct net_device *dev)
 
 	macb_free_consistent(bp);
 
-	if (bp->ptp_info)
-		bp->ptp_info->ptp_remove(dev);
+	if (!get_ecdev(bp)) {
+		if (bp->ptp_info)
+			bp->ptp_info->ptp_remove(dev);
+	}
 
 	pm_runtime_put(&bp->pdev->dev);
 
