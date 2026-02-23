@@ -131,14 +131,6 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    /* Get transport ops */
-    const ec_transport_ops_t *transport_ops = ec_transport_get_ops(transport_type);
-    if (!transport_ops) {
-        printk(KERN_ERR "Failed to get transport ops\n");
-        ret = 1;
-        goto out_cleanup_queues;
-    }
-
     printk(KERN_INFO "Using transport: %s\n", ec_transport_get_name(transport_type));
 
     /* Create and open transport */
@@ -159,14 +151,14 @@ int main(int argc, char *argv[])
     printk(KERN_INFO "Transport opened successfully\n");
 
     // TODO: check if this is the correct way
-	uint8_t main_mac[ETH_ALEN] = {0};
-	uint8_t backup_mac[ETH_ALEN] = {0};
+    uint8_t main_mac[ETH_ALEN] = {0};
+    uint8_t backup_mac[ETH_ALEN] = {0};
 
-	/* Get MAC address from transport */
-	ec_transport_get_mac(transport, main_mac);
+    /* Get MAC address from transport */
+    ec_transport_get_mac(transport, main_mac);
 
     /* Initialize master */
-	ret = ec_master_init(&master, 0, main_mac, backup_mac, 1, 0);
+    ret = ec_master_init(&master, 0, main_mac, backup_mac, 1, 0);
     if (ret < 0) {
         printk(KERN_ERR "Failed to initialize master: %d\n", ret);
         ret = 1;

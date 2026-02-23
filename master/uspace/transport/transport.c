@@ -92,10 +92,6 @@ void ec_transport_destroy(ec_transport_t *transport)
         return;
     }
 
-    if (transport->ops && transport->ops->close) {
-        transport->ops->close(transport);
-    }
-
     free(transport);
 }
 

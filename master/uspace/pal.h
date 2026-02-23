@@ -41,7 +41,6 @@
 #include <syslog.h>
 #include <errno.h>
 #include <stdarg.h>
-#include <pthread.h>
 #include <sys/syscall.h>
 #include <sched.h>
 
