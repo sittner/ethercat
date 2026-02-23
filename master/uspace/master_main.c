@@ -114,41 +114,41 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    printk(KERN_INFO "Starting EtherCAT master on interface %s\n", interface);
+    ec_log(EC_LOG_INFO, "Starting EtherCAT master on interface %s\n", interface);
 
     ec_master_init_static();
 
     /* Initialize workqueues */
     system_wq = create_workqueue("system_wq");
     if (!system_wq) {
-        printk(KERN_ERR "Failed to create system workqueue\n");
+        ec_log(EC_LOG_ERR, "Failed to create system workqueue\n");
         return 1;
     }
 
     if (create_irq_work_queue() != 0) {
-        printk(KERN_ERR "Failed to create IRQ work queue\n");
+        ec_log(EC_LOG_ERR, "Failed to create IRQ work queue\n");
         destroy_workqueue(system_wq);
         return 1;
     }
 
-    printk(KERN_INFO "Using transport: %s\n", ec_transport_get_name(transport_type));
+    ec_log(EC_LOG_INFO, "Using transport: %s\n", ec_transport_get_name(transport_type));
 
     /* Create and open transport */
     transport = ec_transport_create(transport_type);
     if (!transport) {
-        printk(KERN_ERR "Failed to create transport\n");
+        ec_log(EC_LOG_ERR, "Failed to create transport\n");
         ret = 1;
         goto out_cleanup_queues;
     }
 
     ret = ec_transport_open(transport, interface);
     if (ret < 0) {
-        printk(KERN_ERR "Failed to open transport on %s: %d\n", interface, ret);
+        ec_log(EC_LOG_ERR, "Failed to open transport on %s: %d\n", interface, ret);
         ret = 1;
         goto out_destroy_transport;
     }
 
-    printk(KERN_INFO "Transport opened successfully\n");
+    ec_log(EC_LOG_INFO, "Transport opened successfully\n");
 
     // TODO: check if this is the correct way
     uint8_t main_mac[ETH_ALEN] = {0};
@@ -160,7 +160,7 @@ int main(int argc, char *argv[])
     /* Initialize master */
     ret = ec_master_init(&master, 0, main_mac, backup_mac, 1, 0);
     if (ret < 0) {
-        printk(KERN_ERR "Failed to initialize master: %d\n", ret);
+        ec_log(EC_LOG_ERR, "Failed to initialize master: %d\n", ret);
         ret = 1;
         goto out_close_transport;
     }
@@ -172,7 +172,7 @@ int main(int argc, char *argv[])
     /* Open device */
     ret = ec_device_open(&master.devices[EC_DEVICE_MAIN]);
     if (ret < 0) {
-        printk(KERN_ERR "Failed to open device: %d\n", ret);
+        ec_log(EC_LOG_ERR, "Failed to open device: %d\n", ret);
         ret = 1;
         goto out_clear_master;
     }
@@ -181,12 +181,12 @@ int main(int argc, char *argv[])
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
-    printk(KERN_INFO "EtherCAT master started, entering main loop\n");
+    ec_log(EC_LOG_INFO, "EtherCAT master started, entering main loop\n");
 
     /* Enter idle phase */
     ret = ec_master_enter_idle_phase(&master);
     if (ret < 0) {
-        printk(KERN_ERR "Failed to enter idle phase: %d\n", ret);
+        ec_log(EC_LOG_ERR, "Failed to enter idle phase: %d\n", ret);
         ret = 1;
         goto out_close_device;
     }
@@ -196,7 +196,7 @@ int main(int argc, char *argv[])
         pause();  /* Sleep until signal - uses ~0% CPU */
     }
 
-    printk(KERN_INFO "Shutting down EtherCAT master\n");
+    ec_log(EC_LOG_INFO, "Shutting down EtherCAT master\n");
 
     /* Leave idle phase */
     ec_master_leave_idle_phase(&master);
@@ -217,7 +217,7 @@ out_cleanup_queues:
     destroy_irq_work_queue();
     destroy_workqueue(system_wq);
 
-    printk(KERN_INFO "EtherCAT master stopped\n");
+    ec_log(EC_LOG_INFO, "EtherCAT master stopped\n");
     return ret;
 }
 
@@ -323,9 +323,9 @@ void ec_device_poll(ec_device_t *device)
             device->link_state = (uint8_t)link_state;
             device->pal.last_link_state = link_state;
             if (link_state) {
-                printk(KERN_INFO "Device %s: Link is up\n", device->name ? device->name : "?");
+                ec_log(EC_LOG_INFO, "Device %s: Link is up\n", device->name ? device->name : "?");
             } else {
-                printk(KERN_WARNING "Device %s: Link is down\n", device->name ? device->name : "?");
+                ec_log(EC_LOG_WARNING, "Device %s: Link is down\n", device->name ? device->name : "?");
             }
         }
         device->pal.last_link_check = device->time_poll;
@@ -352,7 +352,7 @@ int ec_device_open(ec_device_t *device)
         tx_buffer[13] = 0xA4;
     }
 
-    printk(KERN_INFO "Device %s opened\n", device->name ? device->name : "?");
+    ec_log(EC_LOG_INFO, "Device %s opened\n", device->name ? device->name : "?");
     return 0;
 }
 
@@ -362,7 +362,7 @@ int ec_device_close(ec_device_t *device)
     /* Transport is closed in main(), just set state */
     device->open = 0;
     
-    printk(KERN_INFO "Device %s closed\n", device->name ? device->name : "?");
+    ec_log(EC_LOG_INFO, "Device %s closed\n", device->name ? device->name : "?");
     return 0;
 }
 

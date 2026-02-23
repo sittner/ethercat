@@ -204,6 +204,18 @@ extern const char *ec_device_names[2]; // only main and backup!
 
 /****************************************************************************/
 
+/** Log level constants matching kernel syslog levels. */
+#define EC_LOG_EMERG   0
+#define EC_LOG_ALERT   1
+#define EC_LOG_CRIT    2
+#define EC_LOG_ERR     3
+#define EC_LOG_WARNING 4
+#define EC_LOG_NOTICE  5
+#define EC_LOG_INFO    6
+#define EC_LOG_DEBUG   7
+
+/****************************************************************************/
+
 /** Convenience macro for printing EtherCAT-specific information to syslog.
  *
  * This will print the message in \a fmt with a prefixed "EtherCAT: ".
@@ -212,7 +224,7 @@ extern const char *ec_device_names[2]; // only main and backup!
  * \param args arguments (optional)
  */
 #define EC_INFO(fmt, args...) \
-    printk(KERN_INFO "EtherCAT: " fmt, ##args)
+    ec_log(EC_LOG_INFO, "EtherCAT: " fmt, ##args)
 
 /** Convenience macro for printing EtherCAT-specific errors to syslog.
  *
@@ -222,7 +234,7 @@ extern const char *ec_device_names[2]; // only main and backup!
  * \param args arguments (optional)
  */
 #define EC_ERR(fmt, args...) \
-    printk(KERN_ERR "EtherCAT ERROR: " fmt, ##args)
+    ec_log(EC_LOG_ERR, "EtherCAT ERROR: " fmt, ##args)
 
 /** Convenience macro for printing EtherCAT-specific warnings to syslog.
  *
@@ -232,7 +244,7 @@ extern const char *ec_device_names[2]; // only main and backup!
  * \param args arguments (optional)
  */
 #define EC_WARN(fmt, args...) \
-    printk(KERN_WARNING "EtherCAT WARNING: " fmt, ##args)
+    ec_log(EC_LOG_WARNING, "EtherCAT WARNING: " fmt, ##args)
 
 /** Convenience macro for printing EtherCAT debug messages to syslog.
  *
@@ -242,7 +254,7 @@ extern const char *ec_device_names[2]; // only main and backup!
  * \param args arguments (optional)
  */
 #define EC_DBG(fmt, args...) \
-    printk(KERN_DEBUG "EtherCAT DEBUG: " fmt, ##args)
+    ec_log(EC_LOG_DEBUG, "EtherCAT DEBUG: " fmt, ##args)
 
 /****************************************************************************/
 

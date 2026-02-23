@@ -174,4 +174,23 @@ static inline void ec_schedule_ms(unsigned long ms) {
 
 /****************************************************************************/
 
+/** Token-pasting macro to map EC_LOG_* integer levels to KERN_* strings.
+ *
+ * The level must be a literal integer constant (e.g. EC_LOG_ERR expands to 3,
+ * so _EC_KERN_LVL_3 is selected at compile time — zero runtime overhead).
+ */
+#define _EC_KERN_LVL_0 KERN_EMERG
+#define _EC_KERN_LVL_1 KERN_ALERT
+#define _EC_KERN_LVL_2 KERN_CRIT
+#define _EC_KERN_LVL_3 KERN_ERR
+#define _EC_KERN_LVL_4 KERN_WARNING
+#define _EC_KERN_LVL_5 KERN_NOTICE
+#define _EC_KERN_LVL_6 KERN_INFO
+#define _EC_KERN_LVL_7 KERN_DEBUG
+
+#define ec_log(level, fmt, args...) \
+    printk(_EC_KERN_LVL_##level fmt, ##args)
+
+/****************************************************************************/
+
 #endif // __EC_PAL_H__

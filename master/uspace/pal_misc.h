@@ -45,19 +45,8 @@
 /* Logging */
 /****************************************************************************/
 
-#define KERN_ERR		"<3>"	/* error conditions			*/
-#define KERN_WARNING	"<4>"	/* warning conditions			*/
-#define KERN_INFO		"<6>"	/* informational			*/
-#define KERN_DEBUG		"<7>"	/* debug-level messages			*/
-
-/*
- * Annotation for a "continued" line of log printout (only done after a
- * line that had no enclosing \n). Only to be used by core/arch code
- * during early bootup (a continued line is not SMP-safe otherwise).
- */
-#define KERN_CONT		"<c>"
-
-int printk(const char *fmt, ...);
+void ec_log(int level, const char *fmt, ...)
+    __attribute__((format(printf, 2, 3)));
 
 /****************************************************************************/
 /* Kernel utility macros */

@@ -24,8 +24,7 @@
 #include "../master.h"
 #include "../fsm_master.h"
 
-static bool printk_newline = false;
-static pthread_mutex_t printk_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t ec_log_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static const char *loglevel_names[] = {
     "EMERG",
@@ -38,52 +37,22 @@ static const char *loglevel_names[] = {
     "DEBUG",
 };
 
-int printk(const char *fmt, ...)
+void ec_log(int level, const char *fmt, ...)
 {
     va_list args;
-    int priority = LOG_INFO;
-    const char *msg = fmt;
-    int ret = 0;
-    bool is_cont = false;
-    size_t len;
 
-    if (!fmt)
-        return 0;
+    pthread_mutex_lock(&ec_log_lock);
 
-    pthread_mutex_lock(&printk_lock);
-
-    /* Check for log level prefix */
-    if (fmt[0] == '<' && fmt[1] != 0 && fmt[2] == '>') {
-        if (fmt[1] >= '0' && fmt[1] <= '7') {
-            priority = fmt[1] - '0';
-            msg = fmt + 3;
-        } else if (fmt[1] == 'c') {
-            is_cont = true;
-            msg = fmt + 3;
-        }
-    }
-
-    /* Force newline if starting new message but previous wasn't complete */
-    if (!is_cont) {
-        if (printk_newline) {
-            putchar('\n');
-            printk_newline = false;
-        }
-        printf("%s: ", loglevel_names[priority]);
-    }
+    if (level >= 0 && level <= 7)
+        fprintf(stderr, "[%s] ", loglevel_names[level]);
 
     va_start(args, fmt);
-    ret = vprintf(msg, args);
+    vfprintf(stderr, fmt, args);
     va_end(args);
 
-    /* Track newline state */
-    len = strlen(msg);
-    printk_newline = (len > 0 && msg[len - 1] != '\n');
+    fflush(stderr);
 
-    fflush(stdout);
-
-    pthread_mutex_unlock(&printk_lock);
-    return ret;
+    pthread_mutex_unlock(&ec_log_lock);
 }
 
 static void ec_master_nanosleep(const unsigned long nsecs) {
