@@ -1125,11 +1125,13 @@ static void macb_tx_error_task(struct work_struct *work)
 	 * TBQP registers so we call netif_tx_stop_all_queues() to notify the
 	 * network engine about the macb/gem being halted.
 	 */
-	napi_disable(&queue->napi_tx);
+	if (!get_ecdev(bp))
+		napi_disable(&queue->napi_tx);
 	spin_lock_irqsave(&bp->lock, flags);
 
 	/* Make sure nobody is trying to queue up new packets */
-	netif_tx_stop_all_queues(bp->dev);
+	if (!get_ecdev(bp))
+		netif_tx_stop_all_queues(bp->dev);
 
 	/* Stop transmission now
 	 * (in case we have just queued new packets)
@@ -1214,11 +1216,13 @@ static void macb_tx_error_task(struct work_struct *work)
 		macb_writel(bp, NCR, macb_readl(bp, NCR) | MACB_BIT(TE));
 
 	/* Now we are ready to start transmission again */
-	netif_tx_start_all_queues(bp->dev);
+	if (!get_ecdev(bp))
+		netif_tx_start_all_queues(bp->dev);
 	macb_writel(bp, NCR, macb_readl(bp, NCR) | MACB_BIT(TSTART));
 
 	spin_unlock_irqrestore(&bp->lock, flags);
-	napi_enable(&queue->napi_tx);
+	if (!get_ecdev(bp))
+		napi_enable(&queue->napi_tx);
 }
 
 static bool ptp_one_step_sync(struct sk_buff *skb)
@@ -1315,7 +1319,8 @@ static int macb_tx_complete(struct macb_queue *queue, int budget)
 	}
 
 	queue->tx_tail = tail;
-	if (__netif_subqueue_stopped(bp->dev, queue_index) &&
+	if (!get_ecdev(bp) &&
+	    __netif_subqueue_stopped(bp->dev, queue_index) &&
 	    CIRC_CNT(queue->tx_head, queue->tx_tail,
 		     bp->tx_ring_size) <= MACB_TX_WAKEUP_THRESH(bp))
 		netif_wake_subqueue(bp->dev, queue_index);
@@ -1849,8 +1854,12 @@ static void macb_hresp_error_task(struct work_struct *work)
 	ctrl &= ~(MACB_BIT(RE) | MACB_BIT(TE));
 	macb_writel(bp, NCR, ctrl);
 
-	netif_tx_stop_all_queues(dev);
-	netif_carrier_off(dev);
+	if (get_ecdev(bp)) {
+		ecdev_set_link(get_ecdev(bp), 0);
+	} else {
+		netif_tx_stop_all_queues(dev);
+		netif_carrier_off(dev);
+	}
 
 	bp->macbgem_ops.mog_init_rings(bp);
 
@@ -1867,8 +1876,12 @@ static void macb_hresp_error_task(struct work_struct *work)
 	ctrl |= MACB_BIT(RE) | MACB_BIT(TE);
 	macb_writel(bp, NCR, ctrl);
 
-	netif_carrier_on(dev);
-	netif_tx_start_all_queues(dev);
+	if (get_ecdev(bp)) {
+		ecdev_set_link(get_ecdev(bp), 1);
+	} else {
+		netif_carrier_on(dev);
+		netif_tx_start_all_queues(dev);
+	}
 }
 
 static irqreturn_t macb_wol_interrupt(int irq, void *dev_id)
@@ -1967,7 +1980,12 @@ static irqreturn_t macb_interrupt(int irq, void *dev_id)
 			if (bp->caps & MACB_CAPS_ISR_CLEAR_ON_WRITE)
 				queue_writel(queue, ISR, MACB_BIT(RCOMP));
 
-			if (!get_ecdev(bp)) {
+			if (get_ecdev(bp)) {
+				/* EtherCAT: process RX directly */
+				bp->macbgem_ops.mog_rx(queue, NULL, 64);
+				/* Re-enable RX interrupts */
+				queue_writel(queue, IER, bp->rx_intr_mask);
+			} else {
 				if (napi_schedule_prep(&queue->napi_rx)) {
 					netdev_vdbg(bp->dev, "scheduling RX softirq\n");
 					__napi_schedule(&queue->napi_rx);
@@ -1988,7 +2006,16 @@ static irqreturn_t macb_interrupt(int irq, void *dev_id)
 				wmb(); // ensure softirq can see update
 			}
 
-			if (!get_ecdev(bp)) {
+			if (get_ecdev(bp)) {
+				/* EtherCAT: process TX completion directly */
+				macb_tx_complete(queue, 64);
+				if (queue->txubr_pending) {
+					queue->txubr_pending = false;
+					macb_tx_restart(queue);
+				}
+				/* Re-enable TX interrupts */
+				queue_writel(queue, IER, MACB_BIT(TCOMP));
+			} else {
 				if (napi_schedule_prep(&queue->napi_tx)) {
 					netdev_vdbg(bp->dev, "scheduling TX softirq\n");
 					__napi_schedule(&queue->napi_tx);
