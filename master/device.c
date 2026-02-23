@@ -155,17 +155,17 @@ void ec_device_update_stats(
 {
     unsigned int i;
 
-    s32 tx_frame_rate = (device->tx_count - device->last_tx_count) * 1000;
-    s32 rx_frame_rate = (device->rx_count - device->last_rx_count) * 1000;
-    s32 tx_byte_rate = (device->tx_bytes - device->last_tx_bytes);
-    s32 rx_byte_rate = (device->rx_bytes - device->last_rx_bytes);
+    int32_t tx_frame_rate = (device->tx_count - device->last_tx_count) * 1000;
+    int32_t rx_frame_rate = (device->rx_count - device->last_rx_count) * 1000;
+    int32_t tx_byte_rate = (device->tx_bytes - device->last_tx_bytes);
+    int32_t rx_byte_rate = (device->rx_bytes - device->last_rx_bytes);
 
     /* Low-pass filter:
      *      Y_n = y_(n - 1) + T / tau * (x - y_(n - 1))   | T = 1
      *   -> Y_n += (x - y_(n - 1)) / tau
      */
     for (i = 0; i < EC_RATE_COUNT; i++) {
-        s32 n = rate_intervals[i];
+        int32_t n = rate_intervals[i];
         device->tx_frame_rates[i] +=
             (tx_frame_rate - device->tx_frame_rates[i]) / n;
         device->rx_frame_rates[i] +=

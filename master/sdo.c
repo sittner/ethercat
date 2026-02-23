@@ -67,11 +67,11 @@ void ec_sdo_clear(
     list_for_each_entry_safe(entry, next, &sdo->entries, list) {
         list_del(&entry->list);
         ec_sdo_entry_clear(entry);
-        kfree(entry);
+        ec_free(entry);
     }
 
     if (sdo->name)
-        kfree(sdo->name);
+        ec_free(sdo->name);
 }
 
 /****************************************************************************/

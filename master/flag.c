@@ -44,7 +44,7 @@ int ec_flag_init(
         return -EINVAL;
     }
 
-    if (!(flag->key = (char *) kmalloc(strlen(key) + 1, GFP_KERNEL))) {
+    if (!(flag->key = (char *) ec_alloc(strlen(key) + 1))) {
         return -ENOMEM;
     }
 
@@ -62,7 +62,7 @@ void ec_flag_clear(
         )
 {
     if (flag->key) {
-        kfree(flag->key);
+        ec_free(flag->key);
         flag->key = NULL;
     }
 }

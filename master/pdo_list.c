@@ -67,7 +67,7 @@ void ec_pdo_list_clear_pdos(ec_pdo_list_t *pl /**< PDO list. */)
     list_for_each_entry_safe(pdo, next, &pl->list, list) {
         list_del_init(&pdo->list);
         ec_pdo_clear(pdo);
-        kfree(pdo);
+        ec_free(pdo);
     }
 }
 
@@ -114,7 +114,7 @@ ec_pdo_t *ec_pdo_list_add_pdo(
 {
     ec_pdo_t *pdo;
 
-    if (!(pdo = (ec_pdo_t *) kmalloc(sizeof(ec_pdo_t), GFP_KERNEL))) {
+    if (!(pdo = (ec_pdo_t *) ec_alloc(sizeof(ec_pdo_t)))) {
         EC_ERR("Failed to allocate memory for PDO.\n");
         return ERR_PTR(-ENOMEM);
     }
@@ -146,14 +146,14 @@ int ec_pdo_list_add_pdo_copy(
         return -EEXIST;
     }
 
-    if (!(mapped_pdo = kmalloc(sizeof(ec_pdo_t), GFP_KERNEL))) {
+    if (!(mapped_pdo = ec_alloc(sizeof(ec_pdo_t)))) {
         EC_ERR("Failed to allocate PDO memory.\n");
         return -ENOMEM;
     }
 
     ret = ec_pdo_init_copy(mapped_pdo, pdo);
     if (ret < 0) {
-        kfree(mapped_pdo);
+        ec_free(mapped_pdo);
         return ret;
     }
 

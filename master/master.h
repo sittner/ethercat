@@ -135,28 +135,28 @@ typedef struct {
 /** Device statistics.
  */
 typedef struct {
-    u64 tx_count; /**< Number of frames sent. */
-    u64 last_tx_count; /**< Number of frames sent of last statistics cycle. */
-    u64 rx_count; /**< Number of frames received. */
-    u64 last_rx_count; /**< Number of frames received of last statistics
+    uint64_t tx_count; /**< Number of frames sent. */
+    uint64_t last_tx_count; /**< Number of frames sent of last statistics cycle. */
+    uint64_t rx_count; /**< Number of frames received. */
+    uint64_t last_rx_count; /**< Number of frames received of last statistics
                          cycle. */
-    u64 tx_bytes; /**< Number of bytes sent. */
-    u64 last_tx_bytes; /**< Number of bytes sent of last statistics cycle. */
-    u64 rx_bytes; /**< Number of bytes received. */
-    u64 last_rx_bytes; /**< Number of bytes received of last statistics cycle.
+    uint64_t tx_bytes; /**< Number of bytes sent. */
+    uint64_t last_tx_bytes; /**< Number of bytes sent of last statistics cycle. */
+    uint64_t rx_bytes; /**< Number of bytes received. */
+    uint64_t last_rx_bytes; /**< Number of bytes received of last statistics cycle.
                         */
-    u64 last_loss; /**< Tx/Rx difference of last statistics cycle. */
-    s32 tx_frame_rates[EC_RATE_COUNT]; /**< Transmit rates in frames/s for
+    uint64_t last_loss; /**< Tx/Rx difference of last statistics cycle. */
+    int32_t tx_frame_rates[EC_RATE_COUNT]; /**< Transmit rates in frames/s for
                                          different statistics cycle periods.
                                         */
-    s32 rx_frame_rates[EC_RATE_COUNT]; /**< Receive rates in frames/s for
+    int32_t rx_frame_rates[EC_RATE_COUNT]; /**< Receive rates in frames/s for
                                          different statistics cycle periods.
                                         */
-    s32 tx_byte_rates[EC_RATE_COUNT]; /**< Transmit rates in byte/s for
+    int32_t tx_byte_rates[EC_RATE_COUNT]; /**< Transmit rates in byte/s for
                                         different statistics cycle periods. */
-    s32 rx_byte_rates[EC_RATE_COUNT]; /**< Receive rates in byte/s for
+    int32_t rx_byte_rates[EC_RATE_COUNT]; /**< Receive rates in byte/s for
                                         different statistics cycle periods. */
-    s32 loss_rates[EC_RATE_COUNT]; /**< Frame loss rates for different
+    int32_t loss_rates[EC_RATE_COUNT]; /**< Frame loss rates for different
                                      statistics cycle periods. */
     ec_time_t last_cycle; /**< Time of last statistic cycle. */
 } ec_device_stats_t;
@@ -208,8 +208,8 @@ struct ec_master {
     struct list_head configs; /**< List of slave configurations. */
     struct list_head domains; /**< List of domains. */
 
-    u64 app_time; /**< Time of the last ecrt_master_sync() call. */
-    u64 dc_ref_time; /**< Common reference timestamp for DC start times. */
+    uint64_t app_time; /**< Time of the last ecrt_master_sync() call. */
+    uint64_t dc_ref_time; /**< Common reference timestamp for DC start times. */
     ec_datagram_t ref_sync_datagram; /**< Datagram used for synchronizing the
                                        reference clock to the master clock. */
     ec_datagram_t sync_datagram; /**< Datagram used for DC drift

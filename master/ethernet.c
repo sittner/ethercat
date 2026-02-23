@@ -91,7 +91,7 @@ int ec_eoe_init(
     ec_eoe_t **priv;
     int ret = 0;
     char name[EC_DATAGRAM_NAME_SIZE];
-    u8 mac_addr[ETH_ALEN] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+    uint8_t mac_addr[ETH_ALEN] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
 
     eoe->slave = slave;
 
@@ -190,7 +190,7 @@ void ec_eoe_clear(ec_eoe_t *eoe /**< EoE handler */)
 
     if (eoe->tx_frame) {
         dev_kfree_skb(eoe->tx_frame->skb);
-        kfree(eoe->tx_frame);
+        ec_free(eoe->tx_frame);
     }
 
     if (eoe->rx_skb)
@@ -220,7 +220,7 @@ void ec_eoe_flush(ec_eoe_t *eoe /**< EoE handler */)
     list_for_each_entry_safe(frame, next, &tx_queue, queue) {
         list_del(&frame->queue);
         dev_kfree_skb(frame->skb);
-        kfree(frame);
+        ec_free(frame);
     }
 }
 
@@ -649,7 +649,7 @@ void ec_eoe_state_tx_start(ec_eoe_t *eoe /**< EoE handler */)
 
     if (ec_eoe_send(eoe)) {
         dev_kfree_skb(eoe->tx_frame->skb);
-        kfree(eoe->tx_frame);
+        ec_free(eoe->tx_frame);
         eoe->tx_frame = NULL;
         eoe->stats.tx_errors++;
         eoe->state = ec_eoe_state_rx_start;
@@ -716,14 +716,14 @@ void ec_eoe_state_tx_sent(ec_eoe_t *eoe /**< EoE handler */)
         eoe->stats.tx_bytes += eoe->tx_frame->skb->len;
         eoe->tx_counter += eoe->tx_frame->skb->len;
         dev_kfree_skb(eoe->tx_frame->skb);
-        kfree(eoe->tx_frame);
+        ec_free(eoe->tx_frame);
         eoe->tx_frame = NULL;
         eoe->state = ec_eoe_state_rx_start;
     }
     else { // send next fragment
         if (ec_eoe_send(eoe)) {
             dev_kfree_skb(eoe->tx_frame->skb);
-            kfree(eoe->tx_frame);
+            ec_free(eoe->tx_frame);
             eoe->tx_frame = NULL;
             eoe->stats.tx_errors++;
 #if EOE_DEBUG_LEVEL >= 1
@@ -804,7 +804,7 @@ int ec_eoedev_tx(struct sk_buff *skb, /**< transmit socket buffer */
     WARN_ON_ONCE(skb_get_queue_mapping(skb) != 0);
     lockdep_assert_held(&netdev_get_tx_queue(dev, 0)->_xmit_lock);
 
-    if (!(frame = kmalloc(sizeof(ec_eoe_frame_t), GFP_ATOMIC))) {
+    if (!(frame = ec_alloc_atomic(sizeof(ec_eoe_frame_t)))) {
         if (printk_ratelimit())
             EC_SLAVE_WARN(eoe->slave, "EoE TX: low on mem. frame dropped.\n");
         return 1;

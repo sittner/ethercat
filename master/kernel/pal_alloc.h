@@ -1,6 +1,6 @@
 /*****************************************************************************
  *
- *  Copyright (C) 2006-2008  Florian Pose, Ingenieurgemeinschaft IgH
+ *  Copyright (C) 2006-2024  Florian Pose, Ingenieurgemeinschaft IgH
  *
  *  This file is part of the IgH EtherCAT Master.
  *
@@ -21,50 +21,49 @@
 
 /**
    \file
-   CANopen over EtherCAT SDO entry functions.
+   Platform Abstraction Layer - Memory allocation for kernel.
 */
 
 /****************************************************************************/
 
+#ifndef __EC_KERNEL_PAL_ALLOC_H__
+#define __EC_KERNEL_PAL_ALLOC_H__
 
-#include "pal.h"
-
-#include "sdo_entry.h"
+#include <linux/slab.h>
+#include <linux/vmalloc.h>
 
 /****************************************************************************/
 
-/** Constructor.
- */
-void ec_sdo_entry_init(
-        ec_sdo_entry_t *entry, /**< SDO entry. */
-        ec_sdo_t *sdo, /**< Parent SDO. */
-        uint8_t subindex /**< Subindex. */
-        )
+static inline void *ec_alloc(size_t size)
 {
-    entry->sdo = sdo;
-    entry->subindex = subindex;
-    entry->data_type = 0x0000;
-    entry->bit_length = 0;
-    entry->read_access[EC_SDO_ENTRY_ACCESS_PREOP] = 0;
-    entry->read_access[EC_SDO_ENTRY_ACCESS_SAFEOP] = 0;
-    entry->read_access[EC_SDO_ENTRY_ACCESS_OP] = 0;
-    entry->write_access[EC_SDO_ENTRY_ACCESS_PREOP] = 0;
-    entry->write_access[EC_SDO_ENTRY_ACCESS_SAFEOP] = 0;
-    entry->write_access[EC_SDO_ENTRY_ACCESS_OP] = 0;
-    entry->description = NULL;
+    return kmalloc(size, GFP_KERNEL);
+}
+
+static inline void *ec_alloc_atomic(size_t size)
+{
+    return kmalloc(size, GFP_ATOMIC);
+}
+
+static inline void *ec_zalloc(size_t size)
+{
+    return kzalloc(size, GFP_KERNEL);
+}
+
+static inline void ec_free(void *ptr)
+{
+    kfree(ptr);
+}
+
+static inline void *ec_valloc(size_t size)
+{
+    return vmalloc(size);
+}
+
+static inline void ec_vfree(void *ptr)
+{
+    vfree(ptr);
 }
 
 /****************************************************************************/
 
-/** Destructor.
- */
-void ec_sdo_entry_clear(
-        ec_sdo_entry_t *entry /**< SDO entry. */
-        )
-{
-
-    if (entry->description)
-        ec_free(entry->description);
-}
-
-/****************************************************************************/
+#endif /* __EC_KERNEL_PAL_ALLOC_H__ */

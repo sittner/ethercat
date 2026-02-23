@@ -58,7 +58,7 @@ void ec_coe_emerg_ring_clear(
         )
 {
     if (ring->msgs) {
-        kfree(ring->msgs);
+        ec_free(ring->msgs);
     }
 }
 
@@ -82,7 +82,7 @@ int ec_coe_emerg_ring_size(
     ring->read_index = ring->write_index = 0;
 
     if (ring->msgs) {
-        kfree(ring->msgs);
+        ec_free(ring->msgs);
     }
     ring->msgs = NULL;
 
@@ -90,7 +90,7 @@ int ec_coe_emerg_ring_size(
         return 0;
     }
 
-    ring->msgs = kmalloc(sizeof(ec_coe_emerg_msg_t) * (size + 1), GFP_KERNEL);
+    ring->msgs = ec_alloc(sizeof(ec_coe_emerg_msg_t) * (size + 1));
     if (!ring->msgs) {
         return -ENOMEM;
     }
@@ -105,7 +105,7 @@ int ec_coe_emerg_ring_size(
  */
 void ec_coe_emerg_ring_push(
         ec_coe_emerg_ring_t *ring, /**< Emergency ring. */
-        const u8 *msg /**< Emergency message. */
+        const uint8_t *msg /**< Emergency message. */
         )
 {
     if (!ring->size ||
@@ -127,7 +127,7 @@ void ec_coe_emerg_ring_push(
  */
 int ec_coe_emerg_ring_pop(
         ec_coe_emerg_ring_t *ring, /**< Emergency ring. */
-        u8 *msg /**< Memory to store the emergency message. */
+        uint8_t *msg /**< Memory to store the emergency message. */
         )
 {
     if (ring->read_index == ring->write_index) {

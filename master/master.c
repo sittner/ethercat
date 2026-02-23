@@ -370,7 +370,7 @@ void ec_master_clear_eoe_handlers(
     list_for_each_entry_safe(eoe, next, &master->eoe_handlers, list) {
         list_del(&eoe->list);
         ec_eoe_clear(eoe);
-        kfree(eoe);
+        ec_free(eoe);
     }
 }
 #endif
@@ -389,7 +389,7 @@ void ec_master_clear_slave_configs(ec_master_t *master)
     list_for_each_entry_safe(sc, next, &master->configs, list) {
         list_del(&sc->list);
         ec_slave_config_clear(sc);
-        kfree(sc);
+        ec_free(sc);
     }
 }
 
@@ -428,7 +428,7 @@ void ec_master_clear_slaves(ec_master_t *master)
     }
 
     if (master->slaves) {
-        kfree(master->slaves);
+        ec_free(master->slaves);
         master->slaves = NULL;
     }
 
@@ -446,7 +446,7 @@ void ec_master_clear_domains(ec_master_t *master)
     list_for_each_entry_safe(domain, next, &master->domains, list) {
         list_del(&domain->list);
         ec_domain_clear(domain);
-        kfree(domain);
+        ec_free(domain);
     }
 }
 
@@ -1223,8 +1223,8 @@ void ec_master_update_device_stats(
         )
 {
     ec_device_stats_t *s = &master->device_stats;
-    s32 tx_frame_rate, rx_frame_rate, tx_byte_rate, rx_byte_rate, loss_rate;
-    u64 loss;
+    int32_t tx_frame_rate, rx_frame_rate, tx_byte_rate, rx_byte_rate, loss_rate;
+    uint64_t loss;
     unsigned int i, dev_idx;
 
     // frame statistics
@@ -1245,7 +1245,7 @@ void ec_master_update_device_stats(
      *   -> Y_n += (x - y_(n - 1)) / tau
      */
     for (i = 0; i < EC_RATE_COUNT; i++) {
-        s32 n = rate_intervals[i];
+        int32_t n = rate_intervals[i];
         s->tx_frame_rates[i] += (tx_frame_rate - s->tx_frame_rates[i]) / n;
         s->rx_frame_rates[i] += (rx_frame_rate - s->rx_frame_rates[i]) / n;
         s->tx_byte_rates[i] += (tx_byte_rate - s->tx_byte_rates[i]) / n;
@@ -2051,7 +2051,7 @@ ec_domain_t *ecrt_master_create_domain_err(
             master);
 
     if (!(domain =
-                (ec_domain_t *) kmalloc(sizeof(ec_domain_t), GFP_KERNEL))) {
+                (ec_domain_t *) ec_alloc(sizeof(ec_domain_t)))) {
         EC_MASTER_ERR(master, "Error allocating domain memory!\n");
         return ERR_PTR(-ENOMEM);
     }
@@ -2375,8 +2375,7 @@ ec_slave_config_t *ecrt_master_slave_config_err(ec_master_t *master,
                 " 0x%08X/0x%08X.\n",
                 alias, position, vendor_id, product_code);
 
-        if (!(sc = (ec_slave_config_t *) kmalloc(sizeof(ec_slave_config_t),
-                        GFP_KERNEL))) {
+        if (!(sc = (ec_slave_config_t *) ec_alloc(sizeof(ec_slave_config_t)))) {
             EC_MASTER_ERR(master, "Failed to allocate memory"
                     " for slave configuration.\n");
             return ERR_PTR(-ENOMEM);
