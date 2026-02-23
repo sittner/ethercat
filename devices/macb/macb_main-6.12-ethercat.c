@@ -39,6 +39,7 @@
 #include <linux/reset.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/inetdevice.h>
+#include <linux/rtnetlink.h>
 #include "macb-6.12-ethercat.h"
 
 static unsigned int txdelay = 35;
@@ -3092,7 +3093,11 @@ static int macb_open(struct net_device *dev)
 	if (err)
 		goto reset_hw;
 
+	if (get_ecdev(bp))
+		rtnl_lock();
 	err = macb_phylink_connect(bp);
+	if (get_ecdev(bp))
+		rtnl_unlock();
 	if (err)
 		goto phy_off;
 
@@ -3136,8 +3141,12 @@ static int macb_close(struct net_device *dev)
 		}
 	}
 
+	if (get_ecdev(bp))
+		rtnl_lock();
 	phylink_stop(bp->phylink);
 	phylink_disconnect_phy(bp->phylink);
+	if (get_ecdev(bp))
+		rtnl_unlock();
 
 	phy_power_off(bp->sgmii_phy);
 
