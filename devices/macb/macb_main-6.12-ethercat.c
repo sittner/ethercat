@@ -2079,9 +2079,49 @@ void ec_poll(struct net_device *dev)
 	struct macb_queue *queue;
 	unsigned int q;
 	int budget = 128;
+	unsigned long flags;
+	u32 status, ctrl;
 
 	for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue) {
+		status = queue_readl(queue, ISR);
+		if (bp->caps & MACB_CAPS_ISR_CLEAR_ON_WRITE)
+			queue_writel(queue, ISR, status);
+
+		/* Re-enable RX if DMA engine stopped (at91rm9200/Zynq) */
+		if (status & MACB_BIT(RXUBR)) {
+			spin_lock_irqsave(&bp->lock, flags);
+			ctrl = macb_readl(bp, NCR);
+			macb_writel(bp, NCR, ctrl & ~MACB_BIT(RE));
+			wmb();
+			macb_writel(bp, NCR, ctrl | MACB_BIT(RE));
+			spin_unlock_irqrestore(&bp->lock, flags);
+		}
+
+		if (status & MACB_BIT(ISR_ROVR)) {
+			spin_lock_irqsave(&bp->stats_lock, flags);
+			if (macb_is_gem(bp))
+				bp->hw_stats.gem.rx_overruns++;
+			else
+				bp->hw_stats.macb.rx_overruns++;
+			spin_unlock_irqrestore(&bp->stats_lock, flags);
+		}
+
+		if (status & MACB_BIT(HRESP)) {
+			queue_work(system_bh_wq, &bp->hresp_err_bh_work);
+			netdev_err(dev, "DMA bus error: HRESP not OK\n");
+		}
+
+		if (status & MACB_TX_ERR_FLAGS)
+			schedule_work(&queue->tx_error_task);
+
 		macb_tx_complete(queue, budget);
+
+		rmb(); /* ensure txubr_pending is up to date */
+		if (queue->txubr_pending) {
+			queue->txubr_pending = false;
+			macb_tx_restart(queue);
+		}
+
 		bp->macbgem_ops.mog_rx(queue, NULL, budget);
 	}
 }
