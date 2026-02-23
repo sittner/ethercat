@@ -1513,13 +1513,13 @@ void ec_fsm_slave_config_state_dc_sync_check(
 
             start = start_time + cycle - remainder + sync0->shift_time;
 
-            EC_SLAVE_DBG(slave, 1, "   ref_time=%llu\n", master->dc_ref_time);
-            EC_SLAVE_DBG(slave, 1, "   app_time=%llu\n", master->app_time);
-            EC_SLAVE_DBG(slave, 1, " start_time=%llu\n", start_time);
+            EC_SLAVE_DBG(slave, 1, "   ref_time=%llu\n", (unsigned long long) master->dc_ref_time);
+            EC_SLAVE_DBG(slave, 1, "   app_time=%llu\n", (unsigned long long) master->app_time);
+            EC_SLAVE_DBG(slave, 1, " start_time=%llu\n", (unsigned long long) start_time);
             EC_SLAVE_DBG(slave, 1, "      cycle=%u\n", cycle);
             EC_SLAVE_DBG(slave, 1, " shift_time=%i\n", sync0->shift_time);
             EC_SLAVE_DBG(slave, 1, "  remainder=%u\n", remainder);
-            EC_SLAVE_DBG(slave, 1, "       start=%llu\n", start);
+            EC_SLAVE_DBG(slave, 1, "       start=%llu\n", (unsigned long long) start);
             start_time = start;
         } else {
             EC_SLAVE_WARN(slave, "No application time supplied."
@@ -1528,7 +1528,7 @@ void ec_fsm_slave_config_state_dc_sync_check(
     }
 
     EC_SLAVE_DBG(slave, 1, "Setting DC cyclic operation"
-            " start time to %llu.\n", start_time);
+            " start time to %llu.\n", (unsigned long long) start_time);
 
     ec_datagram_fpwr(datagram, slave->station_address, 0x0990, 8);
     EC_WRITE_U64(datagram->data, start_time);
