@@ -531,7 +531,7 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
 
         // new socket buffer
         if (!(eoe->rx_skb = dev_alloc_skb(fragment_offset * 32))) {
-            if (printk_ratelimit())
+            if (ec_log_ratelimit())
                 EC_SLAVE_WARN(eoe->slave, "EoE RX low on mem,"
                         " frame dropped.\n");
             eoe->stats.rx_dropped++;
@@ -815,7 +815,7 @@ int ec_eoedev_tx(struct sk_buff *skb, /**< transmit socket buffer */
     lockdep_assert_held(&netdev_get_tx_queue(dev, 0)->_xmit_lock);
 
     if (!(frame = ec_alloc_atomic(sizeof(ec_eoe_frame_t)))) {
-        if (printk_ratelimit())
+        if (ec_log_ratelimit())
             EC_SLAVE_WARN(eoe->slave, "EoE TX: low on mem. frame dropped.\n");
         return 1;
     }
