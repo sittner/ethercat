@@ -1,6 +1,8 @@
 debian/extras/* /
+etc/ethercat.conf etc/default/
 etc/sysconfig/* etc/default/
 usr/bin/*
 usr/sbin/*
 usr/lib/*/*.so*
+usr/share/bash-completion/completions/*
 

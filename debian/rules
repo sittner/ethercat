@@ -24,8 +24,6 @@ override_dh_auto_configure:
 		$(CONFFLAGS)
 
 override_dh_install:
-	dh_missing --list-missing
-
 	dh_install -petherlabmaster config.h globals.h Kbuild usr/src/etherlabmaster-$(VERSION)
 	dh_install -petherlabmaster -X.o -X.ko -XMakefile -X.in -X.am examples/ include/ master/ tty/ usr/src/etherlabmaster-$(VERSION)
 	dh_install -petherlabmaster debian/dkms/* usr/src/etherlabmaster-$(VERSION)
