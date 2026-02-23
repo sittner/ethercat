@@ -2078,9 +2078,12 @@ void ec_poll(struct net_device *dev)
 	struct macb *bp = netdev_priv(dev);
 	struct macb_queue *queue;
 	unsigned int q;
+	int budget = 128;
 
-	for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue)
-		macb_interrupt(dev->irq, queue);
+	for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue) {
+		macb_tx_complete(queue, budget);
+		bp->macbgem_ops.mog_rx(queue, NULL, budget);
+	}
 }
 
 static unsigned int macb_tx_map(struct macb *bp,
