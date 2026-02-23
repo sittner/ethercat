@@ -1,0 +1,4 @@
+# Libtool archive - not useful for package consumers (Debian policy)
+usr/lib/${DEB_HOST_MULTIARCH}/libethercat.la
+# SysV init script - systemd service is used instead
+etc/init.d/ethercat
