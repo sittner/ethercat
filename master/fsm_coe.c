@@ -475,7 +475,7 @@ int ec_fsm_coe_dict_prepare_desc(
         )
 {
     ec_slave_t *slave = fsm->slave;
-    u8 *data = ec_slave_mbox_prepare_send(slave, datagram, EC_MBOX_TYPE_COE,
+    uint8_t *data = ec_slave_mbox_prepare_send(slave, datagram, EC_MBOX_TYPE_COE,
 			8);
     if (IS_ERR(data)) {
         return PTR_ERR(data);
@@ -606,7 +606,7 @@ void ec_fsm_coe_dict_response(
             continue;
         }
 
-        if (!(sdo = (ec_sdo_t *) kmalloc(sizeof(ec_sdo_t), GFP_KERNEL))) {
+        if (!(sdo = (ec_sdo_t *) ec_alloc(sizeof(ec_sdo_t)))) {
             EC_SLAVE_ERR(slave, "Failed to allocate memory for SDO!\n");
             fsm->state = ec_fsm_coe_error;
             return;
@@ -757,7 +757,7 @@ int ec_fsm_coe_dict_prepare_entry(
         )
 {
     ec_slave_t *slave = fsm->slave;
-    u8 *data = ec_slave_mbox_prepare_send(slave, datagram, EC_MBOX_TYPE_COE,
+    uint8_t *data = ec_slave_mbox_prepare_send(slave, datagram, EC_MBOX_TYPE_COE,
 			10);
     if (IS_ERR(data)) {
         return PTR_ERR(data);
@@ -884,7 +884,7 @@ void ec_fsm_coe_dict_desc_response(
 
     name_size = rec_size - 12;
     if (name_size) {
-        if (!(sdo->name = kmalloc(name_size + 1, GFP_KERNEL))) {
+        if (!(sdo->name = ec_alloc(name_size + 1))) {
             EC_SLAVE_ERR(slave, "Failed to allocate SDO name!\n");
             fsm->state = ec_fsm_coe_error;
             return;
@@ -1025,7 +1025,7 @@ void ec_fsm_coe_dict_entry_response(
     uint8_t *data, mbox_prot;
     size_t rec_size, data_size;
     ec_sdo_entry_t *entry;
-    u16 word;
+    uint16_t word;
 
     if (fsm->datagram->state == EC_DATAGRAM_TIMED_OUT && fsm->retries--) {
         ec_slave_mbox_prepare_fetch(slave, datagram); // can not fail.
@@ -1122,7 +1122,7 @@ void ec_fsm_coe_dict_entry_response(
         data_size = rec_size - 16;
 
         if (!(entry = (ec_sdo_entry_t *)
-              kmalloc(sizeof(ec_sdo_entry_t), GFP_KERNEL))) {
+              ec_alloc(sizeof(ec_sdo_entry_t)))) {
             EC_SLAVE_ERR(slave, "Failed to allocate entry!\n");
             fsm->state = ec_fsm_coe_error;
             return;
@@ -1145,7 +1145,7 @@ void ec_fsm_coe_dict_entry_response(
 
         if (data_size) {
             char *desc;
-            if (!(desc = kmalloc(data_size + 1, GFP_KERNEL))) {
+            if (!(desc = ec_alloc(data_size + 1))) {
                 EC_SLAVE_ERR(slave, "Failed to allocate SDO entry name!\n");
                 fsm->state = ec_fsm_coe_error;
                 return;
@@ -1199,7 +1199,7 @@ int ec_fsm_coe_prepare_down_start(
         ec_datagram_t *datagram /**< Datagram to use. */
         )
 {
-    u8 *data;
+    uint8_t *data;
     ec_slave_t *slave = fsm->slave;
     ec_sdo_request_t *request = fsm->request;
     uint8_t data_set_size;
@@ -1849,7 +1849,7 @@ int ec_fsm_coe_prepare_up(
     ec_sdo_request_t *request = fsm->request;
     ec_master_t *master = slave->master;
 
-    u8 *data = ec_slave_mbox_prepare_send(slave, datagram, EC_MBOX_TYPE_COE,
+    uint8_t *data = ec_slave_mbox_prepare_send(slave, datagram, EC_MBOX_TYPE_COE,
 			10);
     if (IS_ERR(data)) {
         request->error = PTR_ERR(data);

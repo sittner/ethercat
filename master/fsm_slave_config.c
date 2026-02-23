@@ -1448,7 +1448,7 @@ void ec_fsm_slave_config_state_dc_sync_check(
     unsigned long diff_ms;
     ec_sync_signal_t *sync0 = &config->dc_sync[0];
     ec_sync_signal_t *sync1 = &config->dc_sync[1];
-    u64 start_time;
+    uint64_t start_time;
 
     if (!config) { // config removed in the meantime
         ec_fsm_slave_config_reconfigure(fsm);
@@ -1501,8 +1501,8 @@ void ec_fsm_slave_config_state_dc_sync_check(
     if (sync0->cycle_time) {
         // find correct phase
         if (master->dc_ref_time) {
-            u64 diff, start;
-            u32 remainder, cycle;
+            uint64_t diff, start;
+            uint32_t remainder, cycle;
 
             diff = start_time - master->dc_ref_time;
             cycle = sync0->cycle_time + sync1->cycle_time;

@@ -36,7 +36,7 @@
 /** EtherCAT CoE emergency message record.
  */
 typedef struct {
-    u8 data[EC_COE_EMERGENCY_MSG_SIZE]; /**< Message data. */
+    uint8_t data[EC_COE_EMERGENCY_MSG_SIZE]; /**< Message data. */
 } ec_coe_emerg_msg_t;
 
 /****************************************************************************/
@@ -60,8 +60,8 @@ void ec_coe_emerg_ring_init(ec_coe_emerg_ring_t *, ec_slave_config_t *);
 void ec_coe_emerg_ring_clear(ec_coe_emerg_ring_t *);
 
 int ec_coe_emerg_ring_size(ec_coe_emerg_ring_t *, size_t);
-void ec_coe_emerg_ring_push(ec_coe_emerg_ring_t *, const u8 *);
-int ec_coe_emerg_ring_pop(ec_coe_emerg_ring_t *, u8 *);
+void ec_coe_emerg_ring_push(ec_coe_emerg_ring_t *, const uint8_t *);
+int ec_coe_emerg_ring_pop(ec_coe_emerg_ring_t *, uint8_t *);
 int ec_coe_emerg_ring_clear_ring(ec_coe_emerg_ring_t *);
 int ec_coe_emerg_ring_overruns(const ec_coe_emerg_ring_t *);
 

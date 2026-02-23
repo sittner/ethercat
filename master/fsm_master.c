@@ -51,8 +51,8 @@ int ec_fsm_master_action_process_int_request(ec_fsm_master_t *);
 void ec_fsm_master_action_idle(ec_fsm_master_t *);
 void ec_fsm_master_action_next_slave_state(ec_fsm_master_t *);
 void ec_fsm_master_action_configure(ec_fsm_master_t *);
-u64 ec_fsm_master_dc_offset32(ec_fsm_master_t *, u64, u64, unsigned long);
-u64 ec_fsm_master_dc_offset64(ec_fsm_master_t *, u64, u64, unsigned long);
+uint64_t ec_fsm_master_dc_offset32(ec_fsm_master_t *, uint64_t, uint64_t, unsigned long);
+uint64_t ec_fsm_master_dc_offset64(ec_fsm_master_t *, uint64_t, uint64_t, unsigned long);
 
 /****************************************************************************/
 
@@ -384,7 +384,7 @@ void ec_fsm_master_state_broadcast(
 
             size = sizeof(ec_slave_t) * count;
             if (!(master->slaves =
-                        (ec_slave_t *) kmalloc(size, GFP_KERNEL))) {
+                        (ec_slave_t *) ec_alloc(size))) {
                 EC_MASTER_ERR(master, "Failed to allocate %u bytes"
                         " of slave memory!\n", size);
                 master->scan_busy = 0;
@@ -959,11 +959,11 @@ void ec_fsm_master_state_scan_slave(
     if (slave->sii.mailbox_protocols & EC_MBOX_EOE) {
         // create EoE handler for this slave
         ec_eoe_t *eoe;
-        if (!(eoe = kmalloc(sizeof(ec_eoe_t), GFP_KERNEL))) {
+        if (!(eoe = ec_alloc(sizeof(ec_eoe_t)))) {
             EC_SLAVE_ERR(slave, "Failed to allocate EoE handler memory!\n");
         } else if (ec_eoe_init(eoe, slave)) {
             EC_SLAVE_ERR(slave, "Failed to init EoE handler!\n");
-            kfree(eoe);
+            ec_free(eoe);
         } else {
             list_add_tail(&eoe->list, &master->eoe_handlers);
         }
@@ -1095,24 +1095,24 @@ void ec_fsm_master_enter_write_system_times(
  *
  * \return New offset.
  */
-u64 ec_fsm_master_dc_offset32(
+uint64_t ec_fsm_master_dc_offset32(
         ec_fsm_master_t *fsm, /**< Master state machine. */
-        u64 system_time, /**< System time register. */
-        u64 old_offset, /**< Time offset register. */
+        uint64_t system_time, /**< System time register. */
+        uint64_t old_offset, /**< Time offset register. */
         ec_time_t time_since_read /**< Time for correction. */
         )
 {
     ec_slave_t *slave = fsm->slave;
-    u32 correction, system_time32, old_offset32, new_offset;
-    s32 time_diff;
+    uint32_t correction, system_time32, old_offset32, new_offset;
+    int32_t time_diff;
 
-    system_time32 = (u32) system_time;
-    old_offset32 = (u32) old_offset;
+    system_time32 = (uint32_t) system_time;
+    old_offset32 = (uint32_t) old_offset;
 
     // correct read system time by elapsed time since read operation
     correction = ec_time_to_ns(time_since_read);
     system_time32 += correction;
-    time_diff = (u32) slave->master->app_time - system_time32;
+    time_diff = (uint32_t) slave->master->app_time - system_time32;
 
     EC_SLAVE_DBG(slave, 1, "DC 32 bit system time offset calculation:"
             " system_time=%u (corrected with %u),"
@@ -1124,7 +1124,7 @@ u64 ec_fsm_master_dc_offset32(
         new_offset = time_diff + old_offset32;
         EC_SLAVE_DBG(slave, 1, "Setting time offset to %u (was %u)\n",
                 new_offset, old_offset32);
-        return (u64) new_offset;
+        return (uint64_t) new_offset;
     } else {
         EC_SLAVE_DBG(slave, 1, "Not touching time offset.\n");
         return old_offset;
@@ -1137,19 +1137,19 @@ u64 ec_fsm_master_dc_offset32(
  *
  * \return New offset.
  */
-u64 ec_fsm_master_dc_offset64(
+uint64_t ec_fsm_master_dc_offset64(
         ec_fsm_master_t *fsm, /**< Master state machine. */
-        u64 system_time, /**< System time register. */
-        u64 old_offset, /**< Time offset register. */
+        uint64_t system_time, /**< System time register. */
+        uint64_t old_offset, /**< Time offset register. */
         ec_time_t time_since_read /**< Time for correction. */
         )
 {
     ec_slave_t *slave = fsm->slave;
-    u64 new_offset, correction;
-    s64 time_diff;
+    uint64_t new_offset, correction;
+    int64_t time_diff;
 
     // correct read system time by elapsed time since read operation
-    correction = (u64) ec_time_to_ns(time_since_read);
+    correction = (uint64_t) ec_time_to_ns(time_since_read);
     system_time += correction;
     time_diff = fsm->slave->master->app_time - system_time;
 
@@ -1181,7 +1181,7 @@ void ec_fsm_master_state_dc_read_offset(
 {
     ec_datagram_t *datagram = fsm->datagram;
     ec_slave_t *slave = fsm->slave;
-    u64 system_time, old_offset, new_offset;
+    uint64_t system_time, old_offset, new_offset;
     ec_time_t time_since_read;
 
     if (datagram->state == EC_DATAGRAM_TIMED_OUT && fsm->retries--)

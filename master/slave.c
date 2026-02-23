@@ -231,14 +231,14 @@ void ec_slave_clear(ec_slave_t *slave /**< EtherCAT slave */)
     list_for_each_entry_safe(sdo, next_sdo, &slave->sdo_dictionary, list) {
         list_del(&sdo->list);
         ec_sdo_clear(sdo);
-        kfree(sdo);
+        ec_free(sdo);
     }
 
     // free all strings
     if (slave->sii.strings) {
         for (i = 0; i < slave->sii.string_count; i++)
-            kfree(slave->sii.strings[i]);
-        kfree(slave->sii.strings);
+            ec_free(slave->sii.strings[i]);
+        ec_free(slave->sii.strings);
     }
 
     // free all sync managers
@@ -248,11 +248,11 @@ void ec_slave_clear(ec_slave_t *slave /**< EtherCAT slave */)
     list_for_each_entry_safe(pdo, next_pdo, &slave->sii.pdos, list) {
         list_del(&pdo->list);
         ec_pdo_clear(pdo);
-        kfree(pdo);
+        ec_free(pdo);
     }
 
     if (slave->sii_words) {
-        kfree(slave->sii_words);
+        ec_free(slave->sii_words);
     }
 
     ec_fsm_slave_clear(&slave->fsm);
@@ -270,7 +270,7 @@ void ec_slave_clear_sync_managers(ec_slave_t *slave /**< EtherCAT slave. */)
         for (i = 0; i < slave->sii.sync_count; i++) {
             ec_sync_clear(&slave->sii.syncs[i]);
         }
-        kfree(slave->sii.syncs);
+        ec_free(slave->sii.syncs);
         slave->sii.syncs = NULL;
     }
 }
@@ -333,8 +333,7 @@ int ec_slave_fetch_sii_strings(
 
     if (slave->sii.string_count) {
         if (!(slave->sii.strings =
-                    kmalloc(sizeof(char *) * slave->sii.string_count,
-                        GFP_KERNEL))) {
+                    ec_alloc(sizeof(char *) * slave->sii.string_count))) {
             EC_SLAVE_ERR(slave, "Failed to allocate string array memory.\n");
             err = -ENOMEM;
             goto out_zero;
@@ -345,7 +344,7 @@ int ec_slave_fetch_sii_strings(
             size = data[offset];
             // allocate memory for string structure and data at a single blow
             if (!(slave->sii.strings[i] =
-                        kmalloc(sizeof(char) * size + 1, GFP_KERNEL))) {
+                        ec_alloc(sizeof(char) * size + 1))) {
                 EC_SLAVE_ERR(slave, "Failed to allocate string memory.\n");
                 err = -ENOMEM;
                 goto out_free;
@@ -360,8 +359,8 @@ int ec_slave_fetch_sii_strings(
 
 out_free:
     for (i--; i >= 0; i--)
-        kfree(slave->sii.strings[i]);
-    kfree(slave->sii.strings);
+        ec_free(slave->sii.strings[i]);
+    ec_free(slave->sii.strings);
     slave->sii.strings = NULL;
 out_zero:
     slave->sii.string_count = 0;
@@ -455,7 +454,7 @@ int ec_slave_fetch_sii_syncs(
             return -EOVERFLOW;
         }
         memsize = sizeof(ec_sync_t) * total_count;
-        if (!(syncs = kmalloc(memsize, GFP_KERNEL))) {
+        if (!(syncs = ec_alloc(memsize))) {
             EC_SLAVE_ERR(slave, "Failed to allocate %zu bytes"
                     " for sync managers.\n", memsize);
             return -ENOMEM;
@@ -477,7 +476,7 @@ int ec_slave_fetch_sii_syncs(
         }
 
         if (slave->sii.syncs)
-            kfree(slave->sii.syncs);
+            ec_free(slave->sii.syncs);
         slave->sii.syncs = syncs;
         slave->sii.sync_count = total_count;
     }
@@ -505,7 +504,7 @@ int ec_slave_fetch_sii_pdos(
     unsigned int entry_count, i;
 
     while (data_size >= 8) {
-        if (!(pdo = kmalloc(sizeof(ec_pdo_t), GFP_KERNEL))) {
+        if (!(pdo = ec_alloc(sizeof(ec_pdo_t)))) {
             EC_SLAVE_ERR(slave, "Failed to allocate PDO memory.\n");
             return -ENOMEM;
         }
@@ -518,7 +517,7 @@ int ec_slave_fetch_sii_pdos(
                 ec_slave_sii_string(slave, EC_READ_U8(data + 5)));
         if (ret) {
             ec_pdo_clear(pdo);
-            kfree(pdo);
+            ec_free(pdo);
             return ret;
         }
         list_add_tail(&pdo->list, &slave->sii.pdos);
@@ -527,7 +526,7 @@ int ec_slave_fetch_sii_pdos(
         data += 8;
 
         for (i = 0; i < entry_count; i++) {
-            if (!(entry = kmalloc(sizeof(ec_pdo_entry_t), GFP_KERNEL))) {
+            if (!(entry = ec_alloc(sizeof(ec_pdo_entry_t)))) {
                 EC_SLAVE_ERR(slave, "Failed to allocate PDO entry memory.\n");
                 return -ENOMEM;
             }
@@ -539,7 +538,7 @@ int ec_slave_fetch_sii_pdos(
                     ec_slave_sii_string(slave, EC_READ_U8(data + 3)));
             if (ret) {
                 ec_pdo_entry_clear(entry);
-                kfree(entry);
+                ec_free(entry);
                 return ret;
             }
             entry->bit_length = EC_READ_U8(data + 5);

@@ -41,7 +41,7 @@ int ec_reg_request_init(
         size_t size /**< Memory size. */
         )
 {
-    if (!(reg->data = (uint8_t *) kmalloc(size, GFP_KERNEL))) {
+    if (!(reg->data = (uint8_t *) ec_alloc(size))) {
         EC_ERR("Failed to allocate %zu bytes of register memory.\n", size);
         return -ENOMEM;
     }
@@ -66,7 +66,7 @@ void ec_reg_request_clear(
         )
 {
     if (reg->data) {
-        kfree(reg->data);
+        ec_free(reg->data);
     }
 }
 

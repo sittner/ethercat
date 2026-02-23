@@ -74,26 +74,26 @@ struct ec_device
     ec_time_t time_poll; /**< Timestamp of last poll */
 
     // Frame statistics
-    u64 tx_count; /**< Number of frames sent. */
-    u64 last_tx_count; /**< Number of frames sent of last statistics cycle. */
-    u64 rx_count; /**< Number of frames received. */
-    u64 last_rx_count; /**< Number of frames received of last statistics
+    uint64_t tx_count; /**< Number of frames sent. */
+    uint64_t last_tx_count; /**< Number of frames sent of last statistics cycle. */
+    uint64_t rx_count; /**< Number of frames received. */
+    uint64_t last_rx_count; /**< Number of frames received of last statistics
                          cycle. */
-    u64 tx_bytes; /**< Number of bytes sent. */
-    u64 last_tx_bytes; /**< Number of bytes sent of last statistics cycle. */
-    u64 rx_bytes; /**< Number of bytes received. */
-    u64 last_rx_bytes; /**< Number of bytes received of last statistics cycle.
+    uint64_t tx_bytes; /**< Number of bytes sent. */
+    uint64_t last_tx_bytes; /**< Number of bytes sent of last statistics cycle. */
+    uint64_t rx_bytes; /**< Number of bytes received. */
+    uint64_t last_rx_bytes; /**< Number of bytes received of last statistics cycle.
                         */
-    u64 tx_errors; /**< Number of transmit errors. */
-    s32 tx_frame_rates[EC_RATE_COUNT]; /**< Transmit rates in frames/s for
+    uint64_t tx_errors; /**< Number of transmit errors. */
+    int32_t tx_frame_rates[EC_RATE_COUNT]; /**< Transmit rates in frames/s for
                                          different statistics cycle periods.
                                         */
-    s32 rx_frame_rates[EC_RATE_COUNT]; /**< Receive rates in frames/s for
+    int32_t rx_frame_rates[EC_RATE_COUNT]; /**< Receive rates in frames/s for
                                          different statistics cycle periods.
                                         */
-    s32 tx_byte_rates[EC_RATE_COUNT]; /**< Transmit rates in byte/s for
+    int32_t tx_byte_rates[EC_RATE_COUNT]; /**< Transmit rates in byte/s for
                                         different statistics cycle periods. */
-    s32 rx_byte_rates[EC_RATE_COUNT]; /**< Receive rates in byte/s for
+    int32_t rx_byte_rates[EC_RATE_COUNT]; /**< Receive rates in byte/s for
                                         different statistics cycle periods. */
 
 #ifdef EC_DEBUG_IF

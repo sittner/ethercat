@@ -85,7 +85,7 @@ void ec_foe_request_clear_data(
         )
 {
     if (req->buffer) {
-        vfree(req->buffer);
+        ec_vfree(req->buffer);
         req->buffer = NULL;
     }
 
@@ -113,7 +113,7 @@ int ec_foe_request_alloc(
 
     ec_foe_request_clear_data(req);
 
-    if (!(req->buffer = (uint8_t *) vmalloc(size))) {
+    if (!(req->buffer = (uint8_t *) ec_valloc(size))) {
         EC_ERR("Failed to allocate %zu bytes of FoE memory.\n", size);
         return -ENOMEM;
     }

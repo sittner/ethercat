@@ -29,33 +29,12 @@
 #ifndef __EC_USPACE_PAL_MISC_H__
 #define __EC_USPACE_PAL_MISC_H__
 
-/****************************************************************************/
-/* Kernel-compatible integer types for userspace */
-/****************************************************************************/
-
-typedef uint8_t  u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-typedef int8_t   s8;
-typedef int16_t  s16;
-typedef int32_t  s32;
-typedef int64_t  s64;
-
 /* Kernel module exports - not needed in userspace */
 #define EXPORT_SYMBOL(x)
 #define EXPORT_SYMBOL_GPL(x)
 
 #include "list.h"
-
-#define GFP_KERNEL  0
-
-#define kmalloc(size, flags)    malloc(size)
-#define kzalloc(size, flags)    calloc(1, size)
-#define kfree(ptr)              free(ptr)
-
-#define vmalloc(size)           malloc(size)
-#define vfree(ptr)              free(ptr)
+#include "pal_alloc.h"
 
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #define likely(x)   __builtin_expect(!!(x), 1)

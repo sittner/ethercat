@@ -83,6 +83,7 @@
 #include "../../devices/ecdev.h"
 
 #include "cdev.h"
+#include "pal_alloc.h"
 
 #ifdef EC_RTDM
 #include "rtdm.h"

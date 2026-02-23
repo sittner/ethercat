@@ -274,7 +274,7 @@ void ec_fsm_slave_scan_state_base(
 {
     ec_datagram_t *datagram = fsm->datagram;
     ec_slave_t *slave = fsm->slave;
-    u8 octet;
+    uint8_t octet;
     int i;
 
     if (datagram->state == EC_DATAGRAM_TIMED_OUT && fsm->retries--)
@@ -626,11 +626,11 @@ void ec_fsm_slave_scan_state_sii_size(
 alloc_sii:
     if (slave->sii_words) {
         EC_SLAVE_WARN(slave, "Freeing old SII data...\n");
-        kfree(slave->sii_words);
+        ec_free(slave->sii_words);
     }
 
     if (!(slave->sii_words =
-                (uint16_t *) kmalloc(slave->sii_nwords * 2, GFP_KERNEL))) {
+                (uint16_t *) ec_alloc(slave->sii_nwords * 2))) {
         EC_SLAVE_ERR(slave, "Failed to allocate %zu words of SII data.\n",
                slave->sii_nwords);
         slave->sii_nwords = 0;
