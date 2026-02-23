@@ -1118,7 +1118,7 @@ uint64_t ec_fsm_master_dc_offset32(
             " system_time=%u (corrected with %u),"
             " app_time=%llu, diff=%i\n",
             system_time32, correction,
-            slave->master->app_time, time_diff);
+            (unsigned long long) slave->master->app_time, time_diff);
 
     if (EC_ABS(time_diff) > EC_SYSTEM_TIME_TOLERANCE_NS) {
         new_offset = time_diff + old_offset32;
@@ -1156,13 +1156,16 @@ uint64_t ec_fsm_master_dc_offset64(
     EC_SLAVE_DBG(slave, 1, "DC 64 bit system time offset calculation:"
             " system_time=%llu (corrected with %llu),"
             " app_time=%llu, diff=%lli\n",
-            system_time, correction,
-            slave->master->app_time, time_diff);
+            (unsigned long long) system_time,
+            (unsigned long long) correction,
+            (unsigned long long) slave->master->app_time,
+            (long long) time_diff);
 
     if (EC_ABS(time_diff) > EC_SYSTEM_TIME_TOLERANCE_NS) {
         new_offset = time_diff + old_offset;
         EC_SLAVE_DBG(slave, 1, "Setting time offset to %llu (was %llu)\n",
-                new_offset, old_offset);
+                (unsigned long long) new_offset,
+                (unsigned long long) old_offset);
     } else {
         new_offset = old_offset;
         EC_SLAVE_DBG(slave, 1, "Not touching time offset.\n");
