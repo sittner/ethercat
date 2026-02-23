@@ -177,18 +177,21 @@ uint8_t *ec_slave_mbox_fetch(const ec_slave_t *slave, /**< slave */
         const ec_code_msg_t *mbox_msg;
         uint16_t code = EC_READ_U16(datagram->data + 8);
 
-        EC_SLAVE_ERR(slave, "Mailbox error response received - ");
-
-        for (mbox_msg = mbox_error_messages; mbox_msg->code; mbox_msg++) {
-            if (mbox_msg->code != code)
-                continue;
-            printk(KERN_CONT "Code 0x%04X: \"%s\".\n",
-                    mbox_msg->code, mbox_msg->message);
-            break;
-        }
-
-        if (!mbox_msg->code) {
-            printk(KERN_CONT "Unknown error reply code 0x%04X.\n", code);
+        {
+            const char *err_msg = NULL;
+            for (mbox_msg = mbox_error_messages; mbox_msg->code; mbox_msg++) {
+                if (mbox_msg->code == code) {
+                    err_msg = mbox_msg->message;
+                    break;
+                }
+            }
+            if (err_msg) {
+                EC_SLAVE_ERR(slave, "Mailbox error response received -"
+                        " Code 0x%04X: \"%s\".\n", code, err_msg);
+            } else {
+                EC_SLAVE_ERR(slave, "Mailbox error response received -"
+                        " Unknown error reply code 0x%04X.\n", code);
+            }
         }
 
         if (slave->master->debug_level)

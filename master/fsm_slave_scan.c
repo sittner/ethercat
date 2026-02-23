@@ -198,16 +198,16 @@ void ec_fsm_slave_scan_state_address(
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_scan_state_error;
         EC_SLAVE_ERR(fsm->slave,
-                "Failed to receive station address datagram: ");
-        ec_datagram_print_state(datagram);
+                "Failed to receive station address datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         fsm->slave->error_flag = 1;
         fsm->state = ec_fsm_slave_scan_state_error;
-        EC_SLAVE_ERR(fsm->slave, "Failed to write station address: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(fsm->slave, "Failed to write station address: %s\n", _wc);
         return;
     }
 
@@ -236,16 +236,16 @@ void ec_fsm_slave_scan_state_state(
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_scan_state_error;
-        EC_SLAVE_ERR(slave, "Failed to receive AL state datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive AL state datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         fsm->slave->error_flag = 1;
         fsm->state = ec_fsm_slave_scan_state_error;
-        EC_SLAVE_ERR(slave, "Failed to read AL state: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Failed to read AL state: %s\n", _wc);
         return;
     }
 
@@ -282,16 +282,16 @@ void ec_fsm_slave_scan_state_base(
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_scan_state_error;
-        EC_SLAVE_ERR(slave, "Failed to receive base data datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive base data datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         fsm->slave->error_flag = 1;
         fsm->state = ec_fsm_slave_scan_state_error;
-        EC_SLAVE_ERR(slave, "Failed to read base data: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Failed to read base data: %s\n", _wc);
         return;
     }
 
@@ -354,8 +354,7 @@ void ec_fsm_slave_scan_state_dc_cap(
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_scan_state_error;
-        EC_SLAVE_ERR(slave, "Failed to receive system time datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive system time datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
@@ -368,9 +367,10 @@ void ec_fsm_slave_scan_state_dc_cap(
     } else {
         fsm->slave->error_flag = 1;
         fsm->state = ec_fsm_slave_scan_state_error;
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
         EC_SLAVE_ERR(slave, "Failed to determine, if system time register is "
-                "supported: ");
-        ec_datagram_print_wc_error(datagram);
+                "supported: %s\n", _wc);
         return;
     }
 
@@ -400,16 +400,16 @@ void ec_fsm_slave_scan_state_dc_times(
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_scan_state_error;
-        EC_SLAVE_ERR(slave, "Failed to receive system time datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive system time datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         fsm->slave->error_flag = 1;
         fsm->state = ec_fsm_slave_scan_state_error;
-        EC_SLAVE_ERR(slave, "Failed to get DC receive times: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Failed to get DC receive times: %s\n", _wc);
         return;
     }
 
@@ -503,16 +503,16 @@ void ec_fsm_slave_scan_state_datalink(
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_scan_state_error;
-        EC_SLAVE_ERR(slave, "Failed to receive DL status datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive DL status datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         fsm->slave->error_flag = 1;
         fsm->state = ec_fsm_slave_scan_state_error;
-        EC_SLAVE_ERR(slave, "Failed to read DL status: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Failed to read DL status: %s\n", _wc);
         return;
     }
 
@@ -553,15 +553,15 @@ void ec_fsm_slave_scan_state_assign_sii(
     }
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
-        EC_SLAVE_WARN(slave, "Failed to receive SII assignment datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_WARN(slave, "Failed to receive SII assignment datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         // Try to go on, probably assignment is correct
         goto continue_with_sii_size;
     }
 
     if (datagram->working_counter != 1) {
-        EC_SLAVE_WARN(slave, "Failed to assign SII to EtherCAT: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_WARN(slave, "Failed to assign SII to EtherCAT: %s\n", _wc);
         // Try to go on, probably assignment is correct
     }
 
@@ -720,45 +720,30 @@ void ec_fsm_slave_scan_state_sii_data(ec_fsm_slave_scan_t *fsm
     slave->sii.mailbox_protocols =
         EC_READ_U16(slave->sii_words + 0x001C);
     if (slave->sii.mailbox_protocols) {
-        int need_delim = 0;
         uint16_t all = EC_MBOX_AOE | EC_MBOX_COE | EC_MBOX_FOE |
             EC_MBOX_SOE | EC_MBOX_VOE;
         if ((slave->sii.mailbox_protocols & all) &&
                 slave->master->debug_level >= 1) {
-            EC_SLAVE_DBG(slave, 1, "Slave announces to support ");
-            if (slave->sii.mailbox_protocols & EC_MBOX_AOE) {
-                printk(KERN_CONT "AoE");
-                need_delim = 1;
-            }
-            if (slave->sii.mailbox_protocols & EC_MBOX_COE) {
-                if (need_delim) {
-                    printk(KERN_CONT ", ");
-                }
-                printk(KERN_CONT "CoE");
-                need_delim = 1;
-            }
-            if (slave->sii.mailbox_protocols & EC_MBOX_FOE) {
-                if (need_delim) {
-                    printk(KERN_CONT ", ");
-                }
-                printk(KERN_CONT "FoE");
-                need_delim = 1;
-            }
-            if (slave->sii.mailbox_protocols & EC_MBOX_SOE) {
-                if (need_delim) {
-                    printk(KERN_CONT ", ");
-                }
-                printk(KERN_CONT "SoE");
-                need_delim = 1;
-            }
-            if (slave->sii.mailbox_protocols & EC_MBOX_VOE) {
-                if (need_delim) {
-                    printk(KERN_CONT ", ");
-                }
-                printk(KERN_CONT "VoE");
-                need_delim = 1;
-            }
-            printk(KERN_CONT ".\n");
+            char _proto[64];
+            int _off = 0;
+            _proto[0] = '\0';
+            if (slave->sii.mailbox_protocols & EC_MBOX_AOE)
+                _off += snprintf(_proto + _off, sizeof(_proto) - _off,
+                        "%sAoE", _off ? ", " : "");
+            if (slave->sii.mailbox_protocols & EC_MBOX_COE)
+                _off += snprintf(_proto + _off, sizeof(_proto) - _off,
+                        "%sCoE", _off ? ", " : "");
+            if (slave->sii.mailbox_protocols & EC_MBOX_FOE)
+                _off += snprintf(_proto + _off, sizeof(_proto) - _off,
+                        "%sFoE", _off ? ", " : "");
+            if (slave->sii.mailbox_protocols & EC_MBOX_SOE)
+                _off += snprintf(_proto + _off, sizeof(_proto) - _off,
+                        "%sSoE", _off ? ", " : "");
+            if (slave->sii.mailbox_protocols & EC_MBOX_VOE)
+                _off += snprintf(_proto + _off, sizeof(_proto) - _off,
+                        "%sVoE", _off ? ", " : "");
+            EC_SLAVE_DBG(slave, 1, "Slave announces to support %s.\n",
+                    _proto);
         }
         if (slave->sii.mailbox_protocols & ~all) {
             EC_SLAVE_DBG(slave, 1, "Slave announces to support unknown"
@@ -912,8 +897,8 @@ void ec_fsm_slave_scan_state_regalias(
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_scan_state_error;
-        EC_SLAVE_ERR(slave, "Failed to receive register alias datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive register alias datagram: Datagram %s.\n",
+                ec_datagram_state_str(datagram));
         return;
     }
 
@@ -1009,16 +994,16 @@ void ec_fsm_slave_scan_state_sync(
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         fsm->state = ec_fsm_slave_scan_state_error;
         EC_SLAVE_ERR(slave, "Failed to receive sync manager"
-                " configuration datagram: ");
-        ec_datagram_print_state(datagram);
+                " configuration datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         fsm->slave->error_flag = 1;
         fsm->state = ec_fsm_slave_scan_state_error;
-        EC_SLAVE_ERR(slave, "Failed to read DL status: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Failed to read DL status: %s\n", _wc);
         return;
     }
 

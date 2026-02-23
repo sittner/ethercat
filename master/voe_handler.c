@@ -253,8 +253,7 @@ void ec_voe_handler_state_write_response(ec_voe_handler_t *voe)
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         voe->state = ec_voe_handler_state_error;
         voe->request_state = EC_INT_REQUEST_FAILURE;
-        EC_SLAVE_ERR(slave, "Failed to receive VoE write request datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive VoE write request datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
@@ -272,8 +271,9 @@ void ec_voe_handler_state_write_response(ec_voe_handler_t *voe)
         }
         voe->state = ec_voe_handler_state_error;
         voe->request_state = EC_INT_REQUEST_FAILURE;
-        EC_SLAVE_ERR(slave, "Reception of VoE write request failed: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Reception of VoE write request failed: %s\n", _wc);
         return;
     }
 
@@ -323,17 +323,17 @@ void ec_voe_handler_state_read_check(ec_voe_handler_t *voe)
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         voe->state = ec_voe_handler_state_error;
         voe->request_state = EC_INT_REQUEST_FAILURE;
-        EC_SLAVE_ERR(slave, "Failed to receive VoE mailbox check datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive VoE mailbox check datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         voe->state = ec_voe_handler_state_error;
         voe->request_state = EC_INT_REQUEST_FAILURE;
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
         EC_SLAVE_ERR(slave, "Reception of VoE mailbox check"
-                " datagram failed: ");
-        ec_datagram_print_wc_error(datagram);
+                " datagram failed: %s\n", _wc);
         return;
     }
 
@@ -376,16 +376,16 @@ void ec_voe_handler_state_read_response(ec_voe_handler_t *voe)
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         voe->state = ec_voe_handler_state_error;
         voe->request_state = EC_INT_REQUEST_FAILURE;
-        EC_SLAVE_ERR(slave, "Failed to receive VoE read datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive VoE read datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
     if (datagram->working_counter != 1) {
         voe->state = ec_voe_handler_state_error;
         voe->request_state = EC_INT_REQUEST_FAILURE;
-        EC_SLAVE_ERR(slave, "Reception of VoE read response failed: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Reception of VoE read response failed: %s\n", _wc);
         return;
     }
 
@@ -467,8 +467,7 @@ void ec_voe_handler_state_read_nosync_response(ec_voe_handler_t *voe)
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         voe->state = ec_voe_handler_state_error;
         voe->request_state = EC_INT_REQUEST_FAILURE;
-        EC_SLAVE_ERR(slave, "Failed to receive VoE read datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive VoE read datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         return;
     }
 
@@ -482,8 +481,9 @@ void ec_voe_handler_state_read_nosync_response(ec_voe_handler_t *voe)
     if (datagram->working_counter != 1) {
         voe->state = ec_voe_handler_state_error;
         voe->request_state = EC_INT_REQUEST_FAILURE;
-        EC_SLAVE_WARN(slave, "Reception of VoE read response failed: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_WARN(slave, "Reception of VoE read response failed: %s\n", _wc);
         return;
     }
 

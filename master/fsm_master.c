@@ -762,8 +762,7 @@ void ec_fsm_master_state_read_state(
     }
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
-        EC_SLAVE_ERR(slave, "Failed to receive AL state datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive AL state datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         ec_fsm_master_restart(fsm);
         return;
     }
@@ -855,9 +854,9 @@ void ec_fsm_master_state_clear_addresses(
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         EC_MASTER_ERR(master, "Failed to receive address"
-                " clearing datagram on %s link: ",
-                ec_device_names[fsm->dev_idx != 0]);
-        ec_datagram_print_state(datagram);
+                " clearing datagram on %s link: Datagram %s.\n",
+                ec_device_names[fsm->dev_idx != 0],
+                ec_datagram_state_str(datagram));
         master->scan_busy = 0;
         master->scan_index = master->slave_count;
         wake_up_interruptible(&master->scan_queue);
@@ -900,8 +899,9 @@ void ec_fsm_master_state_dc_measure_delays(
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         EC_MASTER_ERR(master, "Failed to receive delay measuring datagram"
-                " on %s link: ", ec_device_names[fsm->dev_idx != 0]);
-        ec_datagram_print_state(datagram);
+                " on %s link: Datagram %s.\n",
+                ec_device_names[fsm->dev_idx != 0],
+                ec_datagram_state_str(datagram));
         master->scan_busy = 0;
         master->scan_index = master->slave_count;
         wake_up_interruptible(&master->scan_queue);
@@ -1188,16 +1188,16 @@ void ec_fsm_master_state_dc_read_offset(
         return;
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
-        EC_SLAVE_ERR(slave, "Failed to receive DC times datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive DC times datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         fsm->slave++;
         ec_fsm_master_enter_write_system_times(fsm);
         return;
     }
 
     if (datagram->working_counter != 1) {
-        EC_SLAVE_WARN(slave, "Failed to get DC times: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_WARN(slave, "Failed to get DC times: %s\n", _wc);
         fsm->slave++;
         ec_fsm_master_enter_write_system_times(fsm);
         return;
@@ -1240,16 +1240,16 @@ void ec_fsm_master_state_dc_write_offset(
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
         EC_SLAVE_ERR(slave,
-                "Failed to receive DC system time offset datagram: ");
-        ec_datagram_print_state(datagram);
+                "Failed to receive DC system time offset datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         fsm->slave++;
         ec_fsm_master_enter_write_system_times(fsm);
         return;
     }
 
     if (datagram->working_counter != 1) {
-        EC_SLAVE_ERR(slave, "Failed to set DC system time offset: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Failed to set DC system time offset: %s\n", _wc);
         fsm->slave++;
         ec_fsm_master_enter_write_system_times(fsm);
         return;
@@ -1275,14 +1275,14 @@ void ec_fsm_master_state_assign_sii(
         return;
 
     if (datagram->state != EC_DATAGRAM_RECEIVED) {
-        EC_SLAVE_ERR(slave, "Failed to receive SII assignment datagram: ");
-        ec_datagram_print_state(datagram);
+        EC_SLAVE_ERR(slave, "Failed to receive SII assignment datagram: Datagram %s.\n", ec_datagram_state_str(datagram));
         goto cont;
     }
 
     if (datagram->working_counter != 1) {
-        EC_SLAVE_ERR(slave, "Failed to assign SII back to EtherCAT: ");
-        ec_datagram_print_wc_error(datagram);
+        char _wc[32];
+        ec_datagram_wc_error_str(datagram, _wc, sizeof(_wc));
+        EC_SLAVE_ERR(slave, "Failed to assign SII back to EtherCAT: %s\n", _wc);
         goto cont;
     }
 

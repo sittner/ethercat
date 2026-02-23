@@ -127,6 +127,8 @@ int ec_datagram_lrw_ext(ec_datagram_t *, uint32_t, size_t, uint8_t *);
 
 void ec_datagram_print_state(const ec_datagram_t *);
 void ec_datagram_print_wc_error(const ec_datagram_t *);
+const char *ec_datagram_state_str(const ec_datagram_t *);
+void ec_datagram_wc_error_str(const ec_datagram_t *, char *, size_t);
 void ec_datagram_output_stats(ec_datagram_t *);
 const char *ec_datagram_type_string(const ec_datagram_t *);
 

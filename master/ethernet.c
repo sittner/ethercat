@@ -266,16 +266,20 @@ int ec_eoe_send(ec_eoe_t *eoe /**< EoE handler */)
 #endif
 
 #if EOE_DEBUG_LEVEL >= 3
-    EC_SLAVE_DBG(eoe->slave, 0, "");
-    for (i = 0; i < current_size; i++) {
-        printk(KERN_CONT "%02X ",
-                eoe->tx_frame->skb->data[eoe->tx_offset + i]);
-        if ((i + 1) % 16 == 0) {
-            printk(KERN_CONT "\n");
-            EC_SLAVE_DBG(eoe->slave, 0, "");
+    {
+        char _line[3 * 16 + 1];
+        int _off = 0;
+        _line[0] = '\0';
+        for (i = 0; i < current_size; i++) {
+            _off += snprintf(_line + _off, sizeof(_line) - _off,
+                    "%02X ", eoe->tx_frame->skb->data[eoe->tx_offset + i]);
+            if ((i + 1) % 16 == 0 || i + 1 == current_size) {
+                EC_SLAVE_DBG(eoe->slave, 0, "%s\n", _line);
+                _off = 0;
+                _line[0] = '\0';
+            }
         }
     }
-    printk(KERN_CONT "\n");
 #endif
 
     data = ec_slave_mbox_prepare_send(eoe->slave, &eoe->datagram,
@@ -500,15 +504,21 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
 #endif
 
 #if EOE_DEBUG_LEVEL >= 3
-    EC_SLAVE_DBG(eoe->slave, 0, "");
-    for (i = 0; i < rec_size - 4; i++) {
-        printk(KERN_CONT "%02X ", data[i + 4]);
-        if ((i + 1) % 16 == 0) {
-            printk(KERN_CONT "\n");
-            EC_SLAVE_DBG(eoe->slave, 0, "");
+    {
+        char _line[3 * 16 + 1];
+        int _off = 0;
+        size_t _rx_size = rec_size - 4;
+        _line[0] = '\0';
+        for (i = 0; i < _rx_size; i++) {
+            _off += snprintf(_line + _off, sizeof(_line) - _off,
+                    "%02X ", data[i + 4]);
+            if ((i + 1) % 16 == 0 || i + 1 == _rx_size) {
+                EC_SLAVE_DBG(eoe->slave, 0, "%s\n", _line);
+                _off = 0;
+                _line[0] = '\0';
+            }
         }
     }
-    printk(KERN_CONT "\n");
 #endif
 
     data_size = time_appended ? rec_size - 8 : rec_size - 4;
