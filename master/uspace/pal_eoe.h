@@ -198,6 +198,31 @@ int ec_netif_rx(ec_skb_t *skb);
 ec_skb_t *ec_netdev_rx_from_tap(ec_netdev_t *dev);
 
 /****************************************************************************/
+/* EoE PAL Typedefs */
+/****************************************************************************/
+
+typedef ec_netdev_t * ec_eoe_netdev_t;
+typedef ec_skb_t * ec_eoe_buf_t;
+typedef struct {
+    unsigned long rx_packets;
+    unsigned long tx_packets;
+    unsigned long rx_bytes;
+    unsigned long tx_bytes;
+    unsigned long rx_errors;
+    unsigned long tx_errors;
+    unsigned long rx_dropped;
+    unsigned long tx_dropped;
+} ec_eoe_stats_t;
+
+static inline const char *ec_eoe_netdev_name(ec_eoe_netdev_t dev) {
+    return dev->name;
+}
+
+static inline int ec_eoe_netdev_ifindex(ec_eoe_netdev_t dev) {
+    return dev->ifindex;
+}
+
+/****************************************************************************/
 /* Utility Functions */
 /****************************************************************************/
 

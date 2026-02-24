@@ -122,6 +122,7 @@ typedef struct irq_work ec_irq_work_t;
 #include "pal_thread.h"
 #include "pal_work.h"
 #include "pal_irq_work.h"
+#include "pal_eoe.h"
 
 /** Kernel-specific master fields. */
 typedef struct {
