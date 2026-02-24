@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall -g -O0 -I. -I.. -I../.. -Itransport -D_GNU_SOURCE
+CFLAGS = -Wall -g -O0 -I. -I.. -I../.. -Itransport -D_GNU_SOURCE -DEC_USPACE_MASTER
 LDFLAGS = -lpthread
 
 ENABLE_XDP = 1
@@ -63,7 +63,7 @@ MASTER_SRCS = \
 	../voe_handler.c
 
 # Userspace sources
-USPACE_SRCS = main.c device_uspace.c pal.c pal_eoe.c pal_work.c pal_irq_work.c pal_thread.c $(TRANSPORT_SRCS)
+USPACE_SRCS = main.c device_uspace.c module.c pal.c pal_eoe.c pal_work.c pal_irq_work.c pal_thread.c $(TRANSPORT_SRCS)
 
 # All sources combined
 SRCS = $(MASTER_SRCS) $(USPACE_SRCS)
