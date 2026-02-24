@@ -210,9 +210,9 @@ Once shared code uses only `ec_eoe_*` PAL names, remove the kernel-name-mimickin
 
 Once shared code uses `ec_` names, balance the kernel side to match uspace structure.
 
-- [ ] Split monolithic `kernel/pal.h` typedefs into per-concept files matching uspace structure (`kernel/pal_sem.h`, `kernel/pal_mtx.h`, `kernel/pal_queue.h`, `kernel/pal_thread.h`, `kernel/pal_work.h`, `kernel/pal_irq_work.h`)
-- [ ] Add thin inline wrappers in each kernel `pal_*.h` file
-- [ ] Ensure symmetric file structure between `kernel/` and `uspace/`
+- [x] Split monolithic `kernel/pal.h` typedefs into per-concept files matching uspace structure (`kernel/pal_sem.h`, `kernel/pal_mtx.h`, `kernel/pal_queue.h`, `kernel/pal_thread.h`, `kernel/pal_work.h`, `kernel/pal_irq_work.h`)
+- [x] Add thin inline wrappers in each kernel `pal_*.h` file
+- [x] Ensure symmetric file structure between `kernel/` and `uspace/`
 
 ---
 

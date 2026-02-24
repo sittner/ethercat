@@ -68,14 +68,12 @@ static inline void ec_mutex_destroy(ec_rt_mutex_t *lock)
  *
  * Returns 0 on success, -EINTR if interrupted
  */
-static inline int rt_mutex_lock_interruptible(ec_rt_mutex_t *lock)
+static inline int ec_rt_lock_interruptible(ec_rt_mutex_t *lock)
 {
     int ret = pthread_mutex_lock(&lock->mutex);
     if (ret == EINTR)
         return -EINTR;
     return ret ? -ret : 0;
 }
-
-#define ec_rt_lock_interruptible(lock) rt_mutex_lock_interruptible(lock)
 
 #endif /* __EC_USPACE_PAL_MTX_H__ */

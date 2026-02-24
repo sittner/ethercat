@@ -330,7 +330,7 @@ void ec_master_clear(
 {
     unsigned int dev_idx, i;
 
-    irq_work_sync(&master->sc_reset_work_kicker);
+    ec_irq_work_sync(&master->sc_reset_work_kicker);
     ec_work_cancel(&master->sc_reset_work);
 
 #ifdef EC_EOE

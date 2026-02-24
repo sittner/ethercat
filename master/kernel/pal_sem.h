@@ -29,7 +29,9 @@
 #ifndef __EC_KERNEL_PAL_SEM_H__
 #define __EC_KERNEL_PAL_SEM_H__
 
-/* ec_semaphore_t is typedef'd in pal.h as struct semaphore */
+#include <linux/semaphore.h>
+
+typedef struct semaphore ec_semaphore_t;
 
 static inline void ec_sem_init(ec_semaphore_t *sem, int val)
 {
