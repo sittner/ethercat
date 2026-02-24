@@ -31,6 +31,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <errno.h>
+#include <stdatomic.h>
 
 #include "pal_work.h"
 
@@ -83,15 +84,15 @@ static void *__workqueue_worker(void *arg)
             if (!wq->head)
                 wq->tail = NULL;
             work->next = NULL;
-            work->flags &= ~EC_WORK_PENDING;
-            work->flags |= EC_WORK_RUNNING;
+            atomic_fetch_and(&work->flags, ~(unsigned)EC_WORK_PENDING);
+            atomic_fetch_or(&work->flags, EC_WORK_RUNNING);
         }
 
         pthread_mutex_unlock(&wq->lock);
 
         if (work && work->func) {
             work->func(work);
-            work->flags &= ~EC_WORK_RUNNING;
+            atomic_fetch_and(&work->flags, ~(unsigned)EC_WORK_RUNNING);
         }
     }
 
@@ -154,9 +155,10 @@ static int ec_work_queue(struct ec_workqueue *wq, ec_work_t *work)
 
     pthread_mutex_lock(&wq->lock);
 
-    if (!(work->flags & EC_WORK_PENDING)) {
-        work->flags |= EC_WORK_PENDING;
+    if (!(atomic_load(&work->flags) & EC_WORK_PENDING)) {
+        atomic_fetch_or(&work->flags, EC_WORK_PENDING);
         work->next = NULL;
+        work->wq = wq;
 
         if (wq->tail) {
             wq->tail->next = work;
@@ -184,15 +186,40 @@ int ec_work_schedule(ec_work_t *work)
 
 int ec_work_cancel(ec_work_t *work)
 {
-    int was_pending;
+    struct ec_workqueue *wq = work->wq;
+    int was_pending = 0;
 
-    was_pending = (work->flags & EC_WORK_PENDING) ? 1 : 0;
+    if (wq) {
+        pthread_mutex_lock(&wq->lock);
 
-    while (work->flags & EC_WORK_RUNNING) {
-        sched_yield();
+        if (atomic_load(&work->flags) & EC_WORK_PENDING) {
+            /* Remove from the pending queue */
+            ec_work_t *prev = NULL, *curr = wq->head;
+            while (curr) {
+                if (curr == work) {
+                    if (prev)
+                        prev->next = curr->next;
+                    else
+                        wq->head = curr->next;
+                    if (wq->tail == curr)
+                        wq->tail = prev;
+                    curr->next = NULL;
+                    atomic_fetch_and(&work->flags, ~(unsigned)EC_WORK_PENDING);
+                    was_pending = 1;
+                    break;
+                }
+                prev = curr;
+                curr = curr->next;
+            }
+        }
+
+        pthread_mutex_unlock(&wq->lock);
     }
 
-    work->flags &= ~EC_WORK_PENDING;
+    /* Wait for any in-progress execution to complete */
+    while (atomic_load(&work->flags) & EC_WORK_RUNNING) {
+        sched_yield();
+    }
 
     return was_pending;
 }

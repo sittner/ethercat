@@ -29,8 +29,11 @@
 #ifndef __EC_USPACE_PAL_WORK_H__
 #define __EC_USPACE_PAL_WORK_H__
 
-/* Forward declaration */
+#include <stdatomic.h>
+
+/* Forward declarations */
 struct pal_work_struct;
+struct ec_workqueue;
 
 /* Work function typedef */
 typedef void (*ec_work_func_t)(struct pal_work_struct *work);
@@ -40,8 +43,9 @@ typedef void (*ec_work_func_t)(struct pal_work_struct *work);
  */
 struct pal_work_struct {
     ec_work_func_t func;            /* Work function */
-    volatile unsigned long flags;   /* State flags */
+    atomic_uint flags;              /* State flags (atomic) */
     struct pal_work_struct *next;   /* Next in queue (linked list) */
+    struct ec_workqueue *wq;        /* Backpointer to owning workqueue */
 };
 
 typedef struct pal_work_struct ec_work_t;
@@ -54,8 +58,9 @@ typedef struct pal_work_struct ec_work_t;
 #define ec_work_init(_work, _func)                  \
     do {                                            \
         (_work)->func = (_func);                    \
-        (_work)->flags = 0;                         \
+        atomic_init(&(_work)->flags, 0);            \
         (_work)->next = NULL;                       \
+        (_work)->wq = NULL;                         \
     } while (0)
 
 extern int ec_work_schedule(ec_work_t *work);

@@ -75,21 +75,19 @@ static inline void ec_wq_wake_all(ec_wait_queue_t *wq)
     } while (0)
 
 /**
- * ec_wq_wait_interruptible - sleep until condition (interruptible)
+ * ec_wq_wait_interruptible - sleep until condition is true
  * @wq: wait queue (passed by VALUE)
  * @condition: condition to wait for
  *
- * Returns 0 if condition became true, -ERESTARTSYS on signal
+ * In kernel mode, returns -ERESTARTSYS if interrupted by a signal.
+ * In userspace, always returns 0. Shutdown is handled by the master
+ * changing request states and waking the queue via ec_wq_wake_all(),
+ * so the condition-based wakeup path handles cleanup correctly.
  */
 #define ec_wq_wait_interruptible(wq, condition)          \
     ({                                                   \
-        int __ret = 0;                                   \
-        pthread_mutex_lock(&(wq).lock);                  \
-        while (!(condition)) {                           \
-            pthread_cond_wait(&(wq).cond, &(wq).lock);  \
-        }                                                \
-        pthread_mutex_unlock(&(wq).lock);                \
-        __ret;                                           \
+        ec_wq_wait(wq, condition);                       \
+        0;                                               \
     })
 
 #endif /* __EC_USPACE_PAL_QUEUE_H__ */
