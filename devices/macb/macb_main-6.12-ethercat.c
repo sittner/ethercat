@@ -2021,7 +2021,7 @@ static irqreturn_t macb_interrupt(int irq, void *dev_id)
 
 	while (status) {
 		/* close possible race with dev_close */
-		if (unlikely(!netif_running(dev))) {
+		if (!get_ecdev(bp) && unlikely(!netif_running(dev))) {
 			queue_writel(queue, IDR, -1);
 			if (bp->caps & MACB_CAPS_ISR_CLEAR_ON_WRITE)
 				queue_writel(queue, ISR, -1);
