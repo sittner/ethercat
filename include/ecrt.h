@@ -255,20 +255,72 @@
 #endif
 
 #ifdef EC_USPACE_MASTER
-/** Transport type.
- *  In the public API, this is a plain int to avoid exposing the internal
- *  enum definition from transport/ec_transport.h.  Enum values defined
- *  in that header (e.g. EC_TRANSPORT_RAW) are always int-compatible. */
+/* Transport types and structs — not opaque, so users can implement custom
+ * transports via ecrt_startup_master_custom().
+ * The block below is guarded by __EC_TRANSPORT_H__, which is the include
+ * guard of master/uspace/transport/ec_transport.h.  Internal source files
+ * that need the full transport API must #include "transport/ec_transport.h"
+ * *before* any header that pulls in ecrt.h, so that __EC_TRANSPORT_H__ is
+ * already defined and this block is skipped (avoiding redeclaration
+ * conflicts).  When ecrt.h is used standalone by application code,
+ * __EC_TRANSPORT_H__ is not defined and the full definitions are provided
+ * here. */
+#ifndef __EC_TRANSPORT_H__
+
 #ifndef EC_TRANSPORT_TYPE_DEFINED
 #define EC_TRANSPORT_TYPE_DEFINED
-typedef int ec_transport_type_t;
+/** Transport type enumeration. */
+typedef enum {
+    EC_TRANSPORT_RAW = 0,    /**< AF_PACKET raw socket */
+#ifdef HAVE_XDP
+    EC_TRANSPORT_XDP_SKB,    /**< AF_XDP Generic SKB mode */
+    EC_TRANSPORT_XDP_NATIVE, /**< AF_XDP Native driver mode */
 #endif
+} ec_transport_type_t;
+#endif /* EC_TRANSPORT_TYPE_DEFINED */
 
 #ifndef EC_TRANSPORT_STRUCT_DEFINED
 #define EC_TRANSPORT_STRUCT_DEFINED
-struct ec_transport;
 typedef struct ec_transport ec_transport_t;
-#endif
+#endif /* EC_TRANSPORT_STRUCT_DEFINED */
+typedef struct ec_transport_ops ec_transport_ops_t;
+
+/** Transport operations (vtable). Each transport implementation must provide
+ *  these. */
+struct ec_transport_ops {
+    const char *name;
+    int (*open)(ec_transport_t *transport, const char *interface);
+    void (*close)(ec_transport_t *transport);
+    uint8_t *(*get_tx_buffer)(ec_transport_t *transport);
+    int (*send)(ec_transport_t *transport, size_t size);
+    int (*receive)(ec_transport_t *transport, uint8_t *buffer, size_t max_size);
+    int (*get_link_state)(ec_transport_t *transport);
+    int (*get_mac)(ec_transport_t *transport, uint8_t mac[6]);
+    int (*get_fd)(ec_transport_t *transport);
+};
+
+/** Maximum transport frame size. */
+#define EC_TRANSPORT_MAX_FRAME_SIZE 1518
+
+/** Transport instance. */
+struct ec_transport {
+    const ec_transport_ops_t *ops;
+    void *priv;
+    char interface[16];
+    uint8_t tx_buffer[EC_TRANSPORT_MAX_FRAME_SIZE];
+};
+
+#endif /* __EC_TRANSPORT_H__ */
+
+EC_PUBLIC_API ec_transport_t *ec_transport_create(ec_transport_type_t type);
+EC_PUBLIC_API void ec_transport_destroy(ec_transport_t *transport);
+EC_PUBLIC_API int ec_transport_open(ec_transport_t *transport, const char *interface);
+EC_PUBLIC_API void ec_transport_close(ec_transport_t *transport);
+EC_PUBLIC_API int ec_transport_available(ec_transport_type_t type);
+EC_PUBLIC_API const char *ec_transport_get_name(ec_transport_type_t type);
+EC_PUBLIC_API int ec_transport_find_by_name(const char *name);
+EC_PUBLIC_API void ec_transport_print_available(void);
+
 #endif /* EC_USPACE_MASTER */
 
 /****************************************************************************/
