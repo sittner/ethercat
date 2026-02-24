@@ -236,9 +236,9 @@ int ec_slave_config_prepare_fmmu(
 
     fmmu = &sc->fmmu_configs[sc->used_fmmus++];
 
-    down(&sc->master->master_sem);
+    ec_sem_down(&sc->master->master_sem);
     ec_fmmu_config_init(fmmu, sc, domain, sync_index, dir);
-    up(&sc->master->master_sem);
+    ec_sem_up(&sc->master->master_sem);
 
     return fmmu->logical_start_address;
 }
@@ -728,18 +728,18 @@ int ecrt_slave_config_pdo_assign_add(ec_slave_config_t *sc,
         return -EINVAL;
     }
 
-    down(&sc->master->master_sem);
+    ec_sem_down(&sc->master->master_sem);
 
     pdo = ec_pdo_list_add_pdo(&sc->sync_configs[sync_index].pdos, pdo_index);
     if (IS_ERR(pdo)) {
-        up(&sc->master->master_sem);
+        ec_sem_up(&sc->master->master_sem);
         return PTR_ERR(pdo);
     }
     pdo->sync_index = sync_index;
 
     ec_slave_config_load_default_mapping(sc, pdo);
 
-    up(&sc->master->master_sem);
+    ec_sem_up(&sc->master->master_sem);
     return 0;
 }
 
@@ -756,9 +756,9 @@ int ecrt_slave_config_pdo_assign_clear(ec_slave_config_t *sc,
         return -EINVAL;
     }
 
-    down(&sc->master->master_sem);
+    ec_sem_down(&sc->master->master_sem);
     ec_pdo_list_clear_pdos(&sc->sync_configs[sync_index].pdos);
-    up(&sc->master->master_sem);
+    ec_sem_up(&sc->master->master_sem);
     return 0;
 }
 
@@ -785,10 +785,10 @@ int ecrt_slave_config_pdo_mapping_add(ec_slave_config_t *sc,
             break;
 
     if (pdo) {
-        down(&sc->master->master_sem);
+        ec_sem_down(&sc->master->master_sem);
         entry = ec_pdo_add_entry(pdo, entry_index, entry_subindex,
                 entry_bit_length);
-        up(&sc->master->master_sem);
+        ec_sem_up(&sc->master->master_sem);
         if (IS_ERR(entry))
             retval = PTR_ERR(entry);
     } else {
@@ -816,9 +816,9 @@ int ecrt_slave_config_pdo_mapping_clear(ec_slave_config_t *sc,
             break;
 
     if (pdo) {
-        down(&sc->master->master_sem);
+        ec_sem_down(&sc->master->master_sem);
         ec_pdo_clear_entries(pdo);
-        up(&sc->master->master_sem);
+        ec_sem_up(&sc->master->master_sem);
     } else {
         EC_CONFIG_WARN(sc, "PDO 0x%04X is not assigned.\n", pdo_index);
     }
@@ -1066,9 +1066,9 @@ int ecrt_slave_config_sdo(ec_slave_config_t *sc, uint16_t index,
         return ret;
     }
 
-    down(&sc->master->master_sem);
+    ec_sem_down(&sc->master->master_sem);
     list_add_tail(&req->list, &sc->sdo_configs);
-    up(&sc->master->master_sem);
+    ec_sem_up(&sc->master->master_sem);
     return 0;
 }
 
@@ -1151,9 +1151,9 @@ int ecrt_slave_config_complete_sdo(ec_slave_config_t *sc, uint16_t index,
         return ret;
     }
 
-    down(&sc->master->master_sem);
+    ec_sem_down(&sc->master->master_sem);
     list_add_tail(&req->list, &sc->sdo_configs);
-    up(&sc->master->master_sem);
+    ec_sem_up(&sc->master->master_sem);
     return 0;
 }
 
@@ -1220,9 +1220,9 @@ ec_sdo_request_t *ecrt_slave_config_create_sdo_request_err(
     memset(req->data, 0x00, size);
     req->data_size = size;
 
-    down(&sc->master->master_sem);
+    ec_sem_down(&sc->master->master_sem);
     list_add_tail(&req->list, &sc->sdo_requests);
-    up(&sc->master->master_sem);
+    ec_sem_up(&sc->master->master_sem);
 
     return req;
 }
@@ -1272,9 +1272,9 @@ ec_soe_request_t *ecrt_slave_config_create_soe_request_err(
     memset(req->data, 0x00, size);
     req->data_size = size;
 
-    down(&sc->master->master_sem);
+    ec_sem_down(&sc->master->master_sem);
     list_add_tail(&req->list, &sc->soe_requests);
-    up(&sc->master->master_sem);
+    ec_sem_up(&sc->master->master_sem);
 
     return req;
 }
@@ -1315,9 +1315,9 @@ ec_reg_request_t *ecrt_slave_config_create_reg_request_err(
         return ERR_PTR(ret);
     }
 
-    down(&sc->master->master_sem);
+    ec_sem_down(&sc->master->master_sem);
     list_add_tail(&reg->list, &sc->reg_requests);
-    up(&sc->master->master_sem);
+    ec_sem_up(&sc->master->master_sem);
 
     return reg;
 }
@@ -1357,9 +1357,9 @@ ec_voe_handler_t *ecrt_slave_config_create_voe_handler_err(
         return ERR_PTR(ret);
     }
 
-    down(&sc->master->master_sem);
+    ec_sem_down(&sc->master->master_sem);
     list_add_tail(&voe->list, &sc->voe_handlers);
-    up(&sc->master->master_sem);
+    ec_sem_up(&sc->master->master_sem);
 
     return voe;
 }
@@ -1442,9 +1442,9 @@ int ecrt_slave_config_idn(ec_slave_config_t *sc, uint8_t drive_no,
         return ret;
     }
 
-    down(&sc->master->master_sem);
+    ec_sem_down(&sc->master->master_sem);
     list_add_tail(&req->list, &sc->soe_configs);
-    up(&sc->master->master_sem);
+    ec_sem_up(&sc->master->master_sem);
     return 0;
 }
 
@@ -1477,9 +1477,9 @@ int ecrt_slave_config_flag(ec_slave_config_t *sc, const char *key,
             return ret;
         }
 
-        down(&sc->master->master_sem);
+        ec_sem_down(&sc->master->master_sem);
         list_add_tail(&flag->list, &sc->flags);
-        up(&sc->master->master_sem);
+        ec_sem_up(&sc->master->master_sem);
     }
     return 0;
 }
@@ -1600,9 +1600,9 @@ int ecrt_slave_config_state_timeout(ec_slave_config_t *sc,
     timeout->to = to_state;
     timeout->timeout_ms = timeout_ms;
 
-    down(&sc->master->master_sem);
+    ec_sem_down(&sc->master->master_sem);
     list_add_tail(&timeout->list, &sc->al_timeouts);
-    up(&sc->master->master_sem);
+    ec_sem_up(&sc->master->master_sem);
     return 0;
 }
 
@@ -1610,41 +1610,6 @@ int ecrt_slave_config_state_timeout(ec_slave_config_t *sc,
 
 /** \cond */
 
-EXPORT_SYMBOL(ecrt_slave_config_sync_manager);
-EXPORT_SYMBOL(ecrt_slave_config_watchdog);
-EXPORT_SYMBOL(ecrt_slave_config_pdo_assign_add);
-EXPORT_SYMBOL(ecrt_slave_config_pdo_assign_clear);
-EXPORT_SYMBOL(ecrt_slave_config_pdo_mapping_add);
-EXPORT_SYMBOL(ecrt_slave_config_pdo_mapping_clear);
-EXPORT_SYMBOL(ecrt_slave_config_pdos);
-EXPORT_SYMBOL(ecrt_slave_config_reg_pdo_entry);
-EXPORT_SYMBOL(ecrt_slave_config_reg_pdo_entry_pos);
-EXPORT_SYMBOL(ecrt_slave_config_dc);
-EXPORT_SYMBOL(ecrt_slave_config_sdo);
-EXPORT_SYMBOL(ecrt_slave_config_sdo8);
-EXPORT_SYMBOL(ecrt_slave_config_sdo16);
-EXPORT_SYMBOL(ecrt_slave_config_sdo32);
-EXPORT_SYMBOL(ecrt_slave_config_complete_sdo);
-EXPORT_SYMBOL(ecrt_slave_config_emerg_size);
-EXPORT_SYMBOL(ecrt_slave_config_emerg_pop);
-EXPORT_SYMBOL(ecrt_slave_config_emerg_clear);
-EXPORT_SYMBOL(ecrt_slave_config_emerg_overruns);
-EXPORT_SYMBOL(ecrt_slave_config_create_sdo_request);
-EXPORT_SYMBOL(ecrt_slave_config_create_soe_request);
-EXPORT_SYMBOL(ecrt_slave_config_create_voe_handler);
-EXPORT_SYMBOL(ecrt_slave_config_create_reg_request);
-EXPORT_SYMBOL(ecrt_slave_config_state);
-EXPORT_SYMBOL(ecrt_slave_config_idn);
-EXPORT_SYMBOL(ecrt_slave_config_flag);
-#ifdef EOE
-EXPORT_SYMBOL(ecrt_slave_config_eoe_mac_address);
-EXPORT_SYMBOL(ecrt_slave_config_eoe_ip_address);
-EXPORT_SYMBOL(ecrt_slave_config_eoe_subnet_mask);
-EXPORT_SYMBOL(ecrt_slave_config_eoe_default_gateway);
-EXPORT_SYMBOL(ecrt_slave_config_eoe_dns_address);
-EXPORT_SYMBOL(ecrt_slave_config_eoe_hostname);
-#endif
-EXPORT_SYMBOL(ecrt_slave_config_state_timeout);
 
 /** \endcond */
 

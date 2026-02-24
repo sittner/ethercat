@@ -238,7 +238,7 @@ void ec_fsm_master_state_start(
         if (request->transfer_size > fsm->datagram->mem_size) {
             EC_MASTER_ERR(master, "Emergency request data too large!\n");
             request->state = EC_INT_REQUEST_FAILURE;
-            wake_up_all(&master->request_queue);
+            ec_wq_wake_all(&master->request_queue);
             fsm->state(fsm); // continue
             return;
         }
@@ -247,7 +247,7 @@ void ec_fsm_master_state_start(
             EC_MASTER_ERR(master, "Emergency requests must be"
                     " write requests!\n");
             request->state = EC_INT_REQUEST_FAILURE;
-            wake_up_all(&master->request_queue);
+            ec_wq_wake_all(&master->request_queue);
             fsm->state(fsm); // continue
             return;
         }
@@ -258,7 +258,7 @@ void ec_fsm_master_state_start(
         memcpy(fsm->datagram->data, request->data, request->transfer_size);
         fsm->datagram->device_index = EC_DEVICE_MAIN;
         request->state = EC_INT_REQUEST_SUCCESS;
-        wake_up_all(&master->request_queue);
+        ec_wq_wake_all(&master->request_queue);
         return;
     }
 
@@ -345,16 +345,16 @@ void ec_fsm_master_state_broadcast(
     }
 
     if (fsm->rescan_required) {
-        down(&master->scan_sem);
+        ec_sem_down(&master->scan_sem);
         if (!master->allow_scan) {
-            up(&master->scan_sem);
+            ec_sem_up(&master->scan_sem);
         } else {
             unsigned int count = 0, next_dev_slave, ring_position;
             ec_device_index_t dev_idx;
 
             master->scan_busy = 1;
             master->scan_index = 0;
-            up(&master->scan_sem);
+            ec_sem_up(&master->scan_sem);
 
             EC_MASTER_INFO(master, "Re-scanning now.\n");
 
@@ -377,7 +377,7 @@ void ec_fsm_master_state_broadcast(
             if (!count) {
                 // no slaves present -> finish state machine.
                 master->scan_busy = 0;
-                wake_up_interruptible(&master->scan_queue);
+                ec_wq_wake_interruptible(&master->scan_queue);
                 ec_fsm_master_restart(fsm);
                 return;
             }
@@ -388,7 +388,7 @@ void ec_fsm_master_state_broadcast(
                 EC_MASTER_ERR(master, "Failed to allocate %u bytes"
                         " of slave memory!\n", size);
                 master->scan_busy = 0;
-                wake_up_interruptible(&master->scan_queue);
+                ec_wq_wake_interruptible(&master->scan_queue);
                 ec_fsm_master_restart(fsm);
                 return;
             }
@@ -718,9 +718,9 @@ void ec_fsm_master_action_configure(
                 || slave->force_config) && !slave->error_flag) {
 
         // Start slave configuration
-        down(&master->config_sem);
+        ec_sem_down(&master->config_sem);
         master->config_busy = 1;
-        up(&master->config_sem);
+        ec_sem_up(&master->config_sem);
 
         if (master->debug_level) {
             char old_state[EC_STATE_STRING_SIZE],
@@ -859,7 +859,7 @@ void ec_fsm_master_state_clear_addresses(
                 ec_datagram_state_str(datagram));
         master->scan_busy = 0;
         master->scan_index = master->slave_count;
-        wake_up_interruptible(&master->scan_queue);
+        ec_wq_wake_interruptible(&master->scan_queue);
         ec_fsm_master_restart(fsm);
         return;
     }
@@ -904,7 +904,7 @@ void ec_fsm_master_state_dc_measure_delays(
                 ec_datagram_state_str(datagram));
         master->scan_busy = 0;
         master->scan_index = master->slave_count;
-        wake_up_interruptible(&master->scan_queue);
+        ec_wq_wake_interruptible(&master->scan_queue);
         ec_fsm_master_restart(fsm);
         return;
     }
@@ -989,7 +989,7 @@ void ec_fsm_master_state_scan_slave(
 
     master->scan_busy = 0;
     master->scan_index = master->slave_count;
-    wake_up_interruptible(&master->scan_queue);
+    ec_wq_wake_interruptible(&master->scan_queue);
 
     ec_master_calc_dc(master);
 
@@ -1031,7 +1031,7 @@ void ec_fsm_master_state_configure_slave(
 
     // configuration finished
     master->config_busy = 0;
-    wake_up_interruptible(&master->config_queue);
+    ec_wq_wake_interruptible(&master->config_queue);
 
     if (!ec_fsm_slave_config_success(&fsm->fsm_slave_config)) {
         // TODO: mark slave_config as failed.
@@ -1316,7 +1316,7 @@ void ec_fsm_master_state_write_sii(
     if (!ec_fsm_sii_success(&fsm->fsm_sii)) {
         EC_SLAVE_ERR(slave, "Failed to write SII data.\n");
         request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&master->request_queue);
+        ec_wq_wake_all(&master->request_queue);
         ec_fsm_master_restart(fsm);
         return;
     }
@@ -1344,7 +1344,7 @@ void ec_fsm_master_state_write_sii(
     // TODO: Evaluate other SII contents!
 
     request->state = EC_INT_REQUEST_SUCCESS;
-    wake_up_all(&master->request_queue);
+    ec_wq_wake_all(&master->request_queue);
 
     // check for another SII write request
     if (ec_fsm_master_action_process_sii(fsm))
@@ -1412,14 +1412,14 @@ void ec_fsm_master_state_sdo_request(
         EC_SLAVE_DBG(fsm->slave, 1,
                 "Failed to process internal SDO request.\n");
         request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&fsm->master->request_queue);
+        ec_wq_wake_all(&fsm->master->request_queue);
         ec_fsm_master_restart(fsm);
         return;
     }
 
     // SDO request finished
     request->state = EC_INT_REQUEST_SUCCESS;
-    wake_up_all(&fsm->master->request_queue);
+    ec_wq_wake_all(&fsm->master->request_queue);
 
     EC_SLAVE_DBG(fsm->slave, 1, "Finished internal SDO request.\n");
 
@@ -1455,14 +1455,14 @@ void ec_fsm_master_state_soe_request(
         EC_SLAVE_DBG(fsm->slave, 1,
                 "Failed to process internal SoE request.\n");
         request->state = EC_INT_REQUEST_FAILURE;
-        wake_up_all(&fsm->master->request_queue);
+        ec_wq_wake_all(&fsm->master->request_queue);
         ec_fsm_master_restart(fsm);
         return;
     }
 
     // SoE request finished
     request->state = EC_INT_REQUEST_SUCCESS;
-    wake_up_all(&fsm->master->request_queue);
+    ec_wq_wake_all(&fsm->master->request_queue);
 
     EC_SLAVE_DBG(fsm->slave, 1, "Finished internal SoE request.\n");
 

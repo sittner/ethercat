@@ -33,7 +33,7 @@
 #define EXPORT_SYMBOL(x)
 #define EXPORT_SYMBOL_GPL(x)
 
-#include "list.h"
+#include "pal_list.h"
 #include "pal_alloc.h"
 
 #define unlikely(x) __builtin_expect(!!(x), 0)

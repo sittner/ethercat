@@ -52,7 +52,7 @@
 #endif
 
 /**
- * struct task_struct - userspace thread representation
+ * ec_thread_t - userspace thread representation
  */
 typedef struct {
     pthread_t thread;           /* POSIX thread handle */
@@ -82,39 +82,22 @@ static void __init_current_task_key(void)
     pthread_key_create(&current_task_key, NULL);
 }
 
-/**
- * current_task_init - initialize current task subsystem
- *
- * Call once at program startup
- */
 static inline void current_task_init(void)
 {
     pthread_once(&current_task_key_once, __init_current_task_key);
 }
 
-/**
- * get_current - get current task_struct for calling thread
- *
- * Returns NULL if not a managed kthread
- */
 static inline ec_thread_t *get_current(void)
 {
-    current_task_init();  /* Ensure key exists */
+    current_task_init();
     return (ec_thread_t *)pthread_getspecific(current_task_key);
 }
 
-/**
- * set_current - set current task_struct for calling thread
- * @task: task to set as current
- */
 static inline void set_current(ec_thread_t *task)
 {
-    current_task_init();  /* Ensure key exists */
+    current_task_init();
     pthread_setspecific(current_task_key, task);
 }
-
-/* Macro to access current (like kernel) */
-#define current get_current()
 
 /* Internal thread wrapper */
 static void *__task_thread_wrapper(void *arg)
@@ -122,23 +105,16 @@ static void *__task_thread_wrapper(void *arg)
     ec_thread_t *task = (ec_thread_t *)arg;
     int ret;
 
-    /* Store task pointer in thread-specific data */
     set_current(task);
-
-    /* Get real thread ID */
     task->pid = pal_gettid();
-
-    /* Set thread name */
     pthread_setname_np(task->thread, task->name);
 
-    /* Signal that we've started */
     pthread_mutex_lock(&task->lock);
     task->started = 1;
     task->state = TASK_RUNNING;
     pthread_cond_signal(&task->cond);
     pthread_mutex_unlock(&task->lock);
 
-    /* Run thread function - signature matches kernel */
     ret = task->thread_fn(task->thread_data);
 
     task->exit_code = ret;
@@ -147,13 +123,8 @@ static void *__task_thread_wrapper(void *arg)
     return (void *)(long)ret;
 }
 
-/**
- * kthread_create - create a new kernel-style thread
- * @threadfn: thread function (same signature as kernel)
- * @data: data passed to thread function
- * @namefmt: thread name format
- */
-static inline ec_thread_t *kthread_create(
+/* Internal: create a thread without starting it */
+static inline ec_thread_t *__ec_thread_create(
         int (*threadfn)(void *data),
         void *data,
         const char *namefmt, ...)
@@ -184,9 +155,9 @@ static inline ec_thread_t *kthread_create(
 }
 
 /**
- * wake_up_process - start a created thread
+ * ec_thread_wake - start or wake a created thread
  */
-static inline int wake_up_process(ec_thread_t *task)
+static inline int ec_thread_wake(ec_thread_t *task)
 {
     int ret;
 
@@ -214,21 +185,21 @@ static inline int wake_up_process(ec_thread_t *task)
 }
 
 /**
- * kthread_run - create and start a thread
+ * ec_thread_run - create and start a thread
  */
-#define kthread_run(threadfn, data, namefmt, ...)                   \
-    ({                                                              \
-        ec_thread_t *__k = kthread_create(threadfn, data,    \
-                                    namefmt, ##__VA_ARGS__);        \
-        if (!IS_ERR(__k))                                           \
-            wake_up_process(__k);                                   \
-        __k;                                                        \
+#define ec_thread_run(threadfn, data, namefmt, ...)                     \
+    ({                                                                  \
+        ec_thread_t *__k = __ec_thread_create(threadfn, data,          \
+                                    namefmt, ##__VA_ARGS__);            \
+        if (!IS_ERR(__k))                                               \
+            ec_thread_wake(__k);                                        \
+        __k;                                                            \
     })
 
 /**
- * kthread_stop - stop a thread and wait for exit
+ * ec_thread_stop - stop a thread and wait for exit
  */
-static inline int kthread_stop(ec_thread_t *task)
+static inline int ec_thread_stop(ec_thread_t *task)
 {
     int ret;
     void *thread_ret;
@@ -252,93 +223,64 @@ static inline int kthread_stop(ec_thread_t *task)
 }
 
 /**
- * kthread_should_stop - check if stop was requested
- *
- * Uses thread-specific 'current' - same API as kernel!
+ * ec_thread_should_stop - check if stop was requested
  */
-static inline int kthread_should_stop(void)
+static inline int ec_thread_should_stop(void)
 {
-    ec_thread_t *task = current;
+    ec_thread_t *task = get_current();
     return task ? task->should_stop : 0;
 }
 
 /**
- * kthread_bind - bind thread to CPU
+ * ec_thread_bind_cpu - bind thread to CPU (no-op, stored for future use)
  */
-static inline void kthread_bind(ec_thread_t *task, unsigned int cpu)
+static inline void ec_thread_bind_cpu(ec_thread_t *task, unsigned int cpu)
 {
-	return; // TODO: Store cpu and apply in kthread_wrapper
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    CPU_SET(cpu, &cpuset);
-    pthread_setaffinity_np(task->thread, sizeof(cpuset), &cpuset);
+    (void)task;
+    (void)cpu;
+    /* TODO: Store cpu and apply in thread wrapper */
 }
 
 /**
- * set_current_state - set current task's state
+ * ec_thread_yield - yield the processor
  */
-#define set_current_state(state_value)          \
-    do {                                        \
-        ec_thread_t *__t = current;      \
-        if (__t)                                \
-            __t->state = (state_value);         \
-    } while (0)
-
-/**
- * schedule - yield the processor
- */
-static inline void schedule(void)
+static inline void ec_thread_yield(void)
 {
     sched_yield();
 }
 
 /**
- * sched_set_normal - set task to normal scheduling policy
- * @task: task to modify
- * @nice: nice value (-20 to 19)
- *
- * In kernel, this sets SCHED_NORMAL policy.
- * In userspace, we use SCHED_OTHER (same thing).
- */
-static inline void sched_set_normal(ec_thread_t *task, int nice)
-{
-    struct sched_param param = { .sched_priority = 0 };
-
-    /* SCHED_OTHER (normal) doesn't use priority, uses nice instead */
-    pthread_setschedparam(task->thread, SCHED_OTHER, &param);
-
-    /* Set nice value - requires appropriate privileges */
-    /* Note: setpriority() affects the whole thread group in some cases,
-     * but for pthreads this is typically fine */
-#ifdef _GNU_SOURCE
-    /* Could use pthread_setschedprio or setpriority here */
-    (void)nice;  /* Nice value handling is limited in pthreads */
-#endif
-}
-
-#define ec_sched_set_normal(thread, nice) sched_set_normal(thread, nice)
-
-/**
- * schedule_timeout - sleep for a specified number of time units
+ * ec_thread_yield_timeout - yield for a specified number of time units
  * @timeout: timeout value (treated as units of 4 milliseconds in userspace)
- *
- * Returns 0 (remaining time, always 0 in userspace).
  */
-static inline long schedule_timeout(long timeout) {
+static inline void ec_thread_yield_timeout(long timeout)
+{
     struct timespec ts;
 
     if (timeout <= 0) {
         sched_yield();
-        return 0;
+        return;
     }
 
-    /* Treat timeout as ~1ms units (similar to HZ=250) */
     ts.tv_sec = timeout / 250;
     ts.tv_nsec = (timeout % 250) * 4000000L;
-
     nanosleep(&ts, NULL);
-    return 0;
 }
+
+/**
+ * ec_thread_set_priority - set task to normal scheduling policy
+ * @task: task to modify
+ * @nice: nice value (-20 to 19)
+ */
+static inline void ec_thread_set_priority(ec_thread_t *task, int nice)
+{
+    struct sched_param param = { .sched_priority = 0 };
+
+    pthread_setschedparam(task->thread, SCHED_OTHER, &param);
+    (void)nice;
+}
+
+#define ec_sched_set_normal(thread, nice) ec_thread_set_priority(thread, nice)
 
 #endif /* __EC_USPACE_PAL_THREAD_H__ */
 

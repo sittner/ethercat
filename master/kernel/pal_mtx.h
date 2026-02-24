@@ -21,56 +21,31 @@
 
 /**
    \file
-   Platform Abstraction Layer for userspace EtherCAT master.
+   Platform Abstraction Layer - RT mutex wrappers for kernel EtherCAT master.
 */
 
 /****************************************************************************/
 
-#ifndef __EC_USPACE_PAL_MTX_H__
-#define __EC_USPACE_PAL_MTX_H__
+#ifndef __EC_KERNEL_PAL_MTX_H__
+#define __EC_KERNEL_PAL_MTX_H__
 
-/**
- * ec_rt_mutex_t - real-time mutex for userspace
- *
- * Uses PTHREAD_PRIO_INHERIT to enable priority inheritance
- */
-typedef struct {
-    pthread_mutex_t mutex;
-} ec_rt_mutex_t;
+/* ec_rt_mutex_t is typedef'd in pal.h as struct rt_mutex */
 
 static inline void ec_mutex_init(ec_rt_mutex_t *lock)
 {
-    pthread_mutexattr_t attr;
-
-    pthread_mutexattr_init(&attr);
-    pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT);
-    pthread_mutex_init(&lock->mutex, &attr);
-    pthread_mutexattr_destroy(&attr);
+    rt_mutex_init(lock);
 }
 
 static inline void ec_mutex_lock(ec_rt_mutex_t *lock)
 {
-    pthread_mutex_lock(&lock->mutex);
+    rt_mutex_lock(lock);
 }
 
 static inline void ec_mutex_unlock(ec_rt_mutex_t *lock)
 {
-    pthread_mutex_unlock(&lock->mutex);
+    rt_mutex_unlock(lock);
 }
 
-/**
- * ec_rt_lock_interruptible - acquire mutex, interruptible
- *
- * Returns 0 on success, -EINTR if interrupted
- */
-static inline int rt_mutex_lock_interruptible(ec_rt_mutex_t *lock)
-{
-    int ret = pthread_mutex_lock(&lock->mutex);
-    if (ret == EINTR)
-        return -EINTR;
-    return ret ? -ret : 0;
-}
+/* ec_rt_lock_interruptible is already defined in pal.h */
 
-#define ec_rt_lock_interruptible(lock) rt_mutex_lock_interruptible(lock)
-
-#endif /* __EC_USPACE_PAL_MTX_H__ */
+#endif /* __EC_KERNEL_PAL_MTX_H__ */

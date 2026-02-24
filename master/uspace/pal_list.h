@@ -28,8 +28,8 @@
  * the EtherCAT master code.
  */
 
-#ifndef __EC_USERSPACE_LIST_H__
-#define __EC_USERSPACE_LIST_H__
+#ifndef __EC_USERSPACE_PAL_LIST_H__
+#define __EC_USERSPACE_PAL_LIST_H__
 
 #include <stddef.h>
 
@@ -184,4 +184,4 @@ static inline void list_replace_init(struct list_head *old,
          &pos->member != (head);                                    \
          pos = n, n = list_entry(n->member.next, typeof(*n), member))
 
-#endif /* __EC_USERSPACE_LIST_H__ */
+#endif /* __EC_USERSPACE_PAL_LIST_H__ */

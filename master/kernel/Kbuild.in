@@ -31,6 +31,7 @@ obj-m := ec_master.o
 ec_master-objs := \
 	pal.o \
 	cdev.o \
+	exports.o \
 	../utils.o \
 	../coe_emerg_ring.o \
 	../datagram.o \
