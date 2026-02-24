@@ -218,9 +218,11 @@ Once shared code uses `ec_` names, balance the kernel side to match uspace struc
 
 ## Priority 6: Cleanup
 
-- [ ] Delete dead `master/uspace/config.h` (real config is `/config.h` from autotools) or document why it exists
-- [ ] Rename `master_main.c` and `module.c` both to `main.c`
-- [ ] Remove `master/globals.h.gch` (accidentally committed precompiled header, 4MB)
+- [x] Delete dead `master/uspace/config.h` (removed in a previous PR)
+- [x] Rename `master/uspace/master_main.c` → `master/uspace/main.c` (standalone `ec_master` executable entry point)
+- [x] Remove `master/globals.h.gch` (does not exist)
+- [x] Keep `master/kernel/module.c` as-is (kernel module entry point naming is already correct)
+- [ ] Add `master/uspace/module.c` to expose `ecrt_*` functions as shared library symbols for userspace applications (mirroring the kernel `module.c` API surface role)
 
 ---
 
