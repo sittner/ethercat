@@ -183,10 +183,12 @@ static inline void ec_schedule_ms(unsigned long ms) {
 
 /****************************************************************************/
 
-/** Token-pasting macro to map EC_LOG_* integer levels to KERN_* strings.
+/** Token-pasting helpers to map EC_LOG_* integer levels to KERN_* strings.
  *
- * The level must be a literal integer constant (e.g. EC_LOG_ERR expands to 3,
- * so _EC_KERN_LVL_3 is selected at compile time — zero runtime overhead).
+ * Two-level expansion is required so that macro arguments (e.g. EC_LOG_ERR)
+ * are fully expanded to their integer value before the token paste occurs.
+ * _EC_KERN_LVL_PASTE performs the actual paste; _EC_KERN_LVL forces
+ * expansion of its argument first, yielding e.g. _EC_KERN_LVL_3 -> KERN_ERR.
  */
 #define _EC_KERN_LVL_0 KERN_EMERG
 #define _EC_KERN_LVL_1 KERN_ALERT
@@ -197,8 +199,11 @@ static inline void ec_schedule_ms(unsigned long ms) {
 #define _EC_KERN_LVL_6 KERN_INFO
 #define _EC_KERN_LVL_7 KERN_DEBUG
 
+#define _EC_KERN_LVL_PASTE(level) _EC_KERN_LVL_##level
+#define _EC_KERN_LVL(level)       _EC_KERN_LVL_PASTE(level)
+
 #define ec_log(level, fmt, args...) \
-    printk(_EC_KERN_LVL_##level fmt, ##args)
+    printk(_EC_KERN_LVL(level) fmt, ##args)
 
 #define ec_log_ratelimit() printk_ratelimit()
 
