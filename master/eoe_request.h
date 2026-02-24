@@ -49,7 +49,7 @@ typedef struct {
     uint8_t dns_included;
     uint8_t name_included;
 
-    unsigned char mac_address[ETH_ALEN];
+    unsigned char mac_address[EC_ETH_ALEN];
     struct in_addr ip_address;
     struct in_addr subnet_mask;
     struct in_addr gateway;
