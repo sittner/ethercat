@@ -1059,7 +1059,10 @@ static void macb_tx_unmap(struct macb *bp, struct macb_tx_skb *tx_skb, int budge
 	}
 
 	if (tx_skb->skb) {
-		napi_consume_skb(tx_skb->skb, budget);
+		if (get_ecdev(bp))
+			dev_consume_skb_any(tx_skb->skb);
+		else
+			napi_consume_skb(tx_skb->skb, budget);
 		tx_skb->skb = NULL;
 	}
 }
@@ -1208,7 +1211,8 @@ static void macb_tx_error_task(struct work_struct *work)
 
 	/* Housework before enabling TX IRQ */
 	macb_writel(bp, TSR, macb_readl(bp, TSR));
-	queue_writel(queue, IER, MACB_TX_INT_FLAGS);
+	if (!get_ecdev(bp))
+		queue_writel(queue, IER, MACB_TX_INT_FLAGS);
 
 	if (halt_timeout)
 		macb_writel(bp, NCR, macb_readl(bp, NCR) | MACB_BIT(TE));
@@ -1461,48 +1465,76 @@ static int gem_rx(struct macb_queue *queue, struct napi_struct *napi,
 			queue->stats.rx_dropped++;
 			break;
 		}
-		/* now everything is ready for receiving packet */
-		queue->rx_skbuff[entry] = NULL;
 		len = ctrl & bp->rx_frm_len_mask;
 
 		netdev_vdbg(bp->dev, "gem_rx %u (len %u)\n", entry, len);
 
-		skb_put(skb, len);
-		dma_unmap_single(&bp->pdev->dev, addr,
-				 bp->rx_buffer_size, DMA_FROM_DEVICE);
+		if (get_ecdev(bp)) {
+			/* EtherCAT: sync DMA buffer, receive, re-arm.
+			 * No skb alloc/free — reuse the pre-allocated buffer.
+			 */
+			dma_sync_single_for_cpu(&bp->pdev->dev, addr,
+						bp->rx_buffer_size,
+						DMA_FROM_DEVICE);
+			skb_put(skb, len);
+			ecdev_receive(get_ecdev(bp), skb->data, skb->len);
 
-		skb->protocol = eth_type_trans(skb, bp->dev);
-		skb_checksum_none_assert(skb);
-		if (bp->dev->features & NETIF_F_RXCSUM &&
-		    !(bp->dev->flags & IFF_PROMISC) &&
-		    GEM_BFEXT(RX_CSUM, ctrl) & GEM_RX_CSUM_CHECKED_MASK)
-			skb->ip_summed = CHECKSUM_UNNECESSARY;
+			/* Reset skb for reuse */
+			skb->data = skb->head;
+			skb->len = 0;
+			skb_reset_tail_pointer(skb);
+			skb_reserve(skb, NET_IP_ALIGN);
 
-		bp->dev->stats.rx_packets++;
-		queue->stats.rx_packets++;
-		bp->dev->stats.rx_bytes += skb->len;
-		queue->stats.rx_bytes += skb->len;
+			dma_sync_single_for_device(&bp->pdev->dev, addr,
+						   bp->rx_buffer_size,
+						   DMA_FROM_DEVICE);
 
-		gem_ptp_do_rxstamp(bp, skb, desc);
+			/* Re-arm descriptor — keep skb and DMA mapping alive. */
+			desc->ctrl = 0;
+			dma_wmb();
+			desc->addr &= ~MACB_BIT(RX_USED);
+
+			bp->dev->stats.rx_packets++;
+			queue->stats.rx_packets++;
+			bp->dev->stats.rx_bytes += len;
+			queue->stats.rx_bytes += len;
+		} else {
+			/* Normal path: consume skb, refill later */
+			queue->rx_skbuff[entry] = NULL;
+
+			skb_put(skb, len);
+			dma_unmap_single(&bp->pdev->dev, addr,
+					 bp->rx_buffer_size, DMA_FROM_DEVICE);
+
+			skb->protocol = eth_type_trans(skb, bp->dev);
+			skb_checksum_none_assert(skb);
+			if (bp->dev->features & NETIF_F_RXCSUM &&
+			    !(bp->dev->flags & IFF_PROMISC) &&
+			    GEM_BFEXT(RX_CSUM, ctrl) & GEM_RX_CSUM_CHECKED_MASK)
+				skb->ip_summed = CHECKSUM_UNNECESSARY;
+
+			bp->dev->stats.rx_packets++;
+			queue->stats.rx_packets++;
+			bp->dev->stats.rx_bytes += skb->len;
+			queue->stats.rx_bytes += skb->len;
+
+			gem_ptp_do_rxstamp(bp, skb, desc);
 
 #if defined(DEBUG) && defined(VERBOSE_DEBUG)
-		netdev_vdbg(bp->dev, "received skb of length %u, csum: %08x\n",
-			    skb->len, skb->csum);
-		print_hex_dump(KERN_DEBUG, " mac: ", DUMP_PREFIX_ADDRESS, 16, 1,
-			       skb_mac_header(skb), 16, true);
-		print_hex_dump(KERN_DEBUG, "data: ", DUMP_PREFIX_ADDRESS, 16, 1,
-			       skb->data, 32, true);
+			netdev_vdbg(bp->dev, "received skb of length %u, csum: %08x\n",
+				    skb->len, skb->csum);
+			print_hex_dump(KERN_DEBUG, " mac: ", DUMP_PREFIX_ADDRESS, 16, 1,
+				       skb_mac_header(skb), 16, true);
+			print_hex_dump(KERN_DEBUG, "data: ", DUMP_PREFIX_ADDRESS, 16, 1,
+				       skb->data, 32, true);
 #endif
 
-		if (get_ecdev(bp)) {
-			ecdev_receive(get_ecdev(bp), skb->data, skb->len);
-			dev_kfree_skb(skb);
-		} else {
 			napi_gro_receive(napi, skb);
 		}
 	}
 
-	gem_rx_refill(queue);
+	if (!get_ecdev(bp))
+		gem_rx_refill(queue);
 
 	return count;
 }
@@ -1532,6 +1564,44 @@ static int macb_rx_frame(struct macb_queue *queue, struct napi_struct *napi,
 	 * the two padding bytes into the skb so that we avoid hitting
 	 * the slowpath in memcpy(), and pull them off afterwards.
 	 */
+	if (get_ecdev(bp)) {
+		/* EtherCAT: copy fragments into pre-allocated bounce buffer,
+		 * no skb alloc/free. Coherent DMA — no sync needed.
+		 */
+		unsigned int offset = 0;
+		unsigned int total = len + NET_IP_ALIGN;
+
+		for (frag = first_frag; ; frag++) {
+			unsigned int frag_len = bp->rx_buffer_size;
+
+			if (offset + frag_len > total)
+				frag_len = total - offset;
+
+			memcpy(queue->ec_rx_bounce + offset,
+			       macb_rx_buffer(queue, frag),
+			       frag_len);
+			offset += frag_len;
+
+			desc = macb_rx_desc(queue, frag);
+			desc->addr &= ~MACB_BIT(RX_USED);
+
+			if (frag == last_frag)
+				break;
+		}
+
+		/* Make descriptor updates visible to hardware */
+		wmb();
+
+		bp->dev->stats.rx_packets++;
+		bp->dev->stats.rx_bytes += len;
+
+		ecdev_receive(get_ecdev(bp),
+			      queue->ec_rx_bounce + NET_IP_ALIGN, len);
+
+		return 0;
+	}
+
+	/* Normal (non-EtherCAT) path */
 	skb = netdev_alloc_skb(bp->dev, len + NET_IP_ALIGN);
 	if (!skb) {
 		bp->dev->stats.rx_dropped++;
@@ -1584,12 +1654,7 @@ static int macb_rx_frame(struct macb_queue *queue, struct napi_struct *napi,
 	bp->dev->stats.rx_bytes += skb->len;
 	netdev_vdbg(bp->dev, "received skb of length %u, csum: %08x\n",
 		    skb->len, skb->csum);
-	if (get_ecdev(bp)) {
-		ecdev_receive(get_ecdev(bp), skb->data, skb->len);
-		dev_kfree_skb(skb);
-	} else {
-		napi_gro_receive(napi, skb);
-	}
+	napi_gro_receive(napi, skb);
 
 	return 0;
 }
