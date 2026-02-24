@@ -83,3 +83,14 @@ ec_time_t ec_current_time(void) {
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
+int ec_log_ratelimit(void)
+{
+    static time_t last_time = 0;
+    time_t now = time(NULL);
+
+    if (now - last_time >= 1) {
+        last_time = now;
+        return 1;  /* Allow message */
+    }
+    return 0;  /* Rate limited */
+}

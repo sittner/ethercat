@@ -359,18 +359,3 @@ void ec_eoe_netdev_destroy(struct ec_eoe *eoe)
     }
 }
 
-/****************************************************************************/
-/* Utility Functions */
-/****************************************************************************/
-
-int ec_log_ratelimit(void)
-{
-    static time_t last_time = 0;
-    time_t now = time(NULL);
-    
-    if (now - last_time >= 1) {
-        last_time = now;
-        return 1;  /* Allow message */
-    }
-    return 0;  /* Rate limited */
-}
