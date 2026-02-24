@@ -169,11 +169,12 @@ machine with `ec_eoe_buf_*` PAL wrappers.
 
 Once shared code uses only `ec_eoe_*` PAL names, remove the kernel-name-mimicking compat layer.
 
-- [ ] Verify no shared `master/*.c` or `master/*.h` file uses raw kernel names (`net_device`, `sk_buff`, `alloc_netdev`, `dev_alloc_skb`, `skb_put`, `netif_rx`, etc.)
-- [ ] Remove `#include "pal_eoe_compat.h"` from `master/uspace/pal.h` (line 59)
-- [ ] Delete `master/uspace/pal_eoe_compat.h` entirely
-- [ ] Move any remaining shared definitions (e.g. `NET_NAME_UNKNOWN` stub if needed) to `uspace/pal_eoe.h`
-- [ ] Verify kernel and userspace builds compile cleanly
+- [x] Verify no shared `master/*.c` or `master/*.h` file uses raw kernel names (`net_device`, `sk_buff`, `alloc_netdev`, `dev_alloc_skb`, `skb_put`, `netif_rx`, etc.)
+- [x] Remove `#include "pal_eoe_compat.h"` from `master/uspace/pal.h` (line 59)
+- [x] Delete `master/uspace/pal_eoe_compat.h` entirely
+- [x] Move any remaining shared definitions (e.g. `NET_NAME_UNKNOWN` stub if needed) to `uspace/pal_eoe.h`
+- [x] Fix `ec_log_ratelimit()` conflict: rename `ec_printk_ratelimit` → `ec_log_ratelimit` in `pal_eoe.c`, remove `#define` alias from `pal_eoe.h`, move declaration to `pal_misc.h` (matching kernel `pal.h` placement), remove stub from `pal_misc.h`
+- [x] Verify kernel and userspace builds compile cleanly
 
 ### Notes / known complications
 

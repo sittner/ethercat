@@ -363,7 +363,7 @@ void ec_eoe_netdev_destroy(struct ec_eoe *eoe)
 /* Utility Functions */
 /****************************************************************************/
 
-int ec_printk_ratelimit(void)
+int ec_log_ratelimit(void)
 {
     static time_t last_time = 0;
     time_t now = time(NULL);

@@ -48,7 +48,7 @@
 void ec_log(int level, const char *fmt, ...)
     __attribute__((format(printf, 2, 3)));
 
-static inline int ec_log_ratelimit(void) { return 1; }
+int ec_log_ratelimit(void);
 
 /****************************************************************************/
 /* Kernel utility macros */
