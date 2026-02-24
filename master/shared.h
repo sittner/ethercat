@@ -154,4 +154,15 @@ enum {
 
 /****************************************************************************/
 
+/** Master devices.
+ */
+typedef enum {
+    EC_DEVICE_MAIN, /**< Main device. */
+    EC_DEVICE_BACKUP /**< Backup device */
+} ec_device_index_t;
+
+extern const char *ec_device_names[2]; // only main and backup!
+
+/****************************************************************************/
+
 #endif
