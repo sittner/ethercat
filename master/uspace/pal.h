@@ -58,13 +58,6 @@
 #include "pal_irq_work.h"
 #include "pal_eoe_compat.h"
 
-#define EC_ETH_ALEN 6
-#ifdef ETH_ALEN
-#if ETH_ALEN != EC_ETH_ALEN
-#error Ethernet address length mismatch
-#endif
-#endif
-
 #define EC_REQUEST_CONST
 
 //************************************************************************
