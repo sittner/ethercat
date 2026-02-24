@@ -144,12 +144,12 @@ void ec_eoe_clear(ec_eoe_t *eoe /**< EoE handler */)
     ec_eoe_flush(eoe);
 
     if (eoe->tx_frame) {
-        dev_kfree_skb(eoe->tx_frame->skb);
+        ec_eoe_buf_free(eoe->tx_frame->skb);
         ec_free(eoe->tx_frame);
     }
 
     if (eoe->rx_skb)
-        dev_kfree_skb(eoe->rx_skb);
+        ec_eoe_buf_free(eoe->rx_skb);
 
     ec_eoe_netdev_destroy(eoe);
 
@@ -174,7 +174,7 @@ void ec_eoe_flush(ec_eoe_t *eoe /**< EoE handler */)
 
     list_for_each_entry_safe(frame, next, &tx_queue, queue) {
         list_del(&frame->queue);
-        dev_kfree_skb(frame->skb);
+        ec_eoe_buf_free(frame->skb);
         ec_free(frame);
     }
 }
@@ -481,11 +481,11 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
     if (!fragment_number) {
         if (eoe->rx_skb) {
             EC_SLAVE_WARN(eoe->slave, "EoE RX freeing old socket buffer.\n");
-            dev_kfree_skb(eoe->rx_skb);
+            ec_eoe_buf_free(eoe->rx_skb);
         }
 
         // new socket buffer
-        if (!(eoe->rx_skb = dev_alloc_skb(fragment_offset * 32))) {
+        if (!(eoe->rx_skb = ec_eoe_buf_alloc(fragment_offset * 32))) {
             if (ec_log_ratelimit())
                 EC_SLAVE_WARN(eoe->slave, "EoE RX low on mem,"
                         " frame dropped.\n");
@@ -509,7 +509,7 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
         if (offset != eoe->rx_skb_offset ||
             offset + data_size > eoe->rx_skb_size ||
             fragment_number != eoe->rx_expected_fragment) {
-            dev_kfree_skb(eoe->rx_skb);
+            ec_eoe_buf_free(eoe->rx_skb);
             eoe->rx_skb = NULL;
             eoe->stats.rx_errors++;
 #if EOE_DEBUG_LEVEL >= 1
@@ -522,7 +522,7 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
     }
 
     // copy fragment into socket buffer
-    memcpy(skb_put(eoe->rx_skb, data_size), data + 4, data_size);
+    memcpy(ec_eoe_buf_put(eoe->rx_skb, data_size), data + 4, data_size);
     eoe->rx_skb_offset += data_size;
 
     if (last_fragment) {
@@ -538,9 +538,9 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
 
         // pass socket buffer to network stack
         eoe->rx_skb->dev = eoe->dev;
-        eoe->rx_skb->protocol = eth_type_trans(eoe->rx_skb, eoe->dev);
-        eoe->rx_skb->ip_summed = CHECKSUM_UNNECESSARY;
-        if (netif_rx(eoe->rx_skb)) {
+        eoe->rx_skb->protocol = ec_eoe_buf_eth_type_trans(eoe->rx_skb, eoe->dev);
+        eoe->rx_skb->ip_summed = EC_EOE_CHECKSUM_UNNECESSARY;
+        if (ec_eoe_buf_deliver(eoe->rx_skb)) {
             EC_SLAVE_WARN(eoe->slave, "EoE RX netif_rx failed.\n");
         }
         eoe->rx_skb = NULL;
@@ -613,7 +613,7 @@ void ec_eoe_state_tx_start(ec_eoe_t *eoe /**< EoE handler */)
     eoe->tx_offset = 0;
 
     if (ec_eoe_send(eoe)) {
-        dev_kfree_skb(eoe->tx_frame->skb);
+        ec_eoe_buf_free(eoe->tx_frame->skb);
         ec_free(eoe->tx_frame);
         eoe->tx_frame = NULL;
         eoe->stats.tx_errors++;
@@ -680,14 +680,14 @@ void ec_eoe_state_tx_sent(ec_eoe_t *eoe /**< EoE handler */)
         eoe->stats.tx_packets++;
         eoe->stats.tx_bytes += eoe->tx_frame->skb->len;
         eoe->tx_counter += eoe->tx_frame->skb->len;
-        dev_kfree_skb(eoe->tx_frame->skb);
+        ec_eoe_buf_free(eoe->tx_frame->skb);
         ec_free(eoe->tx_frame);
         eoe->tx_frame = NULL;
         eoe->state = ec_eoe_state_rx_start;
     }
     else { // send next fragment
         if (ec_eoe_send(eoe)) {
-            dev_kfree_skb(eoe->tx_frame->skb);
+            ec_eoe_buf_free(eoe->tx_frame->skb);
             ec_free(eoe->tx_frame);
             eoe->tx_frame = NULL;
             eoe->stats.tx_errors++;
