@@ -616,13 +616,6 @@ typedef struct {
 
 /****************************************************************************/
 
-#define EC_ETH_ALEN 6
-#ifdef ETH_ALEN
-#if ETH_ALEN != EC_ETH_ALEN
-#error Ethernet address length mismatch
-#endif
-#endif
-
 typedef struct {
     // input
     uint16_t slave_position;

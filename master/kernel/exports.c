@@ -22,7 +22,7 @@
 /** \file
  * Kernel symbol exports for the EtherCAT master public API.
  *
- * Symbols are defined in shared master/*.c files and exported here
+ * Symbols are defined in the shared master source files and exported here
  * so that the shared code does not need to call EXPORT_SYMBOL directly.
  */
 

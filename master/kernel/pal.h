@@ -150,6 +150,13 @@ typedef struct {
     unsigned int tx_ring_index; /**< last ring entry used to transmit */
 } ec_device_pal_t;
 
+#define EC_ETH_ALEN 6
+#ifdef ETH_ALEN
+#if ETH_ALEN != EC_ETH_ALEN
+#error Ethernet address length mismatch
+#endif
+#endif
+
 #define EC_REQUEST_CONST const
 
 #ifdef EC_HAVE_CYCLES
