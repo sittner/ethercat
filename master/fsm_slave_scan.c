@@ -747,13 +747,13 @@ void ec_fsm_slave_scan_state_sii_data(ec_fsm_slave_scan_t *fsm
         }
         if (slave->sii.mailbox_protocols & ~all) {
             EC_SLAVE_DBG(slave, 1, "Slave announces to support unknown"
-                    " mailbox protocols 0x%04X.",
+                    " mailbox protocols 0x%04X.\n",
                     slave->sii.mailbox_protocols & ~all);
         }
     }
     else {
         EC_SLAVE_DBG(slave, 1, "Slave announces to support no mailbox"
-                " protocols.");
+                " protocols.\n");
     }
 
     if (slave->sii.boot_rx_mailbox_offset == 0xffff ||
@@ -766,7 +766,7 @@ void ec_fsm_slave_scan_state_sii_data(ec_fsm_slave_scan_t *fsm
             slave->sii.std_tx_mailbox_size == 0xffff) {
         slave->sii.mailbox_protocols = 0x0000;
         EC_SLAVE_ERR(slave, "Invalid mailbox settings in SII."
-                " Disabling mailbox communication.");
+                " Disabling mailbox communication.\n");
     }
 
     if (slave->sii_nwords == EC_FIRST_SII_CATEGORY_OFFSET) {
@@ -1016,7 +1016,7 @@ void ec_fsm_slave_scan_state_sync(
         fsm->state = ec_fsm_slave_scan_state_error;
         slave->sii.mailbox_protocols = 0x0000;
         EC_SLAVE_ERR(slave, "Invalid RX mailbox size (%u) configured."
-                " Disabling mailbox communication.", rx_size);
+                " Disabling mailbox communication.\n", rx_size);
         return;
     }
 
@@ -1024,7 +1024,7 @@ void ec_fsm_slave_scan_state_sync(
         fsm->state = ec_fsm_slave_scan_state_error;
         slave->sii.mailbox_protocols = 0x0000;
         EC_SLAVE_ERR(slave, "Invalid TX mailbox size (%u) configured."
-                " Disabling mailbox communication.", tx_size);
+                " Disabling mailbox communication.\n", tx_size);
         return;
     }
 
