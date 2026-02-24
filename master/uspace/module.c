@@ -200,8 +200,10 @@ ec_master_t *ecrt_startup_master_custom(ec_transport_t *transport,
 
 void ecrt_release_master(ec_master_t *master)
 {
+    /* Safe: master is the FIRST member of ec_master_uspace_ctx_t, so the
+     * pointer to master equals the pointer to the containing context.
+     * This invariant MUST be maintained if the struct layout changes. */
     ec_master_uspace_ctx_t *ctx = (ec_master_uspace_ctx_t *)master;
-    /* Safe because master is the first member of ctx */
 
     if (master->phase != EC_ORPHANED) {
         if (master->active) {

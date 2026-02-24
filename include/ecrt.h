@@ -255,8 +255,10 @@
 #endif
 
 #ifdef EC_USPACE_MASTER
-/** Transport type (see transport/ec_transport.h for values).
- *  Forward declaration for the public API. */
+/** Transport type.
+ *  In the public API, this is a plain int to avoid exposing the internal
+ *  enum definition from transport/ec_transport.h.  Enum values defined
+ *  in that header (e.g. EC_TRANSPORT_RAW) are always int-compatible. */
 #ifndef EC_TRANSPORT_TYPE_DEFINED
 #define EC_TRANSPORT_TYPE_DEFINED
 typedef int ec_transport_type_t;
