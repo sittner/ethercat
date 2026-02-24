@@ -718,8 +718,11 @@ static void macb_mac_link_down(struct phylink_config *config, unsigned int mode,
 	struct net_device *ndev = to_net_dev(config->dev);
 	struct macb *bp = netdev_priv(ndev);
 	struct macb_queue *queue;
+	unsigned long flags;
 	unsigned int q;
 	u32 ctrl;
+
+	spin_lock_irqsave(&bp->lock, flags);
 
 	if (!(bp->caps & MACB_CAPS_MACB_IS_EMAC))
 		for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue)
@@ -729,6 +732,8 @@ static void macb_mac_link_down(struct phylink_config *config, unsigned int mode,
 	/* Disable Rx and Tx */
 	ctrl = macb_readl(bp, NCR) & ~(MACB_BIT(RE) | MACB_BIT(TE));
 	macb_writel(bp, NCR, ctrl);
+
+	spin_unlock_irqrestore(&bp->lock, flags);
 
 	netif_tx_stop_all_queues(ndev);
 
@@ -2033,24 +2038,24 @@ static irqreturn_t macb_interrupt(int irq, void *dev_id)
 			    (unsigned long)status);
 
 		if (status & bp->rx_intr_mask) {
-			/* There's no point taking any more interrupts
-			 * until we have processed the buffers. The
-			 * scheduling call may fail if the poll routine
-			 * is already scheduled, so disable interrupts
-			 * now.
-			 */
-			queue_writel(queue, IDR, bp->rx_intr_mask);
-			if (bp->caps & MACB_CAPS_ISR_CLEAR_ON_WRITE)
-				queue_writel(queue, ISR, MACB_BIT(RCOMP));
-
 			if (get_ecdev(bp)) {
-				/* EtherCAT: process RX directly */
-				bp->macbgem_ops.mog_rx(queue, NULL, 64);
-				/* Re-enable RX interrupt source in IMR so
-				 * next ISR read sees new RX events.
+				/* EtherCAT: process RX directly. No IDR/IER
+				 * needed — ec_poll is single-threaded and
+				 * GEM loses events during masked windows.
 				 */
-				queue_writel(queue, IER, bp->rx_intr_mask);
+				if (bp->caps & MACB_CAPS_ISR_CLEAR_ON_WRITE)
+					queue_writel(queue, ISR, MACB_BIT(RCOMP));
+				bp->macbgem_ops.mog_rx(queue, NULL, 64);
 			} else {
+				/* There's no point taking any more interrupts
+				 * until we have processed the buffers. The
+				 * scheduling call may fail if the poll routine
+				 * is already scheduled, so disable interrupts
+				 * now.
+				 */
+				queue_writel(queue, IDR, bp->rx_intr_mask);
+				if (bp->caps & MACB_CAPS_ISR_CLEAR_ON_WRITE)
+					queue_writel(queue, ISR, MACB_BIT(RCOMP));
 				if (napi_schedule_prep(&queue->napi_rx)) {
 					netdev_vdbg(bp->dev, "scheduling RX softirq\n");
 					__napi_schedule(&queue->napi_rx);
@@ -2060,29 +2065,38 @@ static irqreturn_t macb_interrupt(int irq, void *dev_id)
 
 		if (status & (MACB_BIT(TCOMP) |
 			      MACB_BIT(TXUBR))) {
-			queue_writel(queue, IDR, MACB_BIT(TCOMP));
-			if (bp->caps & MACB_CAPS_ISR_CLEAR_ON_WRITE)
-				queue_writel(queue, ISR, MACB_BIT(TCOMP) |
-							 MACB_BIT(TXUBR));
-
-			if (status & MACB_BIT(TXUBR) || queue->tx_pending) {
-				queue->txubr_pending = true;
-				queue->tx_pending = 0;
-				wmb(); // ensure softirq can see update
-			}
-
 			if (get_ecdev(bp)) {
-				/* EtherCAT: process TX completion directly */
+				/* EtherCAT: process TX directly. No IDR/IER
+				 * needed — ec_poll is single-threaded and
+				 * GEM loses events during masked windows.
+				 */
+				if (bp->caps & MACB_CAPS_ISR_CLEAR_ON_WRITE)
+					queue_writel(queue, ISR, MACB_BIT(TCOMP) |
+								 MACB_BIT(TXUBR));
+
+				if (status & MACB_BIT(TXUBR) || queue->tx_pending) {
+					queue->txubr_pending = true;
+					queue->tx_pending = 0;
+					wmb(); /* ensure tx_complete can see update */
+				}
+
 				macb_tx_complete(queue, 64);
 				if (queue->txubr_pending) {
 					queue->txubr_pending = false;
 					macb_tx_restart(queue);
 				}
-				/* Re-enable TX interrupt source in IMR so
-				 * next ISR read sees new TX events.
-				 */
-				queue_writel(queue, IER, MACB_BIT(TCOMP));
 			} else {
+				queue_writel(queue, IDR, MACB_BIT(TCOMP));
+				if (bp->caps & MACB_CAPS_ISR_CLEAR_ON_WRITE)
+					queue_writel(queue, ISR, MACB_BIT(TCOMP) |
+								 MACB_BIT(TXUBR));
+
+				if (status & MACB_BIT(TXUBR) || queue->tx_pending) {
+					queue->txubr_pending = true;
+					queue->tx_pending = 0;
+					wmb(); /* ensure softirq can see update */
+				}
+
 				if (napi_schedule_prep(&queue->napi_tx)) {
 					netdev_vdbg(bp->dev, "scheduling TX softirq\n");
 					__napi_schedule(&queue->napi_tx);
@@ -2091,11 +2105,23 @@ static irqreturn_t macb_interrupt(int irq, void *dev_id)
 		}
 
 		if (unlikely(status & (MACB_TX_ERR_FLAGS))) {
-			queue_writel(queue, IDR, MACB_TX_INT_FLAGS);
-			schedule_work(&queue->tx_error_task);
-
 			if (bp->caps & MACB_CAPS_ISR_CLEAR_ON_WRITE)
 				queue_writel(queue, ISR, MACB_TX_ERR_FLAGS);
+
+			if (get_ecdev(bp)) {
+				/* EtherCAT: handle TX error inline.
+				 * Cannot use async workqueue — leaves TX
+				 * interrupts disabled between ec_poll calls.
+				 * Release bp->lock first since the error
+				 * task acquires it.
+				 */
+				spin_unlock(&bp->lock);
+				macb_tx_error_task(&queue->tx_error_task);
+				spin_lock(&bp->lock);
+			} else {
+				queue_writel(queue, IDR, MACB_TX_INT_FLAGS);
+				schedule_work(&queue->tx_error_task);
+			}
 
 			break;
 		}
