@@ -721,7 +721,7 @@ static void macb_mac_link_down(struct phylink_config *config, unsigned int mode,
 	unsigned int q;
 	u32 ctrl;
 
-	if (!(bp->caps & MACB_CAPS_MACB_IS_EMAC) && !get_ecdev(bp))
+	if (!(bp->caps & MACB_CAPS_MACB_IS_EMAC))
 		for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue)
 			queue_writel(queue, IDR,
 				     bp->rx_intr_mask | MACB_TX_INT_FLAGS | MACB_BIT(HRESP));
@@ -776,9 +776,8 @@ static void macb_mac_link_up(struct phylink_config *config,
 		for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue) {
 			queue->tx_head = 0;
 			queue->tx_tail = 0;
-			if (!get_ecdev(bp))
-				queue_writel(queue, IER,
-					     bp->rx_intr_mask | MACB_TX_INT_FLAGS | MACB_BIT(HRESP));
+			queue_writel(queue, IER,
+				     bp->rx_intr_mask | MACB_TX_INT_FLAGS | MACB_BIT(HRESP));
 		}
 	}
 
@@ -1910,12 +1909,10 @@ static void macb_hresp_error_task(struct work_struct *work)
 	unsigned int q;
 	u32 ctrl;
 
-	if (!get_ecdev(bp)) {
-		for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue) {
-			queue_writel(queue, IDR, bp->rx_intr_mask |
-						 MACB_TX_INT_FLAGS |
-						 MACB_BIT(HRESP));
-		}
+	for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue) {
+		queue_writel(queue, IDR, bp->rx_intr_mask |
+					 MACB_TX_INT_FLAGS |
+					 MACB_BIT(HRESP));
 	}
 	ctrl = macb_readl(bp, NCR);
 	ctrl &= ~(MACB_BIT(RE) | MACB_BIT(TE));
@@ -1933,14 +1930,12 @@ static void macb_hresp_error_task(struct work_struct *work)
 	/* Initialize TX and RX buffers */
 	macb_init_buffers(bp);
 
-	if (!get_ecdev(bp)) {
-		/* Enable interrupts */
-		for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue)
-			queue_writel(queue, IER,
-				     bp->rx_intr_mask |
-				     MACB_TX_INT_FLAGS |
-				     MACB_BIT(HRESP));
-	}
+	/* Enable interrupts */
+	for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue)
+		queue_writel(queue, IER,
+			     bp->rx_intr_mask |
+			     MACB_TX_INT_FLAGS |
+			     MACB_BIT(HRESP));
 
 	ctrl |= MACB_BIT(RE) | MACB_BIT(TE);
 	macb_writel(bp, NCR, ctrl);
@@ -3189,6 +3184,16 @@ static int macb_open(struct net_device *dev)
 
 	macb_init_hw(bp);
 
+	/* In EtherCAT mode, disable the hardware IRQ line. The EtherCAT
+	 * master calls ec_poll() which invokes macb_interrupt() directly.
+	 * IER/IDR/IMR must still be programmed (ISR returns raw & IMR),
+	 * but the actual interrupt signal to the CPU must be suppressed.
+	 */
+	if (get_ecdev(bp)) {
+		for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue)
+			disable_irq(queue->irq);
+	}
+
 	err = phy_power_on(bp->sgmii_phy);
 	if (err)
 		goto reset_hw;
@@ -3251,6 +3256,11 @@ static int macb_close(struct net_device *dev)
 		rtnl_unlock();
 
 	phy_power_off(bp->sgmii_phy);
+
+	if (get_ecdev(bp)) {
+		for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue)
+			enable_irq(queue->irq);
+	}
 
 	spin_lock_irqsave(&bp->lock, flags);
 	macb_reset_hw(bp);
