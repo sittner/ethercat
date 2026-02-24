@@ -40,19 +40,27 @@
 
 /****************************************************************************/
 
-/** Transport type enumeration */
-typedef enum {
+/** Transport type enumeration values */
+enum ec_transport_type {
     EC_TRANSPORT_RAW = 0,   /**< AF_PACKET raw socket */
 #ifdef HAVE_XDP
     EC_TRANSPORT_XDP_SKB,   /**< AF_XDP Generic SKB mode (universal compatibility) */
     EC_TRANSPORT_XDP_NATIVE,   /**< AF_XDP Native driver mode with copy */
 #endif
-} ec_transport_type_t;
+};
+
+#ifndef EC_TRANSPORT_TYPE_DEFINED
+#define EC_TRANSPORT_TYPE_DEFINED
+typedef enum ec_transport_type ec_transport_type_t;
+#endif /* EC_TRANSPORT_TYPE_DEFINED */
 
 /****************************************************************************/
 
 /* Forward declarations */
+#ifndef EC_TRANSPORT_STRUCT_DEFINED
+#define EC_TRANSPORT_STRUCT_DEFINED
 typedef struct ec_transport ec_transport_t;
+#endif /* EC_TRANSPORT_STRUCT_DEFINED */
 typedef struct ec_transport_ops ec_transport_ops_t;
 
 /****************************************************************************/

@@ -254,6 +254,21 @@
 # endif
 #endif
 
+#ifdef EC_USPACE_MASTER
+/** Transport type (see transport/ec_transport.h for values).
+ *  Forward declaration for the public API. */
+#ifndef EC_TRANSPORT_TYPE_DEFINED
+#define EC_TRANSPORT_TYPE_DEFINED
+typedef int ec_transport_type_t;
+#endif
+
+#ifndef EC_TRANSPORT_STRUCT_DEFINED
+#define EC_TRANSPORT_STRUCT_DEFINED
+struct ec_transport;
+typedef struct ec_transport ec_transport_t;
+#endif
+#endif /* EC_USPACE_MASTER */
+
 /****************************************************************************/
 
 /** End of list marker.
@@ -635,6 +650,39 @@ extern "C" {
  */
 EC_PUBLIC_API unsigned int ecrt_version_magic(void);
 
+#ifdef EC_USPACE_MASTER
+
+/** Initialize the userspace master library. Must be called once before
+ *  any other ecrt_* function.
+ *
+ *  \return 0 on success, < 0 on error. */
+EC_PUBLIC_API int ecrt_lib_init(void);
+
+/** Start a userspace master with built-in transport. Creates transport,
+ *  opens interface, initializes master, and enters idle phase.
+ *  Transport is library-owned and destroyed by ecrt_release_master().
+ *
+ *  \return Pointer to master, or NULL on error. */
+EC_PUBLIC_API ec_master_t *ecrt_startup_master(
+        ec_transport_type_t transport_type, /**< Transport type. */
+        const char *interface /**< Network interface name. */
+        );
+
+/** Start a userspace master with caller-provided transport.
+ *  Transport is caller-owned — ecrt_release_master() will NOT destroy it.
+ *
+ *  \return Pointer to master, or NULL on error. */
+EC_PUBLIC_API ec_master_t *ecrt_startup_master_custom(
+        ec_transport_t *transport, /**< Caller-provided transport. */
+        const char *interface /**< Network interface name. */
+        );
+
+/** Cleanup the userspace master library.
+ *  Must be called after all masters have been released. */
+EC_PUBLIC_API void ecrt_lib_cleanup(void);
+
+#else /* !EC_USPACE_MASTER */
+
 /** Requests an EtherCAT master for realtime operation.
  *
  * Before an application can access an EtherCAT master, it has to reserve one
@@ -676,6 +724,8 @@ EC_PUBLIC_API ec_master_t *ecrt_open_master(
         );
 
 #endif // #ifndef __KERNEL__
+
+#endif /* EC_USPACE_MASTER */
 
 /** Releases a requested EtherCAT master.
  *

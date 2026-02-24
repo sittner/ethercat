@@ -28,18 +28,23 @@
 
 #include "pal.h"
 
-#include "../device.h"
 #include "../master.h"
-#include "../fsm_master.h"
-
 #include "transport/ec_transport.h"
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <signal.h>
 #include <getopt.h>
 #include <unistd.h>
+
+/****************************************************************************/
+
+/* Forward declarations for library API */
+extern int ecrt_lib_init(void);
+extern ec_master_t *ecrt_startup_master(ec_transport_type_t transport_type,
+        const char *interface);
+extern void ecrt_release_master(ec_master_t *master);
+extern void ecrt_lib_cleanup(void);
 
 /****************************************************************************/
 
@@ -61,8 +66,7 @@ int main(int argc, char *argv[])
 {
     const char *interface = NULL;
     ec_transport_type_t transport_type = EC_TRANSPORT_RAW;  /* DEFAULT: raw */
-    ec_transport_t *transport = NULL;
-    ec_master_t master;
+    ec_master_t *master = NULL;
     int ret = 0;
     int c;
 
@@ -116,107 +120,36 @@ int main(int argc, char *argv[])
 
     ec_log(EC_LOG_INFO, "Starting EtherCAT master on interface %s\n", interface);
 
-    ec_master_init_static();
-
-    /* Initialize workqueues */
-    if (ec_pal_work_init() != 0) {
-        ec_log(EC_LOG_ERR, "Failed to create system workqueue\n");
-        return 1;
-    }
-
-    if (ec_pal_irq_work_init() != 0) {
-        ec_log(EC_LOG_ERR, "Failed to create IRQ work queue\n");
-        ec_pal_work_cleanup();
+    ret = ecrt_lib_init();
+    if (ret < 0) {
+        fprintf(stderr, "Failed to initialize EtherCAT library\n");
         return 1;
     }
 
     ec_log(EC_LOG_INFO, "Using transport: %s\n", ec_transport_get_name(transport_type));
 
-    /* Create and open transport */
-    transport = ec_transport_create(transport_type);
-    if (!transport) {
-        ec_log(EC_LOG_ERR, "Failed to create transport\n");
-        ret = 1;
-        goto out_cleanup_queues;
+    master = ecrt_startup_master(transport_type, interface);
+    if (!master) {
+        fprintf(stderr, "Failed to start EtherCAT master\n");
+        ecrt_lib_cleanup();
+        return 1;
     }
 
-    ret = ec_transport_open(transport, interface);
-    if (ret < 0) {
-        ec_log(EC_LOG_ERR, "Failed to open transport on %s: %d\n", interface, ret);
-        ret = 1;
-        goto out_destroy_transport;
-    }
-
-    ec_log(EC_LOG_INFO, "Transport opened successfully\n");
-
-    // TODO: check if this is the correct way
-    uint8_t main_mac[ETH_ALEN] = {0};
-    uint8_t backup_mac[ETH_ALEN] = {0};
-
-    /* Get MAC address from transport */
-    ec_transport_get_mac(transport, main_mac);
-
-    /* Initialize master */
-    ret = ec_master_init(&master, 0, main_mac, backup_mac, 1, 0);
-    if (ret < 0) {
-        ec_log(EC_LOG_ERR, "Failed to initialize master: %d\n", ret);
-        ret = 1;
-        goto out_close_transport;
-    }
-
-    /* Store transport reference in device */
-    master.devices[EC_DEVICE_MAIN].pal.transport = transport;
-    master.devices[EC_DEVICE_MAIN].name = interface;  /* Safe: interface from argv remains valid */
-
-    /* Open device */
-    ret = ec_device_open(&master.devices[EC_DEVICE_MAIN]);
-    if (ret < 0) {
-        ec_log(EC_LOG_ERR, "Failed to open device: %d\n", ret);
-        ret = 1;
-        goto out_clear_master;
-    }
-
-    /* Set up signal handlers for clean shutdown */
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
-    ec_log(EC_LOG_INFO, "EtherCAT master started, entering main loop\n");
+    ec_log(EC_LOG_INFO, "EtherCAT master started on %s\n", interface);
 
-    /* Enter idle phase */
-    ret = ec_master_enter_idle_phase(&master);
-    if (ret < 0) {
-        ec_log(EC_LOG_ERR, "Failed to enter idle phase: %d\n", ret);
-        ret = 1;
-        goto out_close_device;
-    }
-
-    /* Main loop - run until signal received */
     while (g_running) {
-        pause();  /* Sleep until signal - uses ~0% CPU */
+        pause();
     }
 
     ec_log(EC_LOG_INFO, "Shutting down EtherCAT master\n");
 
-    /* Leave idle phase */
-    ec_master_leave_idle_phase(&master);
-
-out_close_device:
-    ec_device_close(&master.devices[EC_DEVICE_MAIN]);
-
-out_clear_master:
-    ec_master_clear(&master);
-
-out_close_transport:
-    ec_transport_close(transport);
-
-out_destroy_transport:
-    ec_transport_destroy(transport);
-
-out_cleanup_queues:
-    ec_pal_irq_work_cleanup();
-    ec_pal_work_cleanup();
+    ecrt_release_master(master);
+    ecrt_lib_cleanup();
 
     ec_log(EC_LOG_INFO, "EtherCAT master stopped\n");
-    return ret;
+    return 0;
 }
 

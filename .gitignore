@@ -25,6 +25,7 @@ Makefile.in
 autoconf
 autom4te.cache/
 config.h
+!master/uspace/config.h
 config.h.in
 config.log
 config.status

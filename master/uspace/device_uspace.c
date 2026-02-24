@@ -56,7 +56,7 @@ int ec_device_init(ec_device_t *device, ec_master_t *master)
 void ec_device_clear(ec_device_t *device)
 {
     ec_device_clear_common(device);
-    /* Transport is managed by main(), just clear the reference */
+    /* Transport is managed by module, just clear the reference */
     device->pal.transport = NULL;
 }
 
@@ -140,7 +140,7 @@ int ec_device_open(ec_device_t *device)
 {
     uint8_t *tx_buffer;
 
-    /* Transport is already opened in main(), just set state */
+    /* Transport is already opened in module, just set state */
     device->open = 1;
     device->link_state = 0;
     ec_device_clear_stats(device);
@@ -162,7 +162,7 @@ int ec_device_open(ec_device_t *device)
 /** Close device. */
 int ec_device_close(ec_device_t *device)
 {
-    /* Transport is closed in main(), just set state */
+    /* Transport is closed in module, just set state */
     device->open = 0;
     
     ec_log(EC_LOG_INFO, "Device %s closed\n", device->name ? device->name : "?");
