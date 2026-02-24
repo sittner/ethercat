@@ -63,7 +63,7 @@ MASTER_SRCS = \
 	../voe_handler.c
 
 # Userspace sources
-USPACE_SRCS = master_main.c pal.c pal_eoe.c $(TRANSPORT_SRCS)
+USPACE_SRCS = master_main.c pal.c pal_eoe.c pal_work.c pal_irq_work.c $(TRANSPORT_SRCS)
 
 # All sources combined
 SRCS = $(MASTER_SRCS) $(USPACE_SRCS)
