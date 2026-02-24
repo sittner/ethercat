@@ -167,26 +167,31 @@ is never included by application code. **No type renames needed.**
 ### Transport Ownership
 
 `ecrt_startup_master()` and `ecrt_startup_master_custom()` differ in transport
-ownership. The flag `master->pal.transport_owned` tracks this:
+ownership. The flag `transport_owned` in `ec_master_uspace_ctx_t` tracks this:
 
 - `ecrt_startup_master()` → library-owned (`transport_owned = 1`) → `ecrt_release_master()` destroys transport
 - `ecrt_startup_master_custom()` → caller-owned (`transport_owned = 0`) → `ecrt_release_master()` does NOT destroy transport
 
 ### String and MAC Lifetime
 
-MAC addresses and the interface name string are owned by `ec_master_pal_t`
-(the `pal` field embedded in `ec_master_t`):
+MAC addresses and the interface name string are owned by `ec_master_uspace_ctx_t`
+(the wrapper struct allocated in `module.c`):
 
-- `master->pal.main_mac[ETH_ALEN]` — MAC address copied from transport at startup
-- `master->pal.backup_mac[ETH_ALEN]` — backup MAC address (zeroed by default)
-- `master->pal.interface_name` — interface name `strdup`'d in `ecrt_startup_master()` / `ecrt_startup_master_custom()`, freed in `ecrt_release_master()`
+- `ctx->main_mac[ETH_ALEN]` — MAC address copied from transport at startup
+- `ctx->backup_mac[ETH_ALEN]` — backup MAC address (zeroed by default)
+- `ctx->interface_name` — interface name `strdup`'d in `ecrt_startup_master()` / `ecrt_startup_master_custom()`, freed in `ecrt_release_master()`
+
+This fixes a latent bug in the current `main.c` where stack-local `main_mac`
+happens to outlive the master only because it's in `main()`'s stack frame.
 
 ### Master Allocation
 
-The master is heap-allocated (`malloc(sizeof(ec_master_t))`) since the
-application cannot know `sizeof(ec_master_t)` — the type is opaque to
-application code. This is consistent with how the existing ioctl-based
-`lib/common.c` allocates masters.
+The master is heap-allocated as part of `ec_master_uspace_ctx_t`
+(`malloc(sizeof(ec_master_uspace_ctx_t))`) since the application cannot know
+`sizeof(ec_master_t)` — the type is opaque. The `ec_master_t master` field is
+the first member of the context struct, so `(ec_master_t *)ctx == &ctx->master`.
+This is consistent with how the existing ioctl-based `lib/common.c` allocates
+masters.
 
 ## Build System
 
@@ -242,7 +247,7 @@ When enabled, implies:
 - `master/master.h` — no type renames
 - `master/master.c` — no changes to core
 - `master/*.c` — master core unchanged
-- `lib/` — untouched (planned: disabled when `--enable-uspace-master` is used, but build system enforcement is pending)
+- `lib/` — untouched (disabled when uspace-master enabled)
 
 ## Task Tracking
 
@@ -263,3 +268,50 @@ When enabled, implies:
 - [ ] Test: `ec_master` standalone binary works
 - [ ] Test: application linked against `libethercat.so` works
 
+## Items to Watch
+
+The following are not bugs or blockers, but areas worth keeping in mind for
+future hardening and documentation.
+
+### 1. Multiple Master Instances
+
+`module.c` does not enforce a single-instance constraint. Calling
+`ecrt_startup_master()` multiple times will create independent master
+instances, each with its own `ec_master_uspace_ctx_t`. This is intentional
+for the library model (unlike the kernel module which has a global master
+array), but should be documented for users who expect kernel-like behavior.
+
+### 2. Thread Safety of `ecrt_lib_init()` / `ecrt_lib_cleanup()`
+
+The global workqueue initialization functions (`ec_pal_work_init()`,
+`ec_pal_irq_work_init()`) are called once during `ecrt_lib_init()`. If two
+threads race on `ecrt_lib_init()`, double initialization could occur. For
+realtime applications this is typically a non-issue (single-threaded init on
+startup), but could be hardened later with an `atomic_flag` or `pthread_once`
+guard.
+
+### 3. `ecrt_release_master()` Phase Safety
+
+The current code checks `master->phase != EC_ORPHANED` before leaving
+idle/operation phase, and checks `master->active` before calling
+`ec_master_leave_operation_phase()`. This is correct for all normal
+sequences. Edge cases to be aware of:
+
+- If `ecrt_master_activate()` was never called, `master->active` is 0 and the
+  operation-phase teardown is correctly skipped.
+- If the master is in an error state where `phase` was not updated, the
+  cleanup may skip necessary teardown. This matches kernel behavior.
+
+### 4. `EC_USPACE_MASTER` Define
+
+The new `ecrt.h` API is guarded by `#ifdef EC_USPACE_MASTER`. Ensure the
+build system defines this flag (`-DEC_USPACE_MASTER`) when building with
+`--enable-uspace-master`. Verify via `configure.ac` that `AC_DEFINE` or
+`AM_CPPFLAGS` propagates this to both the library build and installed
+headers.
+
+### 5. Shared Library Versioning
+
+The library currently uses `-version-info 0:0:0` (libtool). Before a stable
+release, the version-info triple should be updated following libtool's
+current:revision:age scheme to maintain ABI compatibility tracking.
