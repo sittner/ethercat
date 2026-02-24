@@ -320,13 +320,6 @@ int ecrt_soe_request_write(ec_soe_request_t *req)
 
 /** \cond */
 
-EXPORT_SYMBOL(ecrt_soe_request_idn);
-EXPORT_SYMBOL(ecrt_soe_request_timeout);
-EXPORT_SYMBOL(ecrt_soe_request_data);
-EXPORT_SYMBOL(ecrt_soe_request_data_size);
-EXPORT_SYMBOL(ecrt_soe_request_state);
-EXPORT_SYMBOL(ecrt_soe_request_read);
-EXPORT_SYMBOL(ecrt_soe_request_write);
 
 /** \endcond */
 

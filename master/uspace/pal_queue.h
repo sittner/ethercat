@@ -35,70 +35,61 @@ typedef struct {
     pthread_cond_t cond;
 } ec_wait_queue_t;
 
-/**
- * init_waitqueue_head - initialize a wait queue
- * @wq: pointer to wait queue to initialize
- */
-static inline void init_waitqueue_head(ec_wait_queue_t *wq)
+static inline void ec_wq_init(ec_wait_queue_t *wq)
 {
     pthread_mutex_init(&wq->lock, NULL);
     pthread_cond_init(&wq->cond, NULL);
 }
 
-/**
- * wake_up - wake one waiting thread
- * @wq: pointer to wait queue
- */
-static inline void wake_up(ec_wait_queue_t *wq)
+static inline void ec_wq_wake(ec_wait_queue_t *wq)
 {
     pthread_mutex_lock(&wq->lock);
     pthread_cond_signal(&wq->cond);
     pthread_mutex_unlock(&wq->lock);
 }
 
-/**
- * wake_up_all - wake all waiting threads
- * @wq: pointer to wait queue
- */
-static inline void wake_up_all(ec_wait_queue_t *wq)
+static inline void ec_wq_wake_interruptible(ec_wait_queue_t *wq)
+{
+    ec_wq_wake(wq);
+}
+
+static inline void ec_wq_wake_all(ec_wait_queue_t *wq)
 {
     pthread_mutex_lock(&wq->lock);
     pthread_cond_broadcast(&wq->cond);
     pthread_mutex_unlock(&wq->lock);
 }
 
-#define wake_up_interruptible(wq) wake_up(wq)
-
 /**
- * wait_event - sleep until condition is true
- * @wq: wait queue (passed by VALUE, not pointer - kernel API!)
+ * ec_wq_wait - sleep until condition is true
+ * @wq: wait queue (passed by VALUE, not pointer - matches kernel API)
  * @condition: condition to wait for
  */
-#define wait_event(wq, condition)                       \
-    do {                                                \
-        pthread_mutex_lock(&(wq).lock);                 \
-        while (!(condition)) {                          \
+#define ec_wq_wait(wq, condition)                        \
+    do {                                                 \
+        pthread_mutex_lock(&(wq).lock);                  \
+        while (!(condition)) {                           \
             pthread_cond_wait(&(wq).cond, &(wq).lock);  \
-        }                                               \
-        pthread_mutex_unlock(&(wq).lock);               \
+        }                                                \
+        pthread_mutex_unlock(&(wq).lock);                \
     } while (0)
 
 /**
- * wait_event_interruptible - sleep until condition (interruptible)
+ * ec_wq_wait_interruptible - sleep until condition (interruptible)
  * @wq: wait queue (passed by VALUE)
  * @condition: condition to wait for
  *
  * Returns 0 if condition became true, -ERESTARTSYS on signal
  */
-#define wait_event_interruptible(wq, condition)         \
-    ({                                                  \
-        int __ret = 0;                                  \
-        pthread_mutex_lock(&(wq).lock);                 \
-        while (!(condition)) {                          \
+#define ec_wq_wait_interruptible(wq, condition)          \
+    ({                                                   \
+        int __ret = 0;                                   \
+        pthread_mutex_lock(&(wq).lock);                  \
+        while (!(condition)) {                           \
             pthread_cond_wait(&(wq).cond, &(wq).lock);  \
-        }                                               \
-        pthread_mutex_unlock(&(wq).lock);               \
-        __ret;                                          \
+        }                                                \
+        pthread_mutex_unlock(&(wq).lock);                \
+        __ret;                                           \
     })
 
 #endif /* __EC_USPACE_PAL_QUEUE_H__ */

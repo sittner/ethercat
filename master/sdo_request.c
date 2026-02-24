@@ -243,13 +243,6 @@ int ecrt_sdo_request_write(ec_sdo_request_t *req)
 
 /** \cond */
 
-EXPORT_SYMBOL(ecrt_sdo_request_index);
-EXPORT_SYMBOL(ecrt_sdo_request_timeout);
-EXPORT_SYMBOL(ecrt_sdo_request_data);
-EXPORT_SYMBOL(ecrt_sdo_request_data_size);
-EXPORT_SYMBOL(ecrt_sdo_request_state);
-EXPORT_SYMBOL(ecrt_sdo_request_read);
-EXPORT_SYMBOL(ecrt_sdo_request_write);
 
 /** \endcond */
 

@@ -21,53 +21,47 @@
 
 /**
    \file
-   Platform Abstraction Layer for userspace EtherCAT master.
+   Platform Abstraction Layer - work queue wrappers for kernel EtherCAT master.
 */
 
 /****************************************************************************/
 
-#ifndef __EC_USPACE_PAL_SEM_H__
-#define __EC_USPACE_PAL_SEM_H__
+#ifndef __EC_KERNEL_PAL_WORK_H__
+#define __EC_KERNEL_PAL_WORK_H__
 
-/* Semaphore type */
-typedef sem_t ec_semaphore_t;
+/* ec_work_t is typedef'd in pal.h as struct work_struct */
 
-static inline void ec_sem_init(ec_semaphore_t *sem, int val)
+/* ec_work_init must be a macro because INIT_WORK is a macro */
+#define ec_work_init(_work, _func) INIT_WORK(_work, _func)
+
+static inline int ec_work_schedule(ec_work_t *work)
 {
-    sem_init(sem, 0, val);  /* 0 = not shared between processes */
+    return schedule_work(work);
 }
 
-static inline void ec_sem_down(ec_semaphore_t *sem)
+static inline int ec_work_queue(struct workqueue_struct *wq, ec_work_t *work)
 {
-    sem_wait(sem);
+    return queue_work(wq, work);
 }
 
-/**
- * ec_sem_down_trylock - try to acquire without blocking
- *
- * Returns 0 if acquired, 1 if not (note: opposite of sem_trywait!)
- */
-static inline int ec_sem_down_trylock(ec_semaphore_t *sem)
+static inline struct workqueue_struct *ec_wq_create(const char *name)
 {
-    return (sem_trywait(sem) == 0) ? 0 : 1;
+    return create_workqueue(name);
 }
 
-/**
- * ec_sem_down_interruptible - acquire semaphore, interruptible
- *
- * Returns 0 on success, -EINTR if interrupted by signal
- */
-static inline int ec_sem_down_interruptible(ec_semaphore_t *sem)
+static inline void ec_wq_destroy(struct workqueue_struct *wq)
 {
-    if (sem_wait(sem) == -1 && errno == EINTR)
-        return -EINTR;
-    return 0;
+    destroy_workqueue(wq);
 }
 
-static inline void ec_sem_up(ec_semaphore_t *sem)
+static inline bool ec_work_cancel(ec_work_t *work)
 {
-    sem_post(sem);
+    return cancel_work_sync(work);
 }
 
-#endif /* __EC_USPACE_PAL_SEM_H__ */
+static inline void ec_wq_flush(struct workqueue_struct *wq)
+{
+    flush_workqueue(wq);
+}
 
+#endif /* __EC_KERNEL_PAL_WORK_H__ */

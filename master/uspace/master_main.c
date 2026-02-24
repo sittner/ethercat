@@ -119,7 +119,7 @@ int main(int argc, char *argv[])
     ec_master_init_static();
 
     /* Initialize workqueues */
-    system_wq = create_workqueue("system_wq");
+    system_wq = ec_wq_create("system_wq");
     if (!system_wq) {
         ec_log(EC_LOG_ERR, "Failed to create system workqueue\n");
         return 1;
@@ -127,7 +127,7 @@ int main(int argc, char *argv[])
 
     if (create_irq_work_queue() != 0) {
         ec_log(EC_LOG_ERR, "Failed to create IRQ work queue\n");
-        destroy_workqueue(system_wq);
+        ec_wq_destroy(system_wq);
         return 1;
     }
 
@@ -215,7 +215,7 @@ out_destroy_transport:
 
 out_cleanup_queues:
     destroy_irq_work_queue();
-    destroy_workqueue(system_wq);
+    ec_wq_destroy(system_wq);
 
     ec_log(EC_LOG_INFO, "EtherCAT master stopped\n");
     return ret;

@@ -40,12 +40,12 @@ typedef void (*work_func_t)(struct pal_work_struct *work);
 #define WORK_STRUCT_RUNNING     (1 << 1)
 
 /**
- * struct pal_work_struct - deferred work item
+ * ec_work_t - deferred work item
  */
 struct pal_work_struct {
     work_func_t func;               /* Work function */
     volatile unsigned long flags;   /* State flags */
-    struct pal_work_struct *next;       /* Next in queue (linked list) */
+    struct pal_work_struct *next;   /* Next in queue (linked list) */
 };
 
 typedef struct pal_work_struct ec_work_t;
@@ -57,8 +57,8 @@ struct workqueue_struct {
     pthread_t worker;               /* Worker thread */
     pthread_mutex_t lock;           /* Protects queue */
     pthread_cond_t cond;            /* Signal new work */
-    ec_work_t *head;       /* Queue head */
-    ec_work_t *tail;       /* Queue tail */
+    ec_work_t *head;                /* Queue head */
+    ec_work_t *tail;                /* Queue tail */
     volatile int shutdown;          /* Shutdown flag */
     char name[32];                  /* Workqueue name */
 };
@@ -67,18 +67,16 @@ struct workqueue_struct {
 extern struct workqueue_struct *system_wq;
 
 /**
- * INIT_WORK - initialize a work item
+ * ec_work_init - initialize a work item
  * @_work: work struct to initialize
  * @_func: function to execute
  */
-#define INIT_WORK(_work, _func)                     \
+#define ec_work_init(_work, _func)                  \
     do {                                            \
         (_work)->func = (_func);                    \
         (_work)->flags = 0;                         \
         (_work)->next = NULL;                       \
     } while (0)
-
-
 
 /* Internal: worker thread function */
 static inline void *__workqueue_worker(void *arg)
@@ -91,7 +89,6 @@ static inline void *__workqueue_worker(void *arg)
     while (1) {
         pthread_mutex_lock(&wq->lock);
 
-        /* Wait for work or shutdown */
         while (!wq->head && !wq->shutdown) {
             pthread_cond_wait(&wq->cond, &wq->lock);
         }
@@ -101,7 +98,6 @@ static inline void *__workqueue_worker(void *arg)
             break;
         }
 
-        /* Dequeue work item */
         work = wq->head;
         if (work) {
             wq->head = work->next;
@@ -114,7 +110,6 @@ static inline void *__workqueue_worker(void *arg)
 
         pthread_mutex_unlock(&wq->lock);
 
-        /* Execute work outside lock */
         if (work && work->func) {
             work->func(work);
             work->flags &= ~WORK_STRUCT_RUNNING;
@@ -125,12 +120,9 @@ static inline void *__workqueue_worker(void *arg)
 }
 
 /**
- * create_workqueue - create a new workqueue
- * @name: name for the workqueue
- *
- * Returns workqueue pointer or NULL on failure
+ * ec_wq_create - create a new workqueue
  */
-static inline struct workqueue_struct *create_workqueue(const char *name)
+static inline struct workqueue_struct *ec_wq_create(const char *name)
 {
     struct workqueue_struct *wq;
 
@@ -158,12 +150,9 @@ static inline struct workqueue_struct *create_workqueue(const char *name)
 }
 
 /**
- * destroy_workqueue - destroy a workqueue
- * @wq: workqueue to destroy
- *
- * Waits for pending work to complete
+ * ec_wq_destroy - destroy a workqueue
  */
-static inline void destroy_workqueue(struct workqueue_struct *wq)
+static inline void ec_wq_destroy(struct workqueue_struct *wq)
 {
     if (!wq)
         return;
@@ -181,20 +170,14 @@ static inline void destroy_workqueue(struct workqueue_struct *wq)
 }
 
 /**
- * queue_work - queue work to a workqueue
- * @wq: target workqueue
- * @work: work item to queue
- *
- * Returns 1 if work was queued, 0 if already pending
+ * ec_work_queue - queue work to a workqueue
  */
-static inline int queue_work(struct workqueue_struct *wq,
-                             ec_work_t *work)
+static inline int ec_work_queue(struct workqueue_struct *wq, ec_work_t *work)
 {
     int ret = 0;
 
     pthread_mutex_lock(&wq->lock);
 
-    /* Don't queue if already pending */
     if (!(work->flags & WORK_STRUCT_PENDING)) {
         work->flags |= WORK_STRUCT_PENDING;
         work->next = NULL;
@@ -215,43 +198,44 @@ static inline int queue_work(struct workqueue_struct *wq,
 }
 
 /**
- * schedule_work - queue work to system workqueue
- * @work: work item to queue
- *
- * Returns 1 if work was queued, 0 if already pending
+ * ec_work_schedule - queue work to system workqueue
  */
-static inline int schedule_work(ec_work_t *work)
+static inline int ec_work_schedule(ec_work_t *work)
 {
-    return queue_work(system_wq, work);
+    return ec_work_queue(system_wq, work);
 }
 
-
-
 /**
- * cancel_work_sync - cancel work and wait for completion
- * @work: work item to cancel
- *
- * Returns 1 if work was pending, 0 if not
+ * ec_work_cancel - cancel work and wait for completion
  */
-static inline int cancel_work_sync(ec_work_t *work)
+static inline int ec_work_cancel(ec_work_t *work)
 {
     int was_pending;
 
-    /* Mark as not pending (worker will skip if not dequeued yet) */
     was_pending = (work->flags & WORK_STRUCT_PENDING) ? 1 : 0;
 
-    /* Wait for completion if running */
     while (work->flags & WORK_STRUCT_RUNNING) {
         sched_yield();
     }
 
-    /* Clear pending flag */
     work->flags &= ~WORK_STRUCT_PENDING;
 
     return was_pending;
 }
 
-
-
+/**
+ * ec_wq_flush - flush all pending work in a workqueue
+ */
+static inline void ec_wq_flush(struct workqueue_struct *wq)
+{
+    /* Signal and wait for queue to drain */
+    pthread_mutex_lock(&wq->lock);
+    while (wq->head) {
+        pthread_mutex_unlock(&wq->lock);
+        sched_yield();
+        pthread_mutex_lock(&wq->lock);
+    }
+    pthread_mutex_unlock(&wq->lock);
+}
 #endif /* __EC_USPACE_PAL_WORK_H__ */
 

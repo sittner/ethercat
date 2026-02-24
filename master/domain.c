@@ -436,14 +436,14 @@ void ecrt_domain_external_memory(ec_domain_t *domain, uint8_t *mem)
     EC_MASTER_DBG(domain->master, 1, "ecrt_domain_external_memory("
             "domain = 0x%p, mem = 0x%p)\n", domain, mem);
 
-    down(&domain->master->master_sem);
+    ec_sem_down(&domain->master->master_sem);
 
     ec_domain_clear_data(domain);
 
     domain->data = mem;
     domain->data_origin = EC_ORIG_EXTERNAL;
 
-    up(&domain->master->master_sem);
+    ec_sem_up(&domain->master->master_sem);
 }
 
 /****************************************************************************/
@@ -724,13 +724,6 @@ int ecrt_domain_state(const ec_domain_t *domain, ec_domain_state_t *state)
 
 /** \cond */
 
-EXPORT_SYMBOL(ecrt_domain_reg_pdo_entry_list);
-EXPORT_SYMBOL(ecrt_domain_size);
-EXPORT_SYMBOL(ecrt_domain_external_memory);
-EXPORT_SYMBOL(ecrt_domain_data);
-EXPORT_SYMBOL(ecrt_domain_process);
-EXPORT_SYMBOL(ecrt_domain_queue);
-EXPORT_SYMBOL(ecrt_domain_state);
 
 /** \endcond */
 

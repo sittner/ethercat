@@ -541,13 +541,6 @@ void ec_voe_handler_state_error(ec_voe_handler_t *voe)
 
 /** \cond */
 
-EXPORT_SYMBOL(ecrt_voe_handler_send_header);
-EXPORT_SYMBOL(ecrt_voe_handler_received_header);
-EXPORT_SYMBOL(ecrt_voe_handler_data);
-EXPORT_SYMBOL(ecrt_voe_handler_data_size);
-EXPORT_SYMBOL(ecrt_voe_handler_read);
-EXPORT_SYMBOL(ecrt_voe_handler_write);
-EXPORT_SYMBOL(ecrt_voe_handler_execute);
 
 /** \endcond */
 

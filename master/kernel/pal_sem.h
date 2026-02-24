@@ -21,53 +21,39 @@
 
 /**
    \file
-   Platform Abstraction Layer for userspace EtherCAT master.
+   Platform Abstraction Layer - semaphore wrappers for kernel EtherCAT master.
 */
 
 /****************************************************************************/
 
-#ifndef __EC_USPACE_PAL_SEM_H__
-#define __EC_USPACE_PAL_SEM_H__
+#ifndef __EC_KERNEL_PAL_SEM_H__
+#define __EC_KERNEL_PAL_SEM_H__
 
-/* Semaphore type */
-typedef sem_t ec_semaphore_t;
+/* ec_semaphore_t is typedef'd in pal.h as struct semaphore */
 
 static inline void ec_sem_init(ec_semaphore_t *sem, int val)
 {
-    sem_init(sem, 0, val);  /* 0 = not shared between processes */
+    sema_init(sem, val);
 }
 
 static inline void ec_sem_down(ec_semaphore_t *sem)
 {
-    sem_wait(sem);
+    down(sem);
 }
 
-/**
- * ec_sem_down_trylock - try to acquire without blocking
- *
- * Returns 0 if acquired, 1 if not (note: opposite of sem_trywait!)
- */
 static inline int ec_sem_down_trylock(ec_semaphore_t *sem)
 {
-    return (sem_trywait(sem) == 0) ? 0 : 1;
-}
-
-/**
- * ec_sem_down_interruptible - acquire semaphore, interruptible
- *
- * Returns 0 on success, -EINTR if interrupted by signal
- */
-static inline int ec_sem_down_interruptible(ec_semaphore_t *sem)
-{
-    if (sem_wait(sem) == -1 && errno == EINTR)
-        return -EINTR;
-    return 0;
+    return down_trylock(sem);
 }
 
 static inline void ec_sem_up(ec_semaphore_t *sem)
 {
-    sem_post(sem);
+    up(sem);
 }
 
-#endif /* __EC_USPACE_PAL_SEM_H__ */
+static inline int ec_sem_down_interruptible(ec_semaphore_t *sem)
+{
+    return down_interruptible(sem);
+}
 
+#endif /* __EC_KERNEL_PAL_SEM_H__ */

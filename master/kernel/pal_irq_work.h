@@ -21,53 +21,25 @@
 
 /**
    \file
-   Platform Abstraction Layer for userspace EtherCAT master.
+   Platform Abstraction Layer - IRQ work wrappers for kernel EtherCAT master.
 */
 
 /****************************************************************************/
 
-#ifndef __EC_USPACE_PAL_SEM_H__
-#define __EC_USPACE_PAL_SEM_H__
+#ifndef __EC_KERNEL_PAL_IRQ_WORK_H__
+#define __EC_KERNEL_PAL_IRQ_WORK_H__
 
-/* Semaphore type */
-typedef sem_t ec_semaphore_t;
+/* ec_irq_work_t is typedef'd in pal.h as struct irq_work */
 
-static inline void ec_sem_init(ec_semaphore_t *sem, int val)
+static inline void ec_irq_work_init(ec_irq_work_t *work,
+                                    void (*func)(ec_irq_work_t *))
 {
-    sem_init(sem, 0, val);  /* 0 = not shared between processes */
+    init_irq_work(work, func);
 }
 
-static inline void ec_sem_down(ec_semaphore_t *sem)
+static inline bool ec_irq_work_queue(ec_irq_work_t *work)
 {
-    sem_wait(sem);
+    return irq_work_queue(work);
 }
 
-/**
- * ec_sem_down_trylock - try to acquire without blocking
- *
- * Returns 0 if acquired, 1 if not (note: opposite of sem_trywait!)
- */
-static inline int ec_sem_down_trylock(ec_semaphore_t *sem)
-{
-    return (sem_trywait(sem) == 0) ? 0 : 1;
-}
-
-/**
- * ec_sem_down_interruptible - acquire semaphore, interruptible
- *
- * Returns 0 on success, -EINTR if interrupted by signal
- */
-static inline int ec_sem_down_interruptible(ec_semaphore_t *sem)
-{
-    if (sem_wait(sem) == -1 && errno == EINTR)
-        return -EINTR;
-    return 0;
-}
-
-static inline void ec_sem_up(ec_semaphore_t *sem)
-{
-    sem_post(sem);
-}
-
-#endif /* __EC_USPACE_PAL_SEM_H__ */
-
+#endif /* __EC_KERNEL_PAL_IRQ_WORK_H__ */

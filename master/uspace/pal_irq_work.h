@@ -40,12 +40,12 @@ typedef void (*irq_work_func_t)(struct pal_irq_work *work);
 #define IRQ_WORK_BUSY       (1 << 1)
 
 /**
- * struct pal_irq_work - low-latency deferred work
+ * ec_irq_work_t - low-latency deferred work
  */
 struct pal_irq_work {
     irq_work_func_t func;           /* Work function */
     atomic_int flags;               /* State flags (lock-free) */
-    struct pal_irq_work *next;          /* Next in queue (lock-free list) */
+    struct pal_irq_work *next;      /* Next in queue (lock-free list) */
 };
 
 typedef struct pal_irq_work ec_irq_work_t;
@@ -65,18 +65,15 @@ struct pal_irq_work_queue {
 extern struct pal_irq_work_queue *irq_work_queue_global;
 
 /**
- * init_irq_work - initialize an irq_work item
- * @work: work item to initialize
- * @func: function to execute
+ * ec_irq_work_init - initialize an irq_work item
  */
-static inline void init_irq_work(ec_irq_work_t *work, irq_work_func_t func)
+static inline void ec_irq_work_init(ec_irq_work_t *work,
+                                    irq_work_func_t func)
 {
     work->func = func;
     atomic_init(&work->flags, 0);
     work->next = NULL;
 }
-
-
 
 /* Internal: worker thread function */
 static inline void *__irq_work_worker(void *arg)
@@ -90,7 +87,6 @@ static inline void *__irq_work_worker(void *arg)
     while (1) {
         pthread_mutex_lock(&q->lock);
 
-        /* Wait for work or shutdown */
         while (atomic_load(&q->head) == 0 && !q->shutdown) {
             pthread_cond_wait(&q->cond, &q->lock);
         }
@@ -102,12 +98,10 @@ static inline void *__irq_work_worker(void *arg)
 
         pthread_mutex_unlock(&q->lock);
 
-        /* Process all queued work (lock-free dequeue) */
         while ((head = atomic_exchange(&q->head, 0)) != 0) {
-            /* Reverse the list to get FIFO order */
             ec_irq_work_t *reversed = NULL;
             work = (ec_irq_work_t *)head;
-       
+
             while (work) {
                 ec_irq_work_t *next = work->next;
                 work->next = reversed;
@@ -115,24 +109,19 @@ static inline void *__irq_work_worker(void *arg)
                 work = next;
             }
 
-            /* Execute in FIFO order */
             work = reversed;
             while (work) {
                 ec_irq_work_t *next = work->next;
                 int flags;
 
-                /* Mark as running, get previous flags */
                 flags = atomic_fetch_and(&work->flags, ~IRQ_WORK_PENDING);
 
-                /* Only execute if work was actually pending */
                 if (flags & IRQ_WORK_PENDING) {
                     atomic_fetch_or(&work->flags, IRQ_WORK_BUSY);
 
-                    /* Execute work function */
                     if (work->func)
                         work->func(work);
 
-                    /* Mark as complete */
                     atomic_fetch_and(&work->flags, ~IRQ_WORK_BUSY);
                 }
 
@@ -146,8 +135,6 @@ static inline void *__irq_work_worker(void *arg)
 
 /**
  * create_irq_work_queue - create the IRQ work queue
- *
- * Returns 0 on success, negative error code on failure
  */
 static inline int create_irq_work_queue(void)
 {
@@ -165,10 +152,8 @@ static inline int create_irq_work_queue(void)
     pthread_cond_init(&q->cond, NULL);
     q->shutdown = 0;
 
-    /* Create high-priority worker thread */
     pthread_attr_init(&attr);
 
-    /* Try to set real-time priority (may fail without privileges) */
     if (pthread_attr_setschedpolicy(&attr, SCHED_FIFO) == 0) {
         param.sched_priority = sched_get_priority_max(SCHED_FIFO) - 1;
         pthread_attr_setschedparam(&attr, &param);
@@ -176,10 +161,9 @@ static inline int create_irq_work_queue(void)
     }
 
     if (pthread_create(&q->worker, &attr, __irq_work_worker, q) != 0) {
-        /* Retry without real-time priority */
         pthread_attr_destroy(&attr);
         pthread_attr_init(&attr);
-   
+
         if (pthread_create(&q->worker, &attr, __irq_work_worker, q) != 0) {
             pthread_attr_destroy(&attr);
             pthread_mutex_destroy(&q->lock);
@@ -217,15 +201,36 @@ static inline void destroy_irq_work_queue(void)
     irq_work_queue_global = NULL;
 }
 
+/**
+ * ec_irq_work_queue - queue an irq work item
+ */
+static inline void ec_irq_work_queue(ec_irq_work_t *work)
+{
+    struct pal_irq_work_queue *q = irq_work_queue_global;
+    uintptr_t old_head;
 
+    if (!q)
+        return;
+
+    atomic_fetch_or(&work->flags, IRQ_WORK_PENDING);
+
+    do {
+        old_head = atomic_load(&q->head);
+        work->next = (ec_irq_work_t *)old_head;
+    } while (!atomic_compare_exchange_weak(&q->head,
+                                           &old_head,
+                                           (uintptr_t)work));
+
+    pthread_mutex_lock(&q->lock);
+    pthread_cond_signal(&q->cond);
+    pthread_mutex_unlock(&q->lock);
+}
 
 /**
  * irq_work_sync - wait for work to complete
- * @work: work item to wait for
  */
 static inline void irq_work_sync(ec_irq_work_t *work)
 {
-    /* Spin until work is complete */
     while (atomic_load(&work->flags) & (IRQ_WORK_PENDING | IRQ_WORK_BUSY)) {
         sched_yield();
     }

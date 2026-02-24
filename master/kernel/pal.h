@@ -116,6 +116,13 @@ typedef struct irq_work ec_irq_work_t;
         } while (0)
 #endif
 
+#include "pal_sem.h"
+#include "pal_mtx.h"
+#include "pal_queue.h"
+#include "pal_thread.h"
+#include "pal_work.h"
+#include "pal_irq_work.h"
+
 /** Kernel-specific master fields. */
 typedef struct {
     ec_cdev_t cdev;                     /**< Master character device. */

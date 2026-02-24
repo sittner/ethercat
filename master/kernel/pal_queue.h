@@ -21,53 +21,42 @@
 
 /**
    \file
-   Platform Abstraction Layer for userspace EtherCAT master.
+   Platform Abstraction Layer - wait queue wrappers for kernel EtherCAT master.
 */
 
 /****************************************************************************/
 
-#ifndef __EC_USPACE_PAL_SEM_H__
-#define __EC_USPACE_PAL_SEM_H__
+#ifndef __EC_KERNEL_PAL_QUEUE_H__
+#define __EC_KERNEL_PAL_QUEUE_H__
 
-/* Semaphore type */
-typedef sem_t ec_semaphore_t;
+/* ec_wait_queue_t is typedef'd in pal.h as wait_queue_head_t */
 
-static inline void ec_sem_init(ec_semaphore_t *sem, int val)
+static inline void ec_wq_init(ec_wait_queue_t *wq)
 {
-    sem_init(sem, 0, val);  /* 0 = not shared between processes */
+    init_waitqueue_head(wq);
 }
 
-static inline void ec_sem_down(ec_semaphore_t *sem)
+static inline void ec_wq_wake(ec_wait_queue_t *wq)
 {
-    sem_wait(sem);
+    wake_up(wq);
 }
 
-/**
- * ec_sem_down_trylock - try to acquire without blocking
- *
- * Returns 0 if acquired, 1 if not (note: opposite of sem_trywait!)
- */
-static inline int ec_sem_down_trylock(ec_semaphore_t *sem)
+static inline void ec_wq_wake_interruptible(ec_wait_queue_t *wq)
 {
-    return (sem_trywait(sem) == 0) ? 0 : 1;
+    wake_up_interruptible(wq);
 }
 
-/**
- * ec_sem_down_interruptible - acquire semaphore, interruptible
- *
- * Returns 0 on success, -EINTR if interrupted by signal
- */
-static inline int ec_sem_down_interruptible(ec_semaphore_t *sem)
+static inline void ec_wq_wake_all(ec_wait_queue_t *wq)
 {
-    if (sem_wait(sem) == -1 && errno == EINTR)
-        return -EINTR;
-    return 0;
+    wake_up_all(wq);
 }
 
-static inline void ec_sem_up(ec_semaphore_t *sem)
-{
-    sem_post(sem);
-}
+/* ec_wq_wait and ec_wq_wait_interruptible must be macros because they
+ * capture a condition expression */
+#define ec_wq_wait(wq, condition) \
+    wait_event(wq, condition)
 
-#endif /* __EC_USPACE_PAL_SEM_H__ */
+#define ec_wq_wait_interruptible(wq, condition) \
+    wait_event_interruptible(wq, condition)
 
+#endif /* __EC_KERNEL_PAL_QUEUE_H__ */

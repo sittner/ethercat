@@ -114,10 +114,6 @@ int ecrt_reg_request_read(ec_reg_request_t *reg, uint16_t address,
 
 /** \cond */
 
-EXPORT_SYMBOL(ecrt_reg_request_data);
-EXPORT_SYMBOL(ecrt_reg_request_state);
-EXPORT_SYMBOL(ecrt_reg_request_write);
-EXPORT_SYMBOL(ecrt_reg_request_read);
 
 /** \endcond */
 
