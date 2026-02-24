@@ -112,33 +112,33 @@ No logic changes — pure type aliasing.
 Move net_device lifecycle and callback functions out of shared `ethernet.c` into
 platform-specific `kernel/pal_eoe.c` and adapt `uspace/pal_eoe.c`.
 
-- [ ] Define PAL API for net_device lifecycle:
+- [x] Define PAL API for net_device lifecycle:
   `ec_eoe_netdev_create(ec_eoe_t *eoe, const char *name)` — wraps `alloc_netdev` + `ether_setup` + `register_netdev` + MAC init,
   `ec_eoe_netdev_destroy(ec_eoe_t *eoe)` — wraps `unregister_netdev` + `free_netdev`
-- [ ] Define PAL API for net_device queue operations:
+- [x] Define PAL API for net_device queue operations:
   `ec_eoe_netdev_tx_lock(ec_eoe_netdev_t dev)` — wraps `netif_tx_lock_bh`,
   `ec_eoe_netdev_tx_unlock(ec_eoe_netdev_t dev)` — wraps `netif_tx_unlock_bh`,
   `ec_eoe_netdev_start_queue(ec_eoe_netdev_t dev)` — wraps `netif_start_queue`,
   `ec_eoe_netdev_stop_queue(ec_eoe_netdev_t dev)` — wraps `netif_stop_queue`,
   `ec_eoe_netdev_wake_queue(ec_eoe_netdev_t dev)` — wraps `netif_wake_queue`
-- [ ] Create `master/kernel/pal_eoe.c`:
+- [x] Create `master/kernel/pal_eoe.c`:
   move `ec_eoedev_open`, `ec_eoedev_stop`, `ec_eoedev_tx`, `ec_eoedev_stats` from `ethernet.c`,
   implement `ec_eoe_netdev_create()` (absorbs `alloc_netdev`/`register_netdev`/`eth_hw_addr_set`/`ether_setup`/`netdev_priv` init from `ec_eoe_init`),
   implement `ec_eoe_netdev_destroy()` (absorbs `unregister_netdev`/`free_netdev` from `ec_eoe_clear`),
   implement queue operation wrappers as thin inlines or functions,
   register `net_device_ops` callbacks (verify how `ndo_open`/`ndo_stop`/`ndo_start_xmit`/`ndo_get_stats` are currently registered)
-- [ ] Refactor `ec_eoe_init()` in shared `ethernet.c`:
+- [x] Refactor `ec_eoe_init()` in shared `ethernet.c`:
   keep protocol state init (queues, counters, datagram, state machine),
   replace `alloc_netdev`/`register_netdev`/`eth_hw_addr_set` block with single `ec_eoe_netdev_create(eoe, name)` call
-- [ ] Refactor `ec_eoe_clear()` in shared `ethernet.c`:
+- [x] Refactor `ec_eoe_clear()` in shared `ethernet.c`:
   replace `unregister_netdev`/`free_netdev` with `ec_eoe_netdev_destroy(eoe)` call
-- [ ] Refactor `ec_eoe_flush()` in shared `ethernet.c`:
+- [x] Refactor `ec_eoe_flush()` in shared `ethernet.c`:
   replace `netif_tx_lock_bh`/`netif_tx_unlock_bh` with `ec_eoe_netdev_tx_lock`/`ec_eoe_netdev_tx_unlock`
-- [ ] Refactor `ec_eoe_state_tx_start()` in shared `ethernet.c`:
+- [x] Refactor `ec_eoe_state_tx_start()` in shared `ethernet.c`:
   replace `netif_tx_lock_bh`/`netif_tx_unlock_bh`/`netif_wake_queue` with PAL wrappers
-- [ ] Adapt `master/uspace/pal_eoe.c` to implement the new PAL API (`ec_eoe_netdev_create` wraps TAP `ec_netdev_alloc` + `ec_netdev_register`, etc.)
-- [ ] Update kernel and userspace Makefiles to add `kernel/pal_eoe.c`
-- [ ] Remove forward declarations of `ec_eoedev_open`/`ec_eoedev_stop`/`ec_eoedev_tx`/`ec_eoedev_stats` from `ethernet.c` (now in `kernel/pal_eoe.c`)
+- [x] Adapt `master/uspace/pal_eoe.c` to implement the new PAL API (`ec_eoe_netdev_create` wraps TAP `ec_netdev_alloc` + `ec_netdev_register`, etc.)
+- [x] Update kernel and userspace Makefiles to add `kernel/pal_eoe.c`
+- [x] Remove forward declarations of `ec_eoedev_open`/`ec_eoedev_stop`/`ec_eoedev_tx`/`ec_eoedev_stats` from `ethernet.c` (now in `kernel/pal_eoe.c`)
 
 ### PR 3: Abstract `sk_buff` operations
 

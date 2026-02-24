@@ -16,6 +16,7 @@
 #include <net/if_arp.h>
 
 #include "pal_eoe.h"
+#include "../ethernet.h"
 
 /****************************************************************************/
 /* Network Device Implementation */
@@ -313,6 +314,49 @@ ec_skb_t *ec_netdev_rx_from_tap(ec_netdev_t *dev)
     dev->stats.tx_bytes += len;
     
     return skb;
+}
+
+/****************************************************************************/
+/* EoE Lifecycle API */
+/****************************************************************************/
+
+int ec_eoe_netdev_create(struct ec_eoe *eoe, const char *name)
+{
+    ec_eoe_t **priv;
+    uint8_t mac_addr[ETH_ALEN] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+    int ret;
+
+    eoe->dev = ec_netdev_alloc(name, sizeof(ec_eoe_t *));
+    if (!eoe->dev) {
+        return -ENOMEM;
+    }
+
+    ec_netdev_set_mac(eoe->dev, mac_addr);
+
+    priv = ec_netdev_priv(eoe->dev);
+    *priv = eoe;
+
+    ret = ec_netdev_register(eoe->dev);
+    if (ret) {
+        ec_netdev_free(eoe->dev);
+        eoe->dev = NULL;
+        return ret;
+    }
+
+    /* Make last MAC octet unique using interface index */
+    mac_addr[ETH_ALEN - 1] = (uint8_t) ec_eoe_netdev_ifindex(eoe->dev);
+    ec_netdev_set_mac(eoe->dev, mac_addr);
+
+    return 0;
+}
+
+void ec_eoe_netdev_destroy(struct ec_eoe *eoe)
+{
+    if (eoe->dev) {
+        ec_netdev_unregister(eoe->dev);
+        ec_netdev_free(eoe->dev);
+        eoe->dev = NULL;
+    }
 }
 
 /****************************************************************************/

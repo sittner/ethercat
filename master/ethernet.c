@@ -69,12 +69,6 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *);
 void ec_eoe_state_tx_start(ec_eoe_t *);
 void ec_eoe_state_tx_sent(ec_eoe_t *);
 
-// net_device functions
-int ec_eoedev_open(ec_eoe_netdev_t);
-int ec_eoedev_stop(ec_eoe_netdev_t);
-int ec_eoedev_tx(ec_eoe_buf_t, ec_eoe_netdev_t);
-ec_eoe_stats_t *ec_eoedev_stats(ec_eoe_netdev_t);
-
 /****************************************************************************/
 
 /** EoE constructor.
@@ -88,10 +82,8 @@ int ec_eoe_init(
         ec_slave_t *slave /**< EtherCAT slave */
         )
 {
-    ec_eoe_t **priv;
     int ret = 0;
     char name[EC_DATAGRAM_NAME_SIZE];
-    uint8_t mac_addr[ETH_ALEN] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
 
     eoe->slave = slave;
 
@@ -130,49 +122,14 @@ int ec_eoe_init(
 
     snprintf(eoe->datagram.name, EC_DATAGRAM_NAME_SIZE, name);
 
-    eoe->dev = alloc_netdev(sizeof(ec_eoe_t *), name, NET_NAME_UNKNOWN,
-            ether_setup);
-    if (!eoe->dev) {
-        EC_SLAVE_ERR(slave, "Unable to allocate net_device %s"
-                " for EoE handler!\n", name);
-        ret = -ENODEV;
-        goto out_return;
-    }
-
-    // initialize net_device
-    eth_hw_addr_set(eoe->dev, mac_addr);
-
-    // initialize private data
-    priv = netdev_priv(eoe->dev);
-    *priv = eoe;
-
-    // Usually setting the MTU appropriately makes the upper layers
-    // do the frame fragmenting. In some cases this doesn't work
-    // so the MTU is left on the Ethernet standard value and fragmenting
-    // is done "manually".
-#if 0
-    eoe->dev->mtu = slave->configured_rx_mailbox_size - ETH_HLEN - 10;
-#endif
-
-    // connect the net_device to the kernel
-    ret = register_netdev(eoe->dev);
+    ret = ec_eoe_netdev_create(eoe, name);
     if (ret) {
-        EC_SLAVE_ERR(slave, "Unable to register net_device:"
-                " error %i\n", ret);
-        goto out_free;
+        EC_SLAVE_ERR(slave, "Failed to create EoE net_device %s: error %i\n",
+                name, ret);
+        return ret;
     }
-
-    // make the last address octet unique
-    mac_addr[ETH_ALEN - 1] = (uint8_t) ec_eoe_netdev_ifindex(eoe->dev);
-    eth_hw_addr_set(eoe->dev, mac_addr);
 
     return 0;
-
- out_free:
-    free_netdev(eoe->dev);
-    eoe->dev = NULL;
- out_return:
-    return ret;
 }
 
 /****************************************************************************/
@@ -183,8 +140,6 @@ int ec_eoe_init(
  */
 void ec_eoe_clear(ec_eoe_t *eoe /**< EoE handler */)
 {
-    unregister_netdev(eoe->dev); // possibly calls close callback
-
     // empty transmit queue
     ec_eoe_flush(eoe);
 
@@ -196,7 +151,7 @@ void ec_eoe_clear(ec_eoe_t *eoe /**< EoE handler */)
     if (eoe->rx_skb)
         dev_kfree_skb(eoe->rx_skb);
 
-    free_netdev(eoe->dev);
+    ec_eoe_netdev_destroy(eoe);
 
     ec_datagram_clear(&eoe->datagram);
 }
@@ -210,12 +165,12 @@ void ec_eoe_flush(ec_eoe_t *eoe /**< EoE handler */)
     ec_eoe_frame_t *frame, *next;
     struct list_head tx_queue;
 
-    netif_tx_lock_bh(eoe->dev);
+    ec_eoe_netdev_tx_lock(eoe->dev);
 
     list_replace_init(&eoe->tx_queue, &tx_queue);
     eoe->tx_queued_frames = 0;
 
-    netif_tx_unlock_bh(eoe->dev);
+    ec_eoe_netdev_tx_unlock(eoe->dev);
 
     list_for_each_entry_safe(frame, next, &tx_queue, queue) {
         list_del(&frame->queue);
@@ -624,10 +579,10 @@ void ec_eoe_state_tx_start(ec_eoe_t *eoe /**< EoE handler */)
         return;
     }
 
-    netif_tx_lock_bh(eoe->dev);
+    ec_eoe_netdev_tx_lock(eoe->dev);
 
     if (!eoe->tx_queued_frames || list_empty(&eoe->tx_queue)) {
-        netif_tx_unlock_bh(eoe->dev);
+        ec_eoe_netdev_tx_unlock(eoe->dev);
         eoe->tx_idle = 1;
         // no data available.
         // start a new receive immediately.
@@ -640,7 +595,7 @@ void ec_eoe_state_tx_start(ec_eoe_t *eoe /**< EoE handler */)
     list_del(&eoe->tx_frame->queue);
     if (!eoe->tx_queue_active &&
         eoe->tx_queued_frames == eoe->tx_queue_size / 2) {
-        netif_wake_queue(eoe->dev);
+        ec_eoe_netdev_wake_queue(eoe->dev);
         eoe->tx_queue_active = 1;
 #if EOE_DEBUG_LEVEL >= 2
         wakeup = 1;
@@ -648,7 +603,7 @@ void ec_eoe_state_tx_start(ec_eoe_t *eoe /**< EoE handler */)
     }
 
     eoe->tx_queued_frames--;
-    netif_tx_unlock_bh(eoe->dev);
+    ec_eoe_netdev_tx_unlock(eoe->dev);
 
     eoe->tx_idle = 0;
 
@@ -742,116 +697,6 @@ void ec_eoe_state_tx_sent(ec_eoe_t *eoe /**< EoE handler */)
             eoe->state = ec_eoe_state_rx_start;
         }
     }
-}
-
-/*****************************************************************************
- *  NET_DEVICE functions
- ****************************************************************************/
-
-/** Opens the virtual network device.
- *
- * \return Always zero (success).
- */
-int ec_eoedev_open(ec_eoe_netdev_t dev /**< EoE net_device */)
-{
-    ec_eoe_t *eoe = *((ec_eoe_t **) netdev_priv(dev));
-    ec_eoe_flush(eoe);
-    eoe->opened = 1;
-    eoe->rx_idle = 0;
-    eoe->tx_idle = 0;
-    netif_start_queue(dev);
-    eoe->tx_queue_active = 1;
-#if EOE_DEBUG_LEVEL >= 2
-    EC_SLAVE_DBG(eoe->slave, 0, "%s opened.\n", ec_eoe_netdev_name(dev));
-#endif
-    return 0;
-}
-
-/****************************************************************************/
-
-/** Stops the virtual network device.
- *
- * \return Always zero (success).
- */
-int ec_eoedev_stop(ec_eoe_netdev_t dev /**< EoE net_device */)
-{
-    ec_eoe_t *eoe = *((ec_eoe_t **) netdev_priv(dev));
-    netif_stop_queue(dev);
-    eoe->rx_idle = 1;
-    eoe->tx_idle = 1;
-    eoe->tx_queue_active = 0;
-    eoe->opened = 0;
-    ec_eoe_flush(eoe);
-#if EOE_DEBUG_LEVEL >= 2
-    EC_SLAVE_DBG(eoe->slave, 0, "%s stopped.\n", ec_eoe_netdev_name(dev));
-#endif
-    return 0;
-}
-
-/****************************************************************************/
-
-/** Transmits data via the virtual network device.
- *
- * \return Zero on success, non-zero on failure.
- */
-int ec_eoedev_tx(ec_eoe_buf_t skb, /**< transmit socket buffer */
-                 ec_eoe_netdev_t dev /**< EoE net_device */
-                )
-{
-    ec_eoe_t *eoe = *((ec_eoe_t **) netdev_priv(dev));
-    ec_eoe_frame_t *frame;
-
-#if 0
-    if (skb->len > eoe->slave->configured_tx_mailbox_size - 10) {
-        EC_SLAVE_WARN(eoe->slave, "EoE TX frame (%u octets)"
-                " exceeds MTU. dropping.\n", skb->len);
-        dev_kfree_skb(skb);
-        eoe->stats.tx_dropped++;
-        return 0;
-    }
-#endif
-
-    WARN_ON_ONCE(skb_get_queue_mapping(skb) != 0);
-    lockdep_assert_held(&netdev_get_tx_queue(dev, 0)->_xmit_lock);
-
-    if (!(frame = ec_alloc_atomic(sizeof(ec_eoe_frame_t)))) {
-        if (ec_log_ratelimit())
-            EC_SLAVE_WARN(eoe->slave, "EoE TX: low on mem. frame dropped.\n");
-        return 1;
-    }
-
-    frame->skb = skb;
-
-    list_add_tail(&frame->queue, &eoe->tx_queue);
-    eoe->tx_queued_frames++;
-    if (eoe->tx_queued_frames == eoe->tx_queue_size) {
-        netif_stop_queue(dev);
-        eoe->tx_queue_active = 0;
-    }
-
-#if EOE_DEBUG_LEVEL >= 2
-    EC_SLAVE_DBG(eoe->slave, 0, "EoE %s TX queued frame"
-            " with %u octets (%u frames queued).\n",
-            ec_eoe_netdev_name(eoe->dev), skb->len, eoe->tx_queued_frames);
-    if (!eoe->tx_queue_active)
-        EC_SLAVE_WARN(eoe->slave, "EoE TX queue is now full.\n");
-#endif
-
-    return 0;
-}
-
-/****************************************************************************/
-
-/** Gets statistics about the virtual network device.
- *
- * \return Statistics.
- */
-ec_eoe_stats_t *ec_eoedev_stats(
-        ec_eoe_netdev_t dev /**< EoE net_device */
-        )
-{
-    ec_eoe_t *eoe = *((ec_eoe_t **) netdev_priv(dev));
-    return &eoe->stats;
 }
 
 /****************************************************************************/
