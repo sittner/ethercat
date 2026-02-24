@@ -56,7 +56,7 @@
 #include "pal_thread.h"
 #include "pal_work.h"
 #include "pal_irq_work.h"
-#include "pal_eoe_compat.h"
+#include "pal_eoe.h"
 
 #define EC_REQUEST_CONST
 
