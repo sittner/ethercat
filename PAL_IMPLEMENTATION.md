@@ -189,11 +189,11 @@ Once shared code uses only `ec_eoe_*` PAL names, remove the kernel-name-mimickin
 
 ## Priority 3: Bugs and Incomplete Implementations
 
-- [ ] `system_wq` is NULL, never initialized → crash on first `schedule_work()` call (`uspace/pal.c:87`)
-- [ ] `irq_work_queue_global` is NULL, never initialized (`uspace/pal.c:88`)
+- [x] `system_wq` is NULL, never initialized → ~~crash on first `schedule_work()` call~~ fixed: initialized in `master_main.c`, stale `//TODO` removed from `pal.c`
+- [x] `irq_work_queue_global` is NULL, never initialized → ~~crash~~ fixed: initialized in `master_main.c`, stale `//TODO` removed from `pal.c`
 - [ ] `ec_master_pal_t` is empty struct with `// TODO` (`uspace/pal.h:111-113`)
-- [ ] `kthread_bind()` has dead code after `return` statement (`uspace/pal_thread.h:270`)
-- [ ] Implement `pthread_mutex_destroy()` calls for rt_mutex cleanup
+- [x] `kthread_bind()` dead code → fixed: `ec_thread_bind_cpu` now implements actual CPU affinity via `pthread_setaffinity_np()`
+- [x] Implement `pthread_mutex_destroy()` calls for rt_mutex cleanup → `ec_mutex_destroy()` added to both PAL sides
 - [ ] `uspace/cdev.h` is a stub (`//TODO struct cdev`) — needs userspace implementation or proper stub
 
 ---

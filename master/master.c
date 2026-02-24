@@ -354,6 +354,8 @@ void ec_master_clear(
             dev_idx++) {
         ec_device_clear(&master->devices[dev_idx]);
     }
+
+    ec_mutex_destroy(&master->io_mutex);
 }
 
 /****************************************************************************/

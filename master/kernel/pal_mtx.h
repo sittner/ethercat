@@ -46,6 +46,11 @@ static inline void ec_mutex_unlock(ec_rt_mutex_t *lock)
     rt_mutex_unlock(lock);
 }
 
+static inline void ec_mutex_destroy(ec_rt_mutex_t *lock)
+{
+    (void)lock;
+}
+
 /* ec_rt_lock_interruptible is already defined in pal.h */
 
 #endif /* __EC_KERNEL_PAL_MTX_H__ */
