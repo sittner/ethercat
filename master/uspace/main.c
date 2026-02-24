@@ -21,7 +21,7 @@
 
 /**
    \file
-   Userspace EtherCAT master main.
+   Userspace EtherCAT master standalone executable main.
 */
 
 /****************************************************************************/
