@@ -247,6 +247,33 @@ static inline void ec_eoe_netdev_wake_queue(ec_eoe_netdev_t dev) {
 }
 
 /****************************************************************************/
+/* EoE Buffer PAL Wrappers                                                   */
+/****************************************************************************/
+
+static inline ec_eoe_buf_t ec_eoe_buf_alloc(unsigned int size) {
+    return ec_skb_alloc(size);
+}
+
+static inline void ec_eoe_buf_free(ec_eoe_buf_t buf) {
+    ec_skb_free(buf);
+}
+
+static inline uint8_t *ec_eoe_buf_put(ec_eoe_buf_t buf, unsigned int len) {
+    return ec_skb_put(buf, len);
+}
+
+static inline uint16_t ec_eoe_buf_eth_type_trans(ec_eoe_buf_t buf,
+        ec_eoe_netdev_t dev) {
+    return ec_eth_type_trans(buf, dev);
+}
+
+static inline int ec_eoe_buf_deliver(ec_eoe_buf_t buf) {
+    return ec_netif_rx(buf);
+}
+
+#define EC_EOE_CHECKSUM_UNNECESSARY EC_CHECKSUM_UNNECESSARY
+
+/****************************************************************************/
 /* Utility Functions */
 /****************************************************************************/
 
