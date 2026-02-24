@@ -36,6 +36,12 @@ SUBDIRS += \
 	master
 endif
 
+# ENABLE_USPACE_MASTER and ENABLE_KERNEL are mutually exclusive
+# (configure.ac forces enablekernel=0 when --enable-uspace-master is set)
+if ENABLE_USPACE_MASTER
+SUBDIRS += master
+endif
+
 if BUILD_TOOL
 SUBDIRS += tool
 endif

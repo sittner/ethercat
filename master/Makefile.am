@@ -21,6 +21,11 @@
 
 include $(top_srcdir)/Makefile.kbuild
 
+SUBDIRS =
+if ENABLE_USPACE_MASTER
+SUBDIRS += uspace
+endif
+
 # using HEADERS to enable tags target
 noinst_HEADERS = \
 	kernel/cdev.c kernel/cdev.h \
