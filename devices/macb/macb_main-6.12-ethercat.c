@@ -1468,29 +1468,28 @@ static int gem_rx(struct macb_queue *queue, struct napi_struct *napi,
 		netdev_vdbg(bp->dev, "gem_rx %u (len %u)\n", entry, len);
 
 		if (get_ecdev(bp)) {
-			/* EtherCAT: sync DMA buffer, receive, re-arm.
-			 * No skb alloc/free — reuse the pre-allocated buffer.
+			/* EtherCAT: sync DMA buffer and pass data directly
+			 * to the master. The GEM writes frame data at
+			 * DMA_addr + RBOF (NET_IP_ALIGN). Don't touch skb
+			 * internals (skb_put/skb_reserve) — the buffer size
+			 * margin is too tight and risks overflow.
 			 */
 			dma_sync_single_for_cpu(&bp->pdev->dev, addr,
 						bp->rx_buffer_size,
 						DMA_FROM_DEVICE);
-			skb_put(skb, len);
-			ecdev_receive(get_ecdev(bp), skb->data, skb->len);
 
-			/* Reset skb for reuse — must preserve NET_SKB_PAD
-			 * headroom to match the DMA-mapped address at
-			 * skb->head + NET_SKB_PAD.
+			/* addr is the DMA address = skb->head + NET_SKB_PAD.
+			 * GEM inserts RBOF (NET_IP_ALIGN) padding bytes, so
+			 * frame data starts at skb->head + NET_SKB_PAD + NET_IP_ALIGN.
+			 * This equals skb->data as set by gem_rx_refill.
 			 */
-			skb->data = skb->head;
-			skb->len = 0;
-			skb_reset_tail_pointer(skb);
-			skb_reserve(skb, NET_SKB_PAD + NET_IP_ALIGN);
+			ecdev_receive(get_ecdev(bp), skb->data, len);
 
 			dma_sync_single_for_device(&bp->pdev->dev, addr,
 						   bp->rx_buffer_size,
 						   DMA_FROM_DEVICE);
 
-			/* Re-arm descriptor — keep skb and DMA mapping alive. */
+			/* Re-arm descriptor — keep skb and DMA mapping alive */
 			desc->ctrl = 0;
 			dma_wmb();
 			desc->addr &= ~MACB_BIT(RX_USED);
