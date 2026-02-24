@@ -42,9 +42,6 @@
 #include <linux/rtnetlink.h>
 #include "macb-6.12-ethercat.h"
 
-static unsigned int txdelay = 35;
-module_param(txdelay, uint, 0644);
-
 /* This structure is only used for MACB on SiFive FU540 devices */
 struct sifive_fu540_macb_mgmt {
 	void __iomem *reg;
@@ -724,7 +721,7 @@ static void macb_mac_link_down(struct phylink_config *config, unsigned int mode,
 	unsigned int q;
 	u32 ctrl;
 
-	if (!(bp->caps & MACB_CAPS_MACB_IS_EMAC))
+	if (!(bp->caps & MACB_CAPS_MACB_IS_EMAC) && !get_ecdev(bp))
 		for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue)
 			queue_writel(queue, IDR,
 				     bp->rx_intr_mask | MACB_TX_INT_FLAGS | MACB_BIT(HRESP));
@@ -779,8 +776,9 @@ static void macb_mac_link_up(struct phylink_config *config,
 		for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue) {
 			queue->tx_head = 0;
 			queue->tx_tail = 0;
-			queue_writel(queue, IER,
-				     bp->rx_intr_mask | MACB_TX_INT_FLAGS | MACB_BIT(HRESP));
+			if (!get_ecdev(bp))
+				queue_writel(queue, IER,
+					     bp->rx_intr_mask | MACB_TX_INT_FLAGS | MACB_BIT(HRESP));
 		}
 	}
 
@@ -1845,10 +1843,12 @@ static void macb_hresp_error_task(struct work_struct *work)
 	unsigned int q;
 	u32 ctrl;
 
-	for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue) {
-		queue_writel(queue, IDR, bp->rx_intr_mask |
-					 MACB_TX_INT_FLAGS |
-					 MACB_BIT(HRESP));
+	if (!get_ecdev(bp)) {
+		for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue) {
+			queue_writel(queue, IDR, bp->rx_intr_mask |
+						 MACB_TX_INT_FLAGS |
+						 MACB_BIT(HRESP));
+		}
 	}
 	ctrl = macb_readl(bp, NCR);
 	ctrl &= ~(MACB_BIT(RE) | MACB_BIT(TE));
@@ -1866,12 +1866,14 @@ static void macb_hresp_error_task(struct work_struct *work)
 	/* Initialize TX and RX buffers */
 	macb_init_buffers(bp);
 
-	/* Enable interrupts */
-	for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue)
-		queue_writel(queue, IER,
-			     bp->rx_intr_mask |
-			     MACB_TX_INT_FLAGS |
-			     MACB_BIT(HRESP));
+	if (!get_ecdev(bp)) {
+		/* Enable interrupts */
+		for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue)
+			queue_writel(queue, IER,
+				     bp->rx_intr_mask |
+				     MACB_TX_INT_FLAGS |
+				     MACB_BIT(HRESP));
+	}
 
 	ctrl |= MACB_BIT(RE) | MACB_BIT(TE);
 	macb_writel(bp, NCR, ctrl);
@@ -1983,8 +1985,6 @@ static irqreturn_t macb_interrupt(int irq, void *dev_id)
 			if (get_ecdev(bp)) {
 				/* EtherCAT: process RX directly */
 				bp->macbgem_ops.mog_rx(queue, NULL, 64);
-				/* Re-enable RX interrupts */
-				queue_writel(queue, IER, bp->rx_intr_mask);
 			} else {
 				if (napi_schedule_prep(&queue->napi_rx)) {
 					netdev_vdbg(bp->dev, "scheduling RX softirq\n");
@@ -2013,8 +2013,6 @@ static irqreturn_t macb_interrupt(int irq, void *dev_id)
 					queue->txubr_pending = false;
 					macb_tx_restart(queue);
 				}
-				/* Re-enable TX interrupts */
-				queue_writel(queue, IER, MACB_BIT(TCOMP));
 			} else {
 				if (napi_schedule_prep(&queue->napi_tx)) {
 					netdev_vdbg(bp->dev, "scheduling TX softirq\n");
@@ -5596,10 +5594,12 @@ static int __maybe_unused macb_suspend(struct device *dev)
 	}
 
 	netif_device_detach(netdev);
-	for (q = 0, queue = bp->queues; q < bp->num_queues;
-	     ++q, ++queue) {
-		napi_disable(&queue->napi_rx);
-		napi_disable(&queue->napi_tx);
+	if (!get_ecdev(bp)) {
+		for (q = 0, queue = bp->queues; q < bp->num_queues;
+		     ++q, ++queue) {
+			napi_disable(&queue->napi_rx);
+			napi_disable(&queue->napi_tx);
+		}
 	}
 
 	if (!(bp->wol & MACB_WOL_ENABLED)) {
@@ -5680,10 +5680,12 @@ static int __maybe_unused macb_resume(struct device *dev)
 		rtnl_unlock();
 	}
 
-	for (q = 0, queue = bp->queues; q < bp->num_queues;
-	     ++q, ++queue) {
-		napi_enable(&queue->napi_rx);
-		napi_enable(&queue->napi_tx);
+	if (!get_ecdev(bp)) {
+		for (q = 0, queue = bp->queues; q < bp->num_queues;
+		     ++q, ++queue) {
+			napi_enable(&queue->napi_rx);
+			napi_enable(&queue->napi_tx);
+		}
 	}
 
 	if (netdev->hw_features & NETIF_F_NTUPLE)
