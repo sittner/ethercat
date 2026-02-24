@@ -70,6 +70,7 @@ typedef struct {
     pthread_mutex_t lock;
     pthread_cond_t cond;
     int started;
+    int bind_cpu;               /* CPU to bind to (-1 = unbound) */
 } ec_thread_t;
 
 /* Key for thread-specific task_struct pointer */
@@ -115,6 +116,13 @@ static void *__task_thread_wrapper(void *arg)
     pthread_cond_signal(&task->cond);
     pthread_mutex_unlock(&task->lock);
 
+    if (task->bind_cpu >= 0) {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(task->bind_cpu, &cpuset);
+        pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
+    }
+
     ret = task->thread_fn(task->thread_data);
 
     task->exit_code = ret;
@@ -143,6 +151,7 @@ static inline ec_thread_t *__ec_thread_create(
     task->state = TASK_UNINTERRUPTIBLE;
     task->should_stop = 0;
     task->started = 0;
+    task->bind_cpu = -1;
 
     va_start(args, namefmt);
     vsnprintf(task->name, sizeof(task->name), namefmt, args);
@@ -232,13 +241,18 @@ static inline int ec_thread_should_stop(void)
 }
 
 /**
- * ec_thread_bind_cpu - bind thread to CPU (no-op, stored for future use)
+ * ec_thread_bind_cpu - bind thread to CPU
  */
 static inline void ec_thread_bind_cpu(ec_thread_t *task, unsigned int cpu)
 {
-    (void)task;
-    (void)cpu;
-    /* TODO: Store cpu and apply in thread wrapper */
+    task->bind_cpu = (int)cpu;
+
+    if (task->started) {
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(task->bind_cpu, &cpuset);
+        pthread_setaffinity_np(task->thread, sizeof(cpuset), &cpuset);
+    }
 }
 
 /**

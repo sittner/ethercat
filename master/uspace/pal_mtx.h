@@ -58,6 +58,11 @@ static inline void ec_mutex_unlock(ec_rt_mutex_t *lock)
     pthread_mutex_unlock(&lock->mutex);
 }
 
+static inline void ec_mutex_destroy(ec_rt_mutex_t *lock)
+{
+    pthread_mutex_destroy(&lock->mutex);
+}
+
 /**
  * ec_rt_lock_interruptible - acquire mutex, interruptible
  *
