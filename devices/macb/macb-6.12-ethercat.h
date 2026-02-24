@@ -1259,6 +1259,7 @@ struct macb_queue {
 	struct macb_dma_desc	*rx_ring;
 	struct sk_buff		**rx_skbuff;
 	void			*rx_buffers;
+	u8			ec_rx_bounce[1536];
 	struct napi_struct	napi_rx;
 	struct queue_stats stats;
 };
