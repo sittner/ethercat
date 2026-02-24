@@ -29,7 +29,9 @@
 #ifndef __EC_KERNEL_PAL_QUEUE_H__
 #define __EC_KERNEL_PAL_QUEUE_H__
 
-/* ec_wait_queue_t is typedef'd in pal.h as wait_queue_head_t */
+#include <linux/wait.h>
+
+typedef wait_queue_head_t ec_wait_queue_t;
 
 static inline void ec_wq_init(ec_wait_queue_t *wq)
 {

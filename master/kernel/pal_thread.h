@@ -29,7 +29,10 @@
 #ifndef __EC_KERNEL_PAL_THREAD_H__
 #define __EC_KERNEL_PAL_THREAD_H__
 
-/* ec_thread_t is typedef'd in pal.h as struct task_struct */
+#include <linux/kthread.h>
+#include <linux/sched.h>
+
+typedef struct task_struct ec_thread_t;
 
 /* ec_thread_run - create and start a kernel thread (variadic namefmt) */
 #define ec_thread_run(threadfn, data, namefmt, ...) \

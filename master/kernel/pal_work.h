@@ -29,7 +29,9 @@
 #ifndef __EC_KERNEL_PAL_WORK_H__
 #define __EC_KERNEL_PAL_WORK_H__
 
-/* ec_work_t is typedef'd in pal.h as struct work_struct */
+#include <linux/workqueue.h>
+
+typedef struct work_struct ec_work_t;
 
 /* ec_work_init must be a macro because INIT_WORK is a macro */
 #define ec_work_init(_work, _func) INIT_WORK(_work, _func)

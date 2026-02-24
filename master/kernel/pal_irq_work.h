@@ -29,7 +29,9 @@
 #ifndef __EC_KERNEL_PAL_IRQ_WORK_H__
 #define __EC_KERNEL_PAL_IRQ_WORK_H__
 
-/* ec_irq_work_t is typedef'd in pal.h as struct irq_work */
+#include <linux/irq_work.h>
+
+typedef struct irq_work ec_irq_work_t;
 
 static inline void ec_irq_work_init(ec_irq_work_t *work,
                                     void (*func)(ec_irq_work_t *))
@@ -40,6 +42,11 @@ static inline void ec_irq_work_init(ec_irq_work_t *work,
 static inline bool ec_irq_work_queue(ec_irq_work_t *work)
 {
     return irq_work_queue(work);
+}
+
+static inline void ec_irq_work_sync(ec_irq_work_t *work)
+{
+    irq_work_sync(work);
 }
 
 #endif /* __EC_KERNEL_PAL_IRQ_WORK_H__ */

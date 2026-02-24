@@ -36,6 +36,11 @@
 #include "pal_list.h"
 #include "pal_alloc.h"
 
+/* Error pointer macros */
+#define ERR_PTR(err)        ((void *)((long)(err)))
+#define PTR_ERR(ptr)        ((long)(ptr))
+#define IS_ERR(ptr)         ((unsigned long)(void *)(ptr) >= (unsigned long)-4095) /* MAX_ERRNO = 4095 */
+
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #define likely(x)   __builtin_expect(!!(x), 1)
 

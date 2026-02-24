@@ -227,9 +227,9 @@ static inline void ec_irq_work_queue(ec_irq_work_t *work)
 }
 
 /**
- * irq_work_sync - wait for work to complete
+ * ec_irq_work_sync - wait for work to complete
  */
-static inline void irq_work_sync(ec_irq_work_t *work)
+static inline void ec_irq_work_sync(ec_irq_work_t *work)
 {
     while (atomic_load(&work->flags) & (IRQ_WORK_PENDING | IRQ_WORK_BUSY)) {
         sched_yield();
@@ -237,5 +237,5 @@ static inline void irq_work_sync(ec_irq_work_t *work)
 }
 
 
-#endif /* __EC_USPACE_PAL_WORK_H__ */
+#endif /* __EC_USPACE_PAL_IRQ_WORK_H__ */
 

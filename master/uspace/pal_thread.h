@@ -30,15 +30,10 @@
 #define __EC_USPACE_PAL_THREAD_H__
 
 /* Task states */
-#define TASK_RUNNING         0x0000
-#define TASK_INTERRUPTIBLE   0x0001
-#define TASK_UNINTERRUPTIBLE 0x0002
-#define TASK_DEAD            0x0080
-
-/* Error pointer macros */
-#define ERR_PTR(err)        ((void *)((long)(err)))
-#define PTR_ERR(ptr)        ((long)(ptr))
-#define IS_ERR(ptr)         ((unsigned long)(void *)(ptr) >= (unsigned long)-4095) /* MAX_ERRNO = 4095 */
+#define EC_TASK_RUNNING         0x0000
+#define EC_TASK_INTERRUPTIBLE   0x0001
+#define EC_TASK_UNINTERRUPTIBLE 0x0002
+#define EC_TASK_DEAD            0x0080
 
 /* Portable gettid */
 #if defined(__GLIBC__) && \
@@ -112,7 +107,7 @@ static void *__task_thread_wrapper(void *arg)
 
     pthread_mutex_lock(&task->lock);
     task->started = 1;
-    task->state = TASK_RUNNING;
+    task->state = EC_TASK_RUNNING;
     pthread_cond_signal(&task->cond);
     pthread_mutex_unlock(&task->lock);
 
@@ -126,7 +121,7 @@ static void *__task_thread_wrapper(void *arg)
     ret = task->thread_fn(task->thread_data);
 
     task->exit_code = ret;
-    task->state = TASK_DEAD;
+    task->state = EC_TASK_DEAD;
 
     return (void *)(long)ret;
 }
@@ -148,7 +143,7 @@ static inline ec_thread_t *__ec_thread_create(
 
     task->thread_fn = threadfn;
     task->thread_data = data;
-    task->state = TASK_UNINTERRUPTIBLE;
+    task->state = EC_TASK_UNINTERRUPTIBLE;
     task->should_stop = 0;
     task->started = 0;
     task->bind_cpu = -1;
@@ -173,7 +168,7 @@ static inline int ec_thread_wake(ec_thread_t *task)
     pthread_mutex_lock(&task->lock);
 
     if (task->started) {
-        task->state = TASK_RUNNING;
+        task->state = EC_TASK_RUNNING;
         pthread_cond_signal(&task->cond);
         pthread_mutex_unlock(&task->lock);
         return 0;
@@ -216,7 +211,7 @@ static inline int ec_thread_stop(ec_thread_t *task)
     task->should_stop = 1;
 
     pthread_mutex_lock(&task->lock);
-    task->state = TASK_RUNNING;
+    task->state = EC_TASK_RUNNING;
     pthread_cond_broadcast(&task->cond);
     pthread_mutex_unlock(&task->lock);
 
@@ -293,8 +288,6 @@ static inline void ec_thread_set_priority(ec_thread_t *task, int nice)
     pthread_setschedparam(task->thread, SCHED_OTHER, &param);
     (void)nice;
 }
-
-#define ec_sched_set_normal(thread, nice) ec_thread_set_priority(thread, nice)
 
 #endif /* __EC_USPACE_PAL_THREAD_H__ */
 

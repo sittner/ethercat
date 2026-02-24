@@ -40,19 +40,15 @@
 #include <linux/if_ether.h>
 #include <linux/interrupt.h>
 #include <linux/ioctl.h>
-#include <linux/irq_work.h>
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/kobject.h>
-#include <linux/kthread.h>
 #include <linux/list.h>
 #include <linux/lockdep.h>
 #include <linux/mman.h>
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/netdevice.h>
-#include <linux/rtmutex.h>
-#include <linux/semaphore.h>
 #include <linux/skbuff.h>
 #include <linux/slab.h>
 #include <linux/string.h>
@@ -84,36 +80,10 @@
 
 #include "cdev.h"
 #include "pal_alloc.h"
+#include "pal_misc.h"
 
 #ifdef EC_RTDM
 #include "rtdm.h"
-#endif
-
-typedef struct semaphore ec_semaphore_t;
-typedef struct rt_mutex ec_rt_mutex_t;
-typedef wait_queue_head_t ec_wait_queue_t;
-typedef struct task_struct ec_thread_t;
-typedef struct work_struct ec_work_t;
-typedef struct irq_work ec_irq_work_t;
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0) || \
-    (defined(CONFIG_PREEMPT_RT_FULL) && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0))
-#  define ec_rt_lock_interruptible(lock) \
-          rt_mutex_lock_interruptible(lock)
-#else
-#  define ec_rt_lock_interruptible(lock) \
-          rt_mutex_lock_interruptible(lock, 0)
-#endif
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 9, 0)
-#    define ec_sched_set_normal(thread, nice) sched_set_normal(thread, nice)
-#else
-#    define ec_sched_set_normal(thread, nice)                   \
-        do {                                                    \
-            struct sched_param param = { .sched_priority = 0 }; \
-            sched_setscheduler(p, SCHED_NORMAL, &param);        \
-            set_user_nice(p, nice);                             \
-        } while (0)
 #endif
 
 #include "pal_sem.h"
@@ -181,32 +151,6 @@ static inline void ec_schedule_ms(unsigned long ms) {
 }
 
 #define EC_IDLE_SEND_INTERVAL (1000000 / HZ)
-
-/****************************************************************************/
-
-/** Token-pasting helpers to map EC_LOG_* integer levels to KERN_* strings.
- *
- * Two-level expansion is required so that macro arguments (e.g. EC_LOG_ERR)
- * are fully expanded to their integer value before the token paste occurs.
- * _EC_KERN_LVL_PASTE performs the actual paste; _EC_KERN_LVL forces
- * expansion of its argument first, yielding e.g. _EC_KERN_LVL_3 -> KERN_ERR.
- */
-#define _EC_KERN_LVL_0 KERN_EMERG
-#define _EC_KERN_LVL_1 KERN_ALERT
-#define _EC_KERN_LVL_2 KERN_CRIT
-#define _EC_KERN_LVL_3 KERN_ERR
-#define _EC_KERN_LVL_4 KERN_WARNING
-#define _EC_KERN_LVL_5 KERN_NOTICE
-#define _EC_KERN_LVL_6 KERN_INFO
-#define _EC_KERN_LVL_7 KERN_DEBUG
-
-#define _EC_KERN_LVL_PASTE(level) _EC_KERN_LVL_##level
-#define _EC_KERN_LVL(level)       _EC_KERN_LVL_PASTE(level)
-
-#define ec_log(level, fmt, args...) \
-    printk(_EC_KERN_LVL(level) fmt, ##args)
-
-#define ec_log_ratelimit() printk_ratelimit()
 
 /****************************************************************************/
 

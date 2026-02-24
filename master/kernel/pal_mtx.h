@@ -29,7 +29,10 @@
 #ifndef __EC_KERNEL_PAL_MTX_H__
 #define __EC_KERNEL_PAL_MTX_H__
 
-/* ec_rt_mutex_t is typedef'd in pal.h as struct rt_mutex */
+#include <linux/rtmutex.h>
+#include <linux/version.h>
+
+typedef struct rt_mutex ec_rt_mutex_t;
 
 static inline void ec_mutex_init(ec_rt_mutex_t *lock)
 {
@@ -51,6 +54,13 @@ static inline void ec_mutex_destroy(ec_rt_mutex_t *lock)
     (void)lock;
 }
 
-/* ec_rt_lock_interruptible is already defined in pal.h */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 17, 0) || \
+    (defined(CONFIG_PREEMPT_RT_FULL) && LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0))
+#  define ec_rt_lock_interruptible(lock) \
+          rt_mutex_lock_interruptible(lock)
+#else
+#  define ec_rt_lock_interruptible(lock) \
+          rt_mutex_lock_interruptible(lock, 0)
+#endif
 
 #endif /* __EC_KERNEL_PAL_MTX_H__ */
