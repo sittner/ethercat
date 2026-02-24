@@ -65,6 +65,8 @@
 #endif
 #endif
 
+#define EC_REQUEST_CONST
+
 //************************************************************************
 
 typedef uint64_t ec_time_t;

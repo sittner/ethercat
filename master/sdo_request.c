@@ -210,11 +210,7 @@ size_t ecrt_sdo_request_data_size(const ec_sdo_request_t *req)
 
 /****************************************************************************/
 
-ec_request_state_t ecrt_sdo_request_state(
-#ifdef __KERNEL__
-        const
-#endif
-        ec_sdo_request_t *req)
+ec_request_state_t ecrt_sdo_request_state(EC_REQUEST_CONST ec_sdo_request_t *req)
 {
    return ec_request_state_translation_table[req->state];
 }

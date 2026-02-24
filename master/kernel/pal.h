@@ -143,6 +143,8 @@ typedef struct {
     unsigned int tx_ring_index; /**< last ring entry used to transmit */
 } ec_device_pal_t;
 
+#define EC_REQUEST_CONST const
+
 #ifdef EC_HAVE_CYCLES
 
 typedef cycles_t ec_time_t;
