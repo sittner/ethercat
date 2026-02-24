@@ -90,22 +90,22 @@ namespace pollution that gets included for ALL shared files via `pal.h`.
 Define opaque PAL types so `ethernet.h` no longer uses raw kernel type names.
 No logic changes — pure type aliasing.
 
-- [ ] Create `master/kernel/pal_eoe.h` with kernel-side typedefs:
+- [x] Create `master/kernel/pal_eoe.h` with kernel-side typedefs:
   `typedef struct net_device * ec_eoe_netdev_t`,
   `typedef struct sk_buff * ec_eoe_buf_t`,
   `typedef struct net_device_stats ec_eoe_stats_t`
-- [ ] Update `master/uspace/pal_eoe.h` with matching userspace typedefs:
+- [x] Update `master/uspace/pal_eoe.h` with matching userspace typedefs:
   `typedef ec_netdev_t * ec_eoe_netdev_t`,
   `typedef ec_skb_t * ec_eoe_buf_t`,
   `typedef struct { unsigned long rx_packets; ... } ec_eoe_stats_t`
-- [ ] Replace `struct net_device *dev` → `ec_eoe_netdev_t dev` in `ec_eoe_t` (`ethernet.h:81`)
-- [ ] Replace `struct net_device_stats stats` → `ec_eoe_stats_t stats` in `ec_eoe_t` (`ethernet.h:82`)
-- [ ] Replace `struct sk_buff *rx_skb` → `ec_eoe_buf_t rx_skb` in `ec_eoe_t` (`ethernet.h:86`)
-- [ ] Replace `struct sk_buff *skb` → `ec_eoe_buf_t skb` in `ec_eoe_frame_t` (`ethernet.h:60`)
-- [ ] Add accessor `ec_eoe_netdev_name(ec_eoe_netdev_t dev)` — returns `const char *` (both sides have `name` field but accessor is cleaner for abstraction)
-- [ ] Add accessor `ec_eoe_netdev_ifindex(ec_eoe_netdev_t dev)` — returns `int` (used once in `ethernet.c:166`)
-- [ ] Include `kernel/pal_eoe.h` from `kernel/pal.h`
-- [ ] Verify kernel and userspace builds compile cleanly with no logic changes
+- [x] Replace `struct net_device *dev` → `ec_eoe_netdev_t dev` in `ec_eoe_t` (`ethernet.h:81`)
+- [x] Replace `struct net_device_stats stats` → `ec_eoe_stats_t stats` in `ec_eoe_t` (`ethernet.h:82`)
+- [x] Replace `struct sk_buff *rx_skb` → `ec_eoe_buf_t rx_skb` in `ec_eoe_t` (`ethernet.h:86`)
+- [x] Replace `struct sk_buff *skb` → `ec_eoe_buf_t skb` in `ec_eoe_frame_t` (`ethernet.h:60`)
+- [x] Add accessor `ec_eoe_netdev_name(ec_eoe_netdev_t dev)` — returns `const char *` (both sides have `name` field but accessor is cleaner for abstraction)
+- [x] Add accessor `ec_eoe_netdev_ifindex(ec_eoe_netdev_t dev)` — returns `int` (used once in `ethernet.c:166`)
+- [x] Include `kernel/pal_eoe.h` from `kernel/pal.h`
+- [x] Verify kernel and userspace builds compile cleanly with no logic changes
 
 ### PR 2: Extract `net_device` operations to PAL
 
@@ -145,25 +145,25 @@ platform-specific `kernel/pal_eoe.c` and adapt `uspace/pal_eoe.c`.
 Replace all direct `skb_*` / `struct sk_buff` member access in the shared EoE state
 machine with `ec_eoe_buf_*` PAL wrappers.
 
-- [ ] Define PAL buffer API in `kernel/pal_eoe.h` and `uspace/pal_eoe.h`:
+- [x] Define PAL buffer API in `kernel/pal_eoe.h` and `uspace/pal_eoe.h`:
   `ec_eoe_buf_alloc(size_t size)` → `dev_alloc_skb` / `ec_skb_alloc`,
   `ec_eoe_buf_free(ec_eoe_buf_t buf)` → `dev_kfree_skb` / `ec_skb_free`,
   `ec_eoe_buf_put(ec_eoe_buf_t buf, size_t len)` → `skb_put` / `ec_skb_put`,
   `ec_eoe_buf_len(ec_eoe_buf_t buf)` → `buf->len`,
   `ec_eoe_buf_data(ec_eoe_buf_t buf)` → `buf->data`
-- [ ] Define PAL RX-completion API:
+- [x] Define PAL RX-completion API:
   `ec_eoe_buf_set_dev(ec_eoe_buf_t buf, ec_eoe_netdev_t dev)` → `buf->dev = dev`,
   `ec_eoe_buf_set_protocol(ec_eoe_buf_t buf, ec_eoe_netdev_t dev)` → wraps `eth_type_trans` / `ec_eth_type_trans`,
   `ec_eoe_buf_set_checksum(ec_eoe_buf_t buf)` → `buf->ip_summed = CHECKSUM_UNNECESSARY`,
   `ec_eoe_buf_deliver(ec_eoe_buf_t buf)` → `netif_rx` / `ec_netif_rx`
-- [ ] Kernel side (`kernel/pal_eoe.h`): implement as thin inline wrappers around real `skb_*` / `netif_*` API
-- [ ] Userspace side (`uspace/pal_eoe.h`): implement as thin inline wrappers around existing `ec_skb_*` / `ec_netif_*` functions
-- [ ] Replace all `dev_alloc_skb()` calls in `ethernet.c` state machine with `ec_eoe_buf_alloc()`
-- [ ] Replace all `dev_kfree_skb()` calls in `ethernet.c` with `ec_eoe_buf_free()` (~9 call sites)
-- [ ] Replace all `skb_put()` calls in `ethernet.c` with `ec_eoe_buf_put()`
-- [ ] Replace all `skb->len` / `skb->data` member access with `ec_eoe_buf_len()` / `ec_eoe_buf_data()` (~15 call sites in `ec_eoe_send`, `ec_eoe_state_rx_fetch`, `ec_eoe_state_tx_start`, `ec_eoe_state_tx_sent`)
-- [ ] Replace RX completion sequence in `ec_eoe_state_rx_fetch()` (`skb->dev =`, `eth_type_trans`, `skb->ip_summed =`, `netif_rx`) with PAL wrappers
-- [ ] Remove `WARN_ON_ONCE` / `lockdep_assert_held` / `skb_get_queue_mapping` / `netdev_get_tx_queue` stubs from shared code (already moved to `kernel/pal_eoe.c` in PR 2)
+- [x] Kernel side (`kernel/pal_eoe.h`): implement as thin inline wrappers around real `skb_*` / `netif_*` API
+- [x] Userspace side (`uspace/pal_eoe.h`): implement as thin inline wrappers around existing `ec_skb_*` / `ec_netif_*` functions
+- [x] Replace all `dev_alloc_skb()` calls in `ethernet.c` state machine with `ec_eoe_buf_alloc()`
+- [x] Replace all `dev_kfree_skb()` calls in `ethernet.c` with `ec_eoe_buf_free()` (~9 call sites)
+- [x] Replace all `skb_put()` calls in `ethernet.c` with `ec_eoe_buf_put()`
+- [x] Replace all `skb->len` / `skb->data` member access with `ec_eoe_buf_len()` / `ec_eoe_buf_data()` (~15 call sites in `ec_eoe_send`, `ec_eoe_state_rx_fetch`, `ec_eoe_state_tx_start`, `ec_eoe_state_tx_sent`)
+- [x] Replace RX completion sequence in `ec_eoe_state_rx_fetch()` (`skb->dev =`, `eth_type_trans`, `skb->ip_summed =`, `netif_rx`) with PAL wrappers
+- [x] Remove `WARN_ON_ONCE` / `lockdep_assert_held` / `skb_get_queue_mapping` / `netdev_get_tx_queue` stubs from shared code (already moved to `kernel/pal_eoe.c` in PR 2)
 
 ### PR 4: Remove `pal_eoe_compat.h`
 
