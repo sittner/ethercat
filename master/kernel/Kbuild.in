@@ -72,7 +72,7 @@ ec_master-objs := \
 	../voe_handler.o
 
 ifeq (@ENABLE_EOE@,1)
-ec_master-objs += ../eoe_request.o ../ethernet.o ../fsm_eoe.o
+ec_master-objs += pal_eoe.o ../eoe_request.o ../ethernet.o ../fsm_eoe.o
 endif
 
 ifeq (@ENABLE_DEBUG_IF@,1)
