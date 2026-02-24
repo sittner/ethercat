@@ -280,8 +280,5 @@ static inline int ec_eoe_buf_deliver(ec_eoe_buf_t buf) {
 /** Check if rate limiting should apply (for warning messages)
  * @return 1 if message should be printed, 0 if rate limited
  */
-int ec_printk_ratelimit(void);
-
-#define ec_log_ratelimit() ec_printk_ratelimit()
 
 #endif /* __EC_USPACE_PAL_EOE_H__ */
