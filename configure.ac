@@ -52,6 +52,34 @@ dnl Use LT_INIT instead of AC_PROG_LIBTOOL, if available
 m4_ifdef([LT_INIT], [LT_INIT], [AC_PROG_LIBTOOL])
 
 #-----------------------------------------------------------------------------
+# Userspace master library
+#-----------------------------------------------------------------------------
+
+AC_MSG_CHECKING([whether to build userspace master library])
+
+AC_ARG_ENABLE([uspace-master],
+    AS_HELP_STRING([--enable-uspace-master],
+                   [Build userspace master library (default: no)]),
+    [
+        case "${enableval}" in
+            yes) enable_uspace_master=yes
+                ;;
+            no)  enable_uspace_master=no
+                ;;
+            *) AC_MSG_ERROR([Invalid value for --enable-uspace-master])
+                ;;
+        esac
+    ],
+    [enable_uspace_master=no]
+)
+
+if test "x$enable_uspace_master" = "xyes"; then
+    AC_MSG_RESULT([yes])
+else
+    AC_MSG_RESULT([no])
+fi
+
+#-----------------------------------------------------------------------------
 # Kernel modules
 #-----------------------------------------------------------------------------
 
@@ -77,6 +105,10 @@ if test "x$enablekernel" = "x1"; then
     AC_MSG_RESULT([yes])
 else
     AC_MSG_RESULT([no])
+fi
+
+if test "x$enable_uspace_master" = "xyes"; then
+    enablekernel=0
 fi
 
 AM_CONDITIONAL(ENABLE_KERNEL, test "x$enablekernel" = "x1")
@@ -1176,6 +1208,10 @@ else
     AC_MSG_RESULT([no])
 fi
 
+if test "x$enable_uspace_master" = "xyes"; then
+    userlib=0
+fi
+
 AM_CONDITIONAL(ENABLE_USERLIB, test "x$userlib" = "x1")
 
 #-----------------------------------------------------------------------------
@@ -1398,6 +1434,25 @@ AM_CONDITIONAL(HAVE_SYSTEMD, test "x$with_systemdsystemunitdir" != "x")
 AC_SUBST(systemdsystemunitdir, [$with_systemdsystemunitdir])
 
 #-----------------------------------------------------------------------------
+# Userspace master library conditionals
+#-----------------------------------------------------------------------------
+
+if test "x$enable_uspace_master" = "xyes"; then
+    AC_DEFINE([EC_USPACE_MASTER], [1], [Userspace master library enabled])
+
+    # Check for libxdp and libbpf (optional XDP transport support)
+    AC_CHECK_LIB([xdp], [xsk_socket__create], [have_xdp=yes], [have_xdp=no])
+    AC_CHECK_LIB([bpf], [bpf_object__open], [have_bpf=yes], [have_bpf=no])
+
+    if test "x$have_xdp" = "xyes" -a "x$have_bpf" = "xyes"; then
+        AC_DEFINE([HAVE_XDP], [1], [XDP transport support available])
+    fi
+fi
+
+AM_CONDITIONAL([ENABLE_USPACE_MASTER], [test "x$enable_uspace_master" = "xyes"])
+AM_CONDITIONAL([HAVE_XDP], [test "x$have_xdp" = "xyes" -a "x$have_bpf" = "xyes"])
+
+#-----------------------------------------------------------------------------
 
 AC_CONFIG_FILES([
         Doxyfile
@@ -1444,6 +1499,7 @@ AC_CONFIG_FILES([
         lib/libethercat.pc
         master/kernel/Kbuild
         master/Makefile
+        master/uspace/Makefile
         script/Makefile
         tool/Makefile
         tty/Kbuild

@@ -226,11 +226,6 @@ When enabled, implies:
 | `master/uspace/transport/transport.c` | Transport registry and common helpers |
 | `master/uspace/transport/transport_raw.c` | Raw socket transport implementation |
 | `master/uspace/transport/transport_xdp.c` | XDP/AF_XDP transport implementation |
-
-### New Files (pending)
-
-| File | Purpose |
-|------|---------|
 | `master/uspace/Makefile.am` | Autotools build rules for library + binary |
 
 ### Modified Files (implemented)
@@ -239,12 +234,7 @@ When enabled, implies:
 |------|--------|
 | `include/ecrt.h` | New API functions and transport type/struct definitions under `#ifdef EC_USPACE_MASTER` |
 | `master/uspace/main.c` | Thin consumer of library API: arg parsing + signal handling + calls to `ecrt_lib_init`/`ecrt_startup_master`/`ecrt_release_master`/`ecrt_lib_cleanup` |
-
-### Modified Files (pending)
-
-| File | Change |
-|------|--------|
-| `configure.ac` | Add `--enable-uspace-master` option, conditionals, implied options |
+| `configure.ac` | Add `--enable-uspace-master` option, conditionals, implied options, XDP detection |
 | `master/Makefile.am` | Conditional uspace subdirectory |
 
 ### Files NOT Modified
@@ -263,11 +253,11 @@ When enabled, implies:
 - [x] Add transport ownership flag
 - [x] Modify `include/ecrt.h` with new API
 - [x] Refactor `master/uspace/main.c` to use library API
-- [ ] Create `master/uspace/Makefile.am`
-- [ ] Modify `configure.ac` (`--enable-uspace-master` + implied options)
-- [ ] Modify `master/Makefile.am` (conditional subdirectory)
-- [ ] Update `AC_CONFIG_FILES` list
-- [ ] XDP/BPF library detection in configure
+- [x] Create `master/uspace/Makefile.am`
+- [x] Modify `configure.ac` (`--enable-uspace-master` + implied options)
+- [x] Modify `master/Makefile.am` (conditional subdirectory)
+- [x] Update `AC_CONFIG_FILES` list
+- [x] XDP/BPF library detection in configure
 - [ ] Test: build with `--enable-uspace-master`
 - [ ] Test: build without (default kernel mode unchanged)
 - [ ] Test: `ec_master` standalone binary works
