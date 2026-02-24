@@ -1,4 +1,4 @@
-# Userspace Master Library Implementation Plan
+# Userspace Master Library Implementation
 
 ## Overview
 
@@ -167,28 +167,26 @@ is never included by application code. **No type renames needed.**
 ### Transport Ownership
 
 `ecrt_startup_master()` and `ecrt_startup_master_custom()` differ in transport
-ownership. A flag stored in the allocated master context tracks this:
+ownership. The flag `master->pal.transport_owned` tracks this:
 
-- `ecrt_startup_master()` → library-owned → `ecrt_release_master()` destroys transport
-- `ecrt_startup_master_custom()` → caller-owned → `ecrt_release_master()` does NOT destroy transport
+- `ecrt_startup_master()` → library-owned (`transport_owned = 1`) → `ecrt_release_master()` destroys transport
+- `ecrt_startup_master_custom()` → caller-owned (`transport_owned = 0`) → `ecrt_release_master()` does NOT destroy transport
 
 ### String and MAC Lifetime
 
-`ec_master_init()` stores only a **pointer** to the MAC address, not a copy.
-The library must:
+MAC addresses and the interface name string are owned by `ec_master_pal_t`
+(the `pal` field embedded in `ec_master_t`):
 
-- Copy the MAC address into a buffer owned by the master context
-- Copy the interface name string into a buffer owned by the master context
-- Free these in `ecrt_release_master()`
-
-This fixes a latent bug in the current `main.c` where stack-local `main_mac`
-happens to outlive the master only because it's in `main()`'s stack frame.
+- `master->pal.main_mac[ETH_ALEN]` — MAC address copied from transport at startup
+- `master->pal.backup_mac[ETH_ALEN]` — backup MAC address (zeroed by default)
+- `master->pal.interface_name` — interface name `strdup`'d in `ecrt_startup_master()` / `ecrt_startup_master_custom()`, freed in `ecrt_release_master()`
 
 ### Master Allocation
 
-The master must be heap-allocated (`malloc`) since the application cannot know
-`sizeof(ec_master_t)` — the type is opaque. This is consistent with how the
-existing ioctl-based `lib/common.c` allocates masters.
+The master is heap-allocated (`malloc(sizeof(ec_master_t))`) since the
+application cannot know `sizeof(ec_master_t)` — the type is opaque to
+application code. This is consistent with how the existing ioctl-based
+`lib/common.c` allocates masters.
 
 ## Build System
 
@@ -218,20 +216,34 @@ When enabled, implies:
 
 ## File Changes
 
-### New Files
+### New Files (implemented)
 
 | File | Purpose |
 |------|---------|
 | `master/uspace/module.c` | Library lifecycle: `ecrt_lib_init()`, `ecrt_startup_master()`, `ecrt_startup_master_custom()`, `ecrt_release_master()`, `ecrt_lib_cleanup()` |
 | `master/uspace/device_uspace.c` | Device functions extracted from `main.c`: `ec_device_init()`, `ec_device_clear()`, `ec_device_tx_data()`, `ec_device_send()`, `ec_device_poll()`, `ec_device_open()`, `ec_device_close()` |
+| `master/uspace/transport/ec_transport.h` | Transport abstraction interface |
+| `master/uspace/transport/transport.c` | Transport registry and common helpers |
+| `master/uspace/transport/transport_raw.c` | Raw socket transport implementation |
+| `master/uspace/transport/transport_xdp.c` | XDP/AF_XDP transport implementation |
+
+### New Files (pending)
+
+| File | Purpose |
+|------|---------|
 | `master/uspace/Makefile.am` | Autotools build rules for library + binary |
 
-### Modified Files
+### Modified Files (implemented)
 
 | File | Change |
 |------|--------|
-| `include/ecrt.h` | Add new API functions under `#ifdef EC_USPACE_MASTER` |
-| `master/uspace/main.c` | Strip to thin consumer of library API (arg parsing + signal handling + calls to ecrt_lib_init/ecrt_startup_master/ecrt_release_master/ecrt_lib_cleanup) |
+| `include/ecrt.h` | New API functions and transport type/struct definitions under `#ifdef EC_USPACE_MASTER` |
+| `master/uspace/main.c` | Thin consumer of library API: arg parsing + signal handling + calls to `ecrt_lib_init`/`ecrt_startup_master`/`ecrt_release_master`/`ecrt_lib_cleanup` |
+
+### Modified Files (pending)
+
+| File | Change |
+|------|--------|
 | `configure.ac` | Add `--enable-uspace-master` option, conditionals, implied options |
 | `master/Makefile.am` | Conditional uspace subdirectory |
 
@@ -240,17 +252,17 @@ When enabled, implies:
 - `master/master.h` — no type renames
 - `master/master.c` — no changes to core
 - `master/*.c` — master core unchanged
-- `lib/` — untouched (disabled when uspace-master enabled)
+- `lib/` — untouched (planned: disabled when `--enable-uspace-master` is used, but build system enforcement is pending)
 
 ## Task Tracking
 
-- [ ] Extract device functions from `main.c` → `device_uspace.c`
-- [ ] Implement `master/uspace/module.c`
-- [ ] Fix MAC address pointer lifetime (copy in module.c)
-- [ ] Fix interface name string lifetime (copy in module.c)
-- [ ] Add transport ownership flag
-- [ ] Modify `include/ecrt.h` with new API
-- [ ] Refactor `master/uspace/main.c` to use library API
+- [x] Extract device functions from `main.c` → `device_uspace.c`
+- [x] Implement `master/uspace/module.c`
+- [x] Fix MAC address pointer lifetime (copy in module.c)
+- [x] Fix interface name string lifetime (copy in module.c)
+- [x] Add transport ownership flag
+- [x] Modify `include/ecrt.h` with new API
+- [x] Refactor `master/uspace/main.c` to use library API
 - [ ] Create `master/uspace/Makefile.am`
 - [ ] Modify `configure.ac` (`--enable-uspace-master` + implied options)
 - [ ] Modify `master/Makefile.am` (conditional subdirectory)
