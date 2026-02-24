@@ -200,9 +200,9 @@ Once shared code uses only `ec_eoe_*` PAL names, remove the kernel-name-mimickin
 
 ## Priority 4: Device Init/Clear Split
 
-- [ ] Extract common device init (stats zeroing, `device->master`, name assignment) from `kernel/pal.c` `ec_device_init()` into shared `master/device.c`
-- [ ] Keep platform-specific buffer setup (`sk_buff`/`alloc_skb`/`ethhdr` in kernel, transport-based in uspace) in respective `pal.c`
-- [ ] Address `// TODO: shared init` comment in `kernel/pal.c`
+- [x] Extract common device init (stats zeroing, `device->master`, name assignment) from `kernel/pal.c` `ec_device_init()` into shared `master/device.c`
+- [x] Keep platform-specific buffer setup (`sk_buff`/`alloc_skb`/`ethhdr` in kernel, transport-based in uspace) in respective `pal.c`
+- [x] Address `// TODO: shared init` comment in `kernel/pal.c`
 
 ---
 

@@ -47,6 +47,98 @@
 
 /****************************************************************************/
 
+/** Initializes platform-independent fields of an EtherCAT device.
+ */
+void ec_device_init_common(
+        ec_device_t *device, /**< EtherCAT device */
+        ec_master_t *master /**< master owning the device */
+        )
+{
+    device->master = master;
+    device->name = NULL;
+    device->open = 0;
+    device->link_state = 0;
+#ifdef EC_DEBUG_RING
+    device->timeval_poll.tv_sec = 0;
+    device->timeval_poll.tv_usec = 0;
+#endif
+    device->time_poll = 0;
+
+    ec_device_clear_stats(device);
+
+#ifdef EC_DEBUG_RING
+    {
+        unsigned int i;
+        for (i = 0; i < EC_DEBUG_RING_SIZE; i++) {
+            ec_debug_frame_t *df = &device->debug_frames[i];
+            df->dir = TX;
+            df->t.tv_sec = 0;
+            df->t.tv_usec = 0;
+            memset(df->data, 0, EC_MAX_DATA_SIZE);
+            df->data_size = 0;
+        }
+        device->debug_frame_index = 0;
+        device->debug_frame_count = 0;
+    }
+#endif
+}
+
+/****************************************************************************/
+
+/** Handles platform-independent part of device cleanup.
+ */
+void ec_device_clear_common(
+        ec_device_t *device /**< EtherCAT device */
+        )
+{
+    if (device->open) {
+        ec_device_close(device);
+    }
+}
+
+/****************************************************************************/
+
+/** Accounts for a transmitted frame.
+ */
+void ec_device_account_tx(
+        ec_device_t *device, /**< EtherCAT device */
+        size_t size /**< total frame size including Ethernet header */
+        )
+{
+    device->tx_count++;
+    device->master->device_stats.tx_count++;
+    device->tx_bytes += size;
+    device->master->device_stats.tx_bytes += size;
+}
+
+/****************************************************************************/
+
+/** Accounts for a transmit error.
+ */
+void ec_device_account_tx_error(
+        ec_device_t *device /**< EtherCAT device */
+        )
+{
+    device->tx_errors++;
+}
+
+/****************************************************************************/
+
+/** Accounts for a received frame.
+ */
+void ec_device_account_rx(
+        ec_device_t *device, /**< EtherCAT device */
+        size_t size /**< total frame size including Ethernet header */
+        )
+{
+    device->rx_count++;
+    device->master->device_stats.rx_count++;
+    device->rx_bytes += size;
+    device->master->device_stats.rx_bytes += size;
+}
+
+/****************************************************************************/
+
 /** Clears the frame statistics.
  */
 void ec_device_clear_stats(

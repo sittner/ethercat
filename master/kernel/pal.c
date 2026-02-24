@@ -124,40 +124,14 @@ int ec_device_init(
     char mb = 'x';
 #endif
 
-    // TODO: shared init
-    device->master = master;
+    ec_device_init_common(device, master);
     device->pal.dev = NULL;
-    device->name = NULL;
     device->pal.poll = NULL;
     device->pal.module = NULL;
-    device->open = 0;
-    device->link_state = 0;
     for (i = 0; i < EC_TX_RING_SIZE; i++) {
         device->pal.tx_skb[i] = NULL;
     }
     device->pal.tx_ring_index = 0;
-#ifdef EC_DEBUG_RING
-    device->timeval_poll.tv_sec = 0;
-    device->timeval_poll.tv_usec = 0;
-#endif
-    device->time_poll = 0;
-
-    ec_device_clear_stats(device);
-
-#ifdef EC_DEBUG_RING
-    for (i = 0; i < EC_DEBUG_RING_SIZE; i++) {
-        ec_debug_frame_t *df = &device->debug_frames[i];
-        df->dir = TX;
-        df->t.tv_sec = 0;
-        df->t.tv_usec = 0;
-        memset(df->data, 0, EC_MAX_DATA_SIZE);
-        df->data_size = 0;
-    }
-#endif
-#ifdef EC_DEBUG_RING
-    device->debug_frame_index = 0;
-    device->debug_frame_count = 0;
-#endif
 
 #ifdef EC_DEBUG_IF
     if (device == &master->devices[EC_DEVICE_MAIN]) {
@@ -215,9 +189,7 @@ void ec_device_clear(
 {
     unsigned int i;
 
-    if (device->open) {
-        ec_device_close(device);
-    }
+    ec_device_clear_common(device);
     for (i = 0; i < EC_TX_RING_SIZE; i++)
         dev_kfree_skb(device->pal.tx_skb[i]);
 #ifdef EC_DEBUG_IF
@@ -391,11 +363,7 @@ void ec_device_send(
     if (device->pal.dev->netdev_ops->ndo_start_xmit(skb, device->pal.dev) ==
             NETDEV_TX_OK)
     {
-    	// TODO: need function in device.c
-        device->tx_count++;
-        device->master->device_stats.tx_count++;
-        device->tx_bytes += ETH_HLEN + size;
-        device->master->device_stats.tx_bytes += ETH_HLEN + size;
+    	ec_device_account_tx(device, ETH_HLEN + size);
 #ifdef EC_DEBUG_IF
         ec_debug_send(&device->dbg, skb->data, ETH_HLEN + size);
 #endif
@@ -404,7 +372,7 @@ void ec_device_send(
                 device, TX, skb->data + ETH_HLEN, size);
 #endif
     } else {
-        device->tx_errors++;
+        ec_device_account_tx_error(device);
     }
 }
 
@@ -550,10 +518,7 @@ void ecdev_receive(
         return;
     }
 
-    device->rx_count++;
-    device->master->device_stats.rx_count++;
-    device->rx_bytes += size;
-    device->master->device_stats.rx_bytes += size;
+    ec_device_account_rx(device, size);
 
     if (unlikely(device->master->debug_level > 1)) {
         EC_MASTER_DBG(device->master, 2, "Received frame:\n");

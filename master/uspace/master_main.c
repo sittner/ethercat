@@ -228,25 +228,20 @@ out_cleanup_queues:
 /** Initialize device structure. */
 int ec_device_init(ec_device_t *device, ec_master_t *master)
 {
-    device->master = master;
-    device->name = NULL;
-    device->open = 0;
-    device->link_state = 0;
-    device->time_poll = 0;
+    ec_device_init_common(device, master);
 
     /* Initialize PAL-specific fields */
     device->pal.transport = NULL;
     device->pal.last_link_check = 0;
     device->pal.last_link_state = -1;
 
-    ec_device_clear_stats(device);
-    
     return 0;
 }
 
 /** Clear device structure. */
 void ec_device_clear(ec_device_t *device)
 {
+    ec_device_clear_common(device);
     /* Transport is managed by main(), just clear the reference */
     device->pal.transport = NULL;
 }
@@ -274,15 +269,12 @@ void ec_device_send(ec_device_t *device, size_t size)
     /* Send frame via transport layer */
     ret = ec_transport_send(device->pal.transport, size + ETH_HLEN);
     if (ret < 0) {
-        device->tx_errors++;
+        ec_device_account_tx_error(device);
         return;
     }
 
     /* Update statistics */
-    device->tx_count++;
-    device->master->device_stats.tx_count++;
-    device->tx_bytes += ETH_HLEN + size;
-    device->master->device_stats.tx_bytes += ETH_HLEN + size;
+    ec_device_account_tx(device, ETH_HLEN + size);
 }
 
 /** Poll for received frames. */
@@ -300,10 +292,7 @@ void ec_device_poll(ec_device_t *device)
     /* Poll transport layer for received frames */
     while ((received = ec_transport_receive(device->pal.transport, rx_buffer, sizeof(rx_buffer))) > 0) {
         /* Update RX statistics */
-        device->rx_count++;
-        device->master->device_stats.rx_count++;
-        device->rx_bytes += received;
-        device->master->device_stats.rx_bytes += received;
+        ec_device_account_rx(device, received);
 
         /* Process received frame - skip Ethernet header */
         if (received > ETH_HLEN) {
