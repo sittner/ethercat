@@ -29,6 +29,8 @@
 #ifndef __EC_USPACE_PAL_THREAD_H__
 #define __EC_USPACE_PAL_THREAD_H__
 
+#include <stdatomic.h>
+
 /* Task states */
 #define EC_TASK_RUNNING         0x0000
 #define EC_TASK_INTERRUPTIBLE   0x0001
@@ -52,8 +54,8 @@
 typedef struct {
     pthread_t thread;           /* POSIX thread handle */
     pid_t pid;                  /* Thread ID */
-    volatile int state;         /* Task state */
-    volatile int should_stop;   /* Stop requested flag */
+    atomic_int state;           /* Task state (atomic) */
+    atomic_int should_stop;     /* Stop requested flag (atomic) */
     int exit_code;              /* Thread exit code */
     char name[16];              /* Thread name */
 
@@ -68,125 +70,20 @@ typedef struct {
     int bind_cpu;               /* CPU to bind to (-1 = unbound) */
 } ec_thread_t;
 
-/* Key for thread-specific task_struct pointer */
-static pthread_key_t current_task_key;
-static pthread_once_t current_task_key_once = PTHREAD_ONCE_INIT;
+/* Thread-local storage key (defined in pal_thread.c) */
+extern void current_task_init(void);
+extern ec_thread_t *get_current(void);
+extern void set_current(ec_thread_t *task);
 
-/* Initialize the thread-specific key */
-static void __init_current_task_key(void)
-{
-    pthread_key_create(&current_task_key, NULL);
-}
-
-static inline void current_task_init(void)
-{
-    pthread_once(&current_task_key_once, __init_current_task_key);
-}
-
-static inline ec_thread_t *get_current(void)
-{
-    current_task_init();
-    return (ec_thread_t *)pthread_getspecific(current_task_key);
-}
-
-static inline void set_current(ec_thread_t *task)
-{
-    current_task_init();
-    pthread_setspecific(current_task_key, task);
-}
-
-/* Internal thread wrapper */
-static void *__task_thread_wrapper(void *arg)
-{
-    ec_thread_t *task = (ec_thread_t *)arg;
-    int ret;
-
-    set_current(task);
-    task->pid = pal_gettid();
-    pthread_setname_np(task->thread, task->name);
-
-    pthread_mutex_lock(&task->lock);
-    task->started = 1;
-    task->state = EC_TASK_RUNNING;
-    pthread_cond_signal(&task->cond);
-    pthread_mutex_unlock(&task->lock);
-
-    if (task->bind_cpu >= 0) {
-        cpu_set_t cpuset;
-        CPU_ZERO(&cpuset);
-        CPU_SET(task->bind_cpu, &cpuset);
-        pthread_setaffinity_np(pthread_self(), sizeof(cpuset), &cpuset);
-    }
-
-    ret = task->thread_fn(task->thread_data);
-
-    task->exit_code = ret;
-    task->state = EC_TASK_DEAD;
-
-    return (void *)(long)ret;
-}
-
-/* Internal: create a thread without starting it */
-static inline ec_thread_t *__ec_thread_create(
+/* Thread lifecycle functions (defined in pal_thread.c) */
+extern ec_thread_t *__ec_thread_create(
         int (*threadfn)(void *data),
         void *data,
-        const char *namefmt, ...)
-{
-    ec_thread_t *task;
-    va_list args;
-
-    task = (ec_thread_t *)malloc(sizeof(*task));
-    if (!task)
-        return ERR_PTR(-ENOMEM);
-
-    memset(task, 0, sizeof(*task));
-
-    task->thread_fn = threadfn;
-    task->thread_data = data;
-    task->state = EC_TASK_UNINTERRUPTIBLE;
-    task->should_stop = 0;
-    task->started = 0;
-    task->bind_cpu = -1;
-
-    va_start(args, namefmt);
-    vsnprintf(task->name, sizeof(task->name), namefmt, args);
-    va_end(args);
-
-    pthread_mutex_init(&task->lock, NULL);
-    pthread_cond_init(&task->cond, NULL);
-
-    return task;
-}
-
-/**
- * ec_thread_wake - start or wake a created thread
- */
-static inline int ec_thread_wake(ec_thread_t *task)
-{
-    int ret;
-
-    pthread_mutex_lock(&task->lock);
-
-    if (task->started) {
-        task->state = EC_TASK_RUNNING;
-        pthread_cond_signal(&task->cond);
-        pthread_mutex_unlock(&task->lock);
-        return 0;
-    }
-
-    ret = pthread_create(&task->thread, NULL, __task_thread_wrapper, task);
-    if (ret != 0) {
-        pthread_mutex_unlock(&task->lock);
-        return 0;
-    }
-
-    while (!task->started) {
-        pthread_cond_wait(&task->cond, &task->lock);
-    }
-
-    pthread_mutex_unlock(&task->lock);
-    return 1;
-}
+        const char *namefmt, ...);
+extern int ec_thread_wake(ec_thread_t *task);
+extern int ec_thread_stop(ec_thread_t *task);
+extern void ec_thread_bind_cpu(ec_thread_t *task, unsigned int cpu);
+extern void ec_thread_set_priority(ec_thread_t *task, int nice);
 
 /**
  * ec_thread_run - create and start a thread
@@ -201,53 +98,12 @@ static inline int ec_thread_wake(ec_thread_t *task)
     })
 
 /**
- * ec_thread_stop - stop a thread and wait for exit
- */
-static inline int ec_thread_stop(ec_thread_t *task)
-{
-    int ret;
-    void *thread_ret;
-
-    task->should_stop = 1;
-
-    pthread_mutex_lock(&task->lock);
-    task->state = EC_TASK_RUNNING;
-    pthread_cond_broadcast(&task->cond);
-    pthread_mutex_unlock(&task->lock);
-
-    pthread_join(task->thread, &thread_ret);
-
-    ret = task->exit_code;
-
-    pthread_mutex_destroy(&task->lock);
-    pthread_cond_destroy(&task->cond);
-    free(task);
-
-    return ret;
-}
-
-/**
  * ec_thread_should_stop - check if stop was requested
  */
 static inline int ec_thread_should_stop(void)
 {
     ec_thread_t *task = get_current();
-    return task ? task->should_stop : 0;
-}
-
-/**
- * ec_thread_bind_cpu - bind thread to CPU
- */
-static inline void ec_thread_bind_cpu(ec_thread_t *task, unsigned int cpu)
-{
-    task->bind_cpu = (int)cpu;
-
-    if (task->started) {
-        cpu_set_t cpuset;
-        CPU_ZERO(&cpuset);
-        CPU_SET(task->bind_cpu, &cpuset);
-        pthread_setaffinity_np(task->thread, sizeof(cpuset), &cpuset);
-    }
+    return task ? atomic_load(&task->should_stop) : 0;
 }
 
 /**
@@ -274,19 +130,6 @@ static inline void ec_thread_yield_timeout(long timeout)
     ts.tv_sec = timeout / 250;
     ts.tv_nsec = (timeout % 250) * 4000000L;
     nanosleep(&ts, NULL);
-}
-
-/**
- * ec_thread_set_priority - set task to normal scheduling policy
- * @task: task to modify
- * @nice: nice value (-20 to 19)
- */
-static inline void ec_thread_set_priority(ec_thread_t *task, int nice)
-{
-    struct sched_param param = { .sched_priority = 0 };
-
-    pthread_setschedparam(task->thread, SCHED_OTHER, &param);
-    (void)nice;
 }
 
 #endif /* __EC_USPACE_PAL_THREAD_H__ */

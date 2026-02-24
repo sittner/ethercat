@@ -83,6 +83,3 @@ ec_time_t ec_current_time(void) {
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
 
-ec_workqueue_t *ec_system_wq;
-struct pal_irq_work_queue *ec_irq_work_queue_global;
-
