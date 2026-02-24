@@ -316,6 +316,7 @@ out_clear_devices:
     for (; dev_idx > 0; dev_idx--) {
         ec_device_clear(&master->devices[dev_idx - 1]);
     }
+    ec_mutex_destroy(&master->io_mutex);
     return ret;
 }
 
