@@ -33,17 +33,17 @@
 struct pal_irq_work;
 
 /* IRQ work function typedef */
-typedef void (*irq_work_func_t)(struct pal_irq_work *work);
+typedef void (*ec_irq_work_func_t)(struct pal_irq_work *work);
 
 /* Work flags */
-#define IRQ_WORK_PENDING    (1 << 0)
-#define IRQ_WORK_BUSY       (1 << 1)
+#define EC_IRQ_WORK_PENDING    (1 << 0)
+#define EC_IRQ_WORK_BUSY       (1 << 1)
 
 /**
  * ec_irq_work_t - low-latency deferred work
  */
 struct pal_irq_work {
-    irq_work_func_t func;           /* Work function */
+    ec_irq_work_func_t func;        /* Work function */
     atomic_int flags;               /* State flags (lock-free) */
     struct pal_irq_work *next;      /* Next in queue (lock-free list) */
 };
@@ -62,13 +62,13 @@ struct pal_irq_work_queue {
 };
 
 /* Global IRQ work queue */
-extern struct pal_irq_work_queue *irq_work_queue_global;
+extern struct pal_irq_work_queue *ec_irq_work_queue_global;
 
 /**
  * ec_irq_work_init - initialize an irq_work item
  */
 static inline void ec_irq_work_init(ec_irq_work_t *work,
-                                    irq_work_func_t func)
+                                    ec_irq_work_func_t func)
 {
     work->func = func;
     atomic_init(&work->flags, 0);
@@ -114,15 +114,15 @@ static inline void *__irq_work_worker(void *arg)
                 ec_irq_work_t *next = work->next;
                 int flags;
 
-                flags = atomic_fetch_and(&work->flags, ~IRQ_WORK_PENDING);
+                flags = atomic_fetch_and(&work->flags, ~EC_IRQ_WORK_PENDING);
 
-                if (flags & IRQ_WORK_PENDING) {
-                    atomic_fetch_or(&work->flags, IRQ_WORK_BUSY);
+                if (flags & EC_IRQ_WORK_PENDING) {
+                    atomic_fetch_or(&work->flags, EC_IRQ_WORK_BUSY);
 
                     if (work->func)
                         work->func(work);
 
-                    atomic_fetch_and(&work->flags, ~IRQ_WORK_BUSY);
+                    atomic_fetch_and(&work->flags, ~EC_IRQ_WORK_BUSY);
                 }
 
                 work = next;
@@ -134,9 +134,9 @@ static inline void *__irq_work_worker(void *arg)
 }
 
 /**
- * create_irq_work_queue - create the IRQ work queue
+ * ec_irq_work_queue_create - create the IRQ work queue
  */
-static inline int create_irq_work_queue(void)
+static inline int ec_irq_work_queue_create(void)
 {
     struct pal_irq_work_queue *q;
     pthread_attr_t attr;
@@ -174,16 +174,16 @@ static inline int create_irq_work_queue(void)
     }
 
     pthread_attr_destroy(&attr);
-    irq_work_queue_global = q;
+    ec_irq_work_queue_global = q;
     return 0;
 }
 
 /**
- * destroy_irq_work_queue - destroy the IRQ work queue
+ * ec_irq_work_queue_destroy - destroy the IRQ work queue
  */
-static inline void destroy_irq_work_queue(void)
+static inline void ec_irq_work_queue_destroy(void)
 {
-    struct pal_irq_work_queue *q = irq_work_queue_global;
+    struct pal_irq_work_queue *q = ec_irq_work_queue_global;
 
     if (!q)
         return;
@@ -198,7 +198,7 @@ static inline void destroy_irq_work_queue(void)
     pthread_mutex_destroy(&q->lock);
     pthread_cond_destroy(&q->cond);
     free(q);
-    irq_work_queue_global = NULL;
+    ec_irq_work_queue_global = NULL;
 }
 
 /**
@@ -206,13 +206,13 @@ static inline void destroy_irq_work_queue(void)
  */
 static inline void ec_irq_work_queue(ec_irq_work_t *work)
 {
-    struct pal_irq_work_queue *q = irq_work_queue_global;
+    struct pal_irq_work_queue *q = ec_irq_work_queue_global;
     uintptr_t old_head;
 
     if (!q)
         return;
 
-    atomic_fetch_or(&work->flags, IRQ_WORK_PENDING);
+    atomic_fetch_or(&work->flags, EC_IRQ_WORK_PENDING);
 
     do {
         old_head = atomic_load(&q->head);
@@ -231,7 +231,7 @@ static inline void ec_irq_work_queue(ec_irq_work_t *work)
  */
 static inline void ec_irq_work_sync(ec_irq_work_t *work)
 {
-    while (atomic_load(&work->flags) & (IRQ_WORK_PENDING | IRQ_WORK_BUSY)) {
+    while (atomic_load(&work->flags) & (EC_IRQ_WORK_PENDING | EC_IRQ_WORK_BUSY)) {
         sched_yield();
     }
 }
