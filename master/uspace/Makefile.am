@@ -88,6 +88,22 @@ if HAVE_XDP
 libethercat_la_CFLAGS += -DHAVE_XDP
 endif
 
+#
+# Libtool library versioning (current:revision:age)
+# http://www.gnu.org/software/libtool/manual/html_node/Updating-version-info.html
+#
+# - If the library source code has changed at all since the last update, then
+#   increment revision ('c:r:a' becomes 'c:r+1:a').
+# - If any interfaces have been added, removed, or changed since the last
+#   update, increment current, and set revision to 0.
+# - If any interfaces have been added since the last public release, then
+#   increment age.
+# - If any interfaces have been removed or changed since the last public
+#   release, then set age to 0.
+#
+libethercat_la_LDFLAGS = -version-info 0:0:0 \
+	-fvisibility=hidden
+
 libethercat_la_LIBADD = -lpthread
 
 if HAVE_XDP
