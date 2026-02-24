@@ -70,10 +70,10 @@ void ec_eoe_state_tx_start(ec_eoe_t *);
 void ec_eoe_state_tx_sent(ec_eoe_t *);
 
 // net_device functions
-int ec_eoedev_open(struct net_device *);
-int ec_eoedev_stop(struct net_device *);
-int ec_eoedev_tx(struct sk_buff *, struct net_device *);
-struct net_device_stats *ec_eoedev_stats(struct net_device *);
+int ec_eoedev_open(ec_eoe_netdev_t);
+int ec_eoedev_stop(ec_eoe_netdev_t);
+int ec_eoedev_tx(ec_eoe_buf_t, ec_eoe_netdev_t);
+ec_eoe_stats_t *ec_eoedev_stats(ec_eoe_netdev_t);
 
 /****************************************************************************/
 
@@ -108,7 +108,7 @@ int ec_eoe_init(
     eoe->tx_queued_frames = 0;
 
     eoe->tx_frame_number = 0xFF;
-    memset(&eoe->stats, 0, sizeof(struct net_device_stats));
+    memset(&eoe->stats, 0, sizeof(ec_eoe_stats_t));
 
     eoe->rx_counter = 0;
     eoe->tx_counter = 0;
@@ -163,7 +163,7 @@ int ec_eoe_init(
     }
 
     // make the last address octet unique
-    mac_addr[ETH_ALEN - 1] = (uint8_t) eoe->dev->ifindex;
+    mac_addr[ETH_ALEN - 1] = (uint8_t) ec_eoe_netdev_ifindex(eoe->dev);
     eth_hw_addr_set(eoe->dev, mac_addr);
 
     return 0;
@@ -260,7 +260,7 @@ int ec_eoe_send(ec_eoe_t *eoe /**< EoE handler */)
 #if EOE_DEBUG_LEVEL >= 2
     EC_SLAVE_DBG(eoe->slave, 0, "EoE %s TX sending fragment %u%s"
             " with %zu octets (%zu). %u frames queued.\n",
-            eoe->dev->name, eoe->tx_fragment_number,
+            ec_eoe_netdev_name(eoe->dev), eoe->tx_fragment_number,
             last_fragment ? "" : "+", current_size, complete_offset,
             eoe->tx_queued_frames);
 #endif
@@ -403,7 +403,7 @@ void ec_eoe_state_rx_check(ec_eoe_t *eoe /**< EoE handler */)
         eoe->stats.rx_errors++;
 #if EOE_DEBUG_LEVEL >= 1
         EC_SLAVE_WARN(eoe->slave, "Failed to receive mbox"
-                " check datagram for %s.\n", eoe->dev->name);
+                " check datagram for %s.\n", ec_eoe_netdev_name(eoe->dev));
 #endif
         eoe->state = ec_eoe_state_tx_start;
         return;
@@ -445,7 +445,7 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
         eoe->stats.rx_errors++;
 #if EOE_DEBUG_LEVEL >= 1
         EC_SLAVE_WARN(eoe->slave, "Failed to receive mbox"
-                " fetch datagram for %s.\n", eoe->dev->name);
+                " fetch datagram for %s.\n", ec_eoe_netdev_name(eoe->dev));
 #endif
         eoe->state = ec_eoe_state_tx_start;
         return;
@@ -457,7 +457,7 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
         eoe->stats.rx_errors++;
 #if EOE_DEBUG_LEVEL >= 1
         EC_SLAVE_WARN(eoe->slave, "Invalid mailbox response for %s.\n",
-                eoe->dev->name);
+                ec_eoe_netdev_name(eoe->dev));
 #endif
         eoe->state = ec_eoe_state_tx_start;
         return;
@@ -467,7 +467,7 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
         eoe->stats.rx_errors++;
 #if EOE_DEBUG_LEVEL >= 1
         EC_SLAVE_WARN(eoe->slave, "Other mailbox protocol response for %s.\n",
-                eoe->dev->name);
+                ec_eoe_netdev_name(eoe->dev));
 #endif
         eoe->state = ec_eoe_state_tx_start;
         return;
@@ -478,7 +478,7 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
     if (frame_type != EC_EOE_FRAMETYPE_INIT_REQ) { // EoE Fragment Data
 #if EOE_DEBUG_LEVEL >= 1
         EC_SLAVE_WARN(eoe->slave, "%s: Other frame received."
-                " Dropping.\n", eoe->dev->name);
+                " Dropping.\n", ec_eoe_netdev_name(eoe->dev));
 #endif
         eoe->stats.rx_dropped++;
         eoe->state = ec_eoe_state_tx_start;
@@ -497,7 +497,7 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
 
 #if EOE_DEBUG_LEVEL >= 2
     EC_SLAVE_DBG(eoe->slave, 0, "EoE %s RX fragment %u%s, offset %u,"
-            " frame %u%s, %zu octets\n", eoe->dev->name, fragment_number,
+            " frame %u%s, %zu octets\n", ec_eoe_netdev_name(eoe->dev), fragment_number,
            last_fragment ? "" : "+", fragment_offset, frame_number,
            time_appended ? ", + timestamp" : "",
            time_appended ? rec_size - 8 : rec_size - 4);
@@ -559,7 +559,7 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
             eoe->stats.rx_errors++;
 #if EOE_DEBUG_LEVEL >= 1
             EC_SLAVE_WARN(eoe->slave, "Fragmenting error at %s.\n",
-                    eoe->dev->name);
+                    ec_eoe_netdev_name(eoe->dev));
 #endif
             eoe->state = ec_eoe_state_tx_start;
             return;
@@ -578,7 +578,7 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
 
 #if EOE_DEBUG_LEVEL >= 2
         EC_SLAVE_DBG(eoe->slave, 0, "EoE %s RX frame completed"
-                " with %u octets.\n", eoe->dev->name, eoe->rx_skb->len);
+                " with %u octets.\n", ec_eoe_netdev_name(eoe->dev), eoe->rx_skb->len);
 #endif
 
         // pass socket buffer to network stack
@@ -596,7 +596,7 @@ void ec_eoe_state_rx_fetch(ec_eoe_t *eoe /**< EoE handler */)
         eoe->rx_expected_fragment++;
 #if EOE_DEBUG_LEVEL >= 2
         EC_SLAVE_DBG(eoe->slave, 0, "EoE %s RX expecting fragment %u\n",
-               eoe->dev->name, eoe->rx_expected_fragment);
+               ec_eoe_netdev_name(eoe->dev), eoe->rx_expected_fragment);
 #endif
         eoe->state = ec_eoe_state_rx_start;
     }
@@ -664,7 +664,7 @@ void ec_eoe_state_tx_start(ec_eoe_t *eoe /**< EoE handler */)
         eoe->stats.tx_errors++;
         eoe->state = ec_eoe_state_rx_start;
 #if EOE_DEBUG_LEVEL >= 1
-        EC_SLAVE_WARN(eoe->slave, "Send error at %s.\n", eoe->dev->name);
+        EC_SLAVE_WARN(eoe->slave, "Send error at %s.\n", ec_eoe_netdev_name(eoe->dev));
 #endif
         return;
     }
@@ -672,7 +672,7 @@ void ec_eoe_state_tx_start(ec_eoe_t *eoe /**< EoE handler */)
 #if EOE_DEBUG_LEVEL >= 2
     if (wakeup)
         EC_SLAVE_DBG(eoe->slave, 0, "EoE %s waking up TX queue...\n",
-                eoe->dev->name);
+                ec_eoe_netdev_name(eoe->dev));
 #endif
 
     eoe->tries = EC_EOE_TRIES;
@@ -697,7 +697,7 @@ void ec_eoe_state_tx_sent(ec_eoe_t *eoe /**< EoE handler */)
 #if EOE_DEBUG_LEVEL >= 1
             EC_SLAVE_WARN(eoe->slave, "Failed to receive send"
                     " datagram for %s after %u tries.\n",
-                    eoe->dev->name, EC_EOE_TRIES);
+                    ec_eoe_netdev_name(eoe->dev), EC_EOE_TRIES);
 #endif
             eoe->state = ec_eoe_state_rx_start;
         }
@@ -713,7 +713,7 @@ void ec_eoe_state_tx_sent(ec_eoe_t *eoe /**< EoE handler */)
 #if EOE_DEBUG_LEVEL >= 1
             EC_SLAVE_WARN(eoe->slave, "No sending response"
                     " for %s after %u tries.\n",
-                    eoe->dev->name, EC_EOE_TRIES);
+                    ec_eoe_netdev_name(eoe->dev), EC_EOE_TRIES);
 #endif
             eoe->state = ec_eoe_state_rx_start;
         }
@@ -737,7 +737,7 @@ void ec_eoe_state_tx_sent(ec_eoe_t *eoe /**< EoE handler */)
             eoe->tx_frame = NULL;
             eoe->stats.tx_errors++;
 #if EOE_DEBUG_LEVEL >= 1
-            EC_SLAVE_WARN(eoe->slave, "Send error at %s.\n", eoe->dev->name);
+            EC_SLAVE_WARN(eoe->slave, "Send error at %s.\n", ec_eoe_netdev_name(eoe->dev));
 #endif
             eoe->state = ec_eoe_state_rx_start;
         }
@@ -752,7 +752,7 @@ void ec_eoe_state_tx_sent(ec_eoe_t *eoe /**< EoE handler */)
  *
  * \return Always zero (success).
  */
-int ec_eoedev_open(struct net_device *dev /**< EoE net_device */)
+int ec_eoedev_open(ec_eoe_netdev_t dev /**< EoE net_device */)
 {
     ec_eoe_t *eoe = *((ec_eoe_t **) netdev_priv(dev));
     ec_eoe_flush(eoe);
@@ -762,7 +762,7 @@ int ec_eoedev_open(struct net_device *dev /**< EoE net_device */)
     netif_start_queue(dev);
     eoe->tx_queue_active = 1;
 #if EOE_DEBUG_LEVEL >= 2
-    EC_SLAVE_DBG(eoe->slave, 0, "%s opened.\n", dev->name);
+    EC_SLAVE_DBG(eoe->slave, 0, "%s opened.\n", ec_eoe_netdev_name(dev));
 #endif
     return 0;
 }
@@ -773,7 +773,7 @@ int ec_eoedev_open(struct net_device *dev /**< EoE net_device */)
  *
  * \return Always zero (success).
  */
-int ec_eoedev_stop(struct net_device *dev /**< EoE net_device */)
+int ec_eoedev_stop(ec_eoe_netdev_t dev /**< EoE net_device */)
 {
     ec_eoe_t *eoe = *((ec_eoe_t **) netdev_priv(dev));
     netif_stop_queue(dev);
@@ -783,7 +783,7 @@ int ec_eoedev_stop(struct net_device *dev /**< EoE net_device */)
     eoe->opened = 0;
     ec_eoe_flush(eoe);
 #if EOE_DEBUG_LEVEL >= 2
-    EC_SLAVE_DBG(eoe->slave, 0, "%s stopped.\n", dev->name);
+    EC_SLAVE_DBG(eoe->slave, 0, "%s stopped.\n", ec_eoe_netdev_name(dev));
 #endif
     return 0;
 }
@@ -794,8 +794,8 @@ int ec_eoedev_stop(struct net_device *dev /**< EoE net_device */)
  *
  * \return Zero on success, non-zero on failure.
  */
-int ec_eoedev_tx(struct sk_buff *skb, /**< transmit socket buffer */
-                 struct net_device *dev /**< EoE net_device */
+int ec_eoedev_tx(ec_eoe_buf_t skb, /**< transmit socket buffer */
+                 ec_eoe_netdev_t dev /**< EoE net_device */
                 )
 {
     ec_eoe_t *eoe = *((ec_eoe_t **) netdev_priv(dev));
@@ -832,7 +832,7 @@ int ec_eoedev_tx(struct sk_buff *skb, /**< transmit socket buffer */
 #if EOE_DEBUG_LEVEL >= 2
     EC_SLAVE_DBG(eoe->slave, 0, "EoE %s TX queued frame"
             " with %u octets (%u frames queued).\n",
-            eoe->dev->name, skb->len, eoe->tx_queued_frames);
+            ec_eoe_netdev_name(eoe->dev), skb->len, eoe->tx_queued_frames);
     if (!eoe->tx_queue_active)
         EC_SLAVE_WARN(eoe->slave, "EoE TX queue is now full.\n");
 #endif
@@ -846,8 +846,8 @@ int ec_eoedev_tx(struct sk_buff *skb, /**< transmit socket buffer */
  *
  * \return Statistics.
  */
-struct net_device_stats *ec_eoedev_stats(
-        struct net_device *dev /**< EoE net_device */
+ec_eoe_stats_t *ec_eoedev_stats(
+        ec_eoe_netdev_t dev /**< EoE net_device */
         )
 {
     ec_eoe_t *eoe = *((ec_eoe_t **) netdev_priv(dev));
