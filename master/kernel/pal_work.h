@@ -32,7 +32,6 @@
 #include <linux/workqueue.h>
 
 typedef struct work_struct ec_work_t;
-typedef struct workqueue_struct ec_workqueue_t;
 
 /* ec_work_init must be a macro because INIT_WORK is a macro */
 #define ec_work_init(_work, _func) INIT_WORK(_work, _func)
@@ -42,29 +41,9 @@ static inline int ec_work_schedule(ec_work_t *work)
     return schedule_work(work);
 }
 
-static inline int ec_work_queue(ec_workqueue_t *wq, ec_work_t *work)
-{
-    return queue_work(wq, work);
-}
-
-static inline ec_workqueue_t *ec_wq_create(const char *name)
-{
-    return create_workqueue(name);
-}
-
-static inline void ec_wq_destroy(ec_workqueue_t *wq)
-{
-    destroy_workqueue(wq);
-}
-
 static inline bool ec_work_cancel(ec_work_t *work)
 {
     return cancel_work_sync(work);
-}
-
-static inline void ec_wq_flush(ec_workqueue_t *wq)
-{
-    flush_workqueue(wq);
 }
 
 #endif /* __EC_KERNEL_PAL_WORK_H__ */
