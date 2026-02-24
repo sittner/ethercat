@@ -32,6 +32,8 @@
  * definitions in ecrt.h. */
 #include "transport/ec_transport.h"
 
+#include <string.h>
+
 #include "pal.h"
 
 #include "../device.h"
