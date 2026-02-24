@@ -1211,8 +1211,7 @@ static void macb_tx_error_task(struct work_struct *work)
 
 	/* Housework before enabling TX IRQ */
 	macb_writel(bp, TSR, macb_readl(bp, TSR));
-	if (!get_ecdev(bp))
-		queue_writel(queue, IER, MACB_TX_INT_FLAGS);
+	queue_writel(queue, IER, MACB_TX_INT_FLAGS);
 
 	if (halt_timeout)
 		macb_writel(bp, NCR, macb_readl(bp, NCR) | MACB_BIT(TE));
@@ -1479,11 +1478,14 @@ static int gem_rx(struct macb_queue *queue, struct napi_struct *napi,
 			skb_put(skb, len);
 			ecdev_receive(get_ecdev(bp), skb->data, skb->len);
 
-			/* Reset skb for reuse */
+			/* Reset skb for reuse — must preserve NET_SKB_PAD
+			 * headroom to match the DMA-mapped address at
+			 * skb->head + NET_SKB_PAD.
+			 */
 			skb->data = skb->head;
 			skb->len = 0;
 			skb_reset_tail_pointer(skb);
-			skb_reserve(skb, NET_IP_ALIGN);
+			skb_reserve(skb, NET_SKB_PAD + NET_IP_ALIGN);
 
 			dma_sync_single_for_device(&bp->pdev->dev, addr,
 						   bp->rx_buffer_size,
@@ -2050,6 +2052,10 @@ static irqreturn_t macb_interrupt(int irq, void *dev_id)
 			if (get_ecdev(bp)) {
 				/* EtherCAT: process RX directly */
 				bp->macbgem_ops.mog_rx(queue, NULL, 64);
+				/* Re-enable RX interrupt source in IMR so
+				 * next ISR read sees new RX events.
+				 */
+				queue_writel(queue, IER, bp->rx_intr_mask);
 			} else {
 				if (napi_schedule_prep(&queue->napi_rx)) {
 					netdev_vdbg(bp->dev, "scheduling RX softirq\n");
@@ -2078,6 +2084,10 @@ static irqreturn_t macb_interrupt(int irq, void *dev_id)
 					queue->txubr_pending = false;
 					macb_tx_restart(queue);
 				}
+				/* Re-enable TX interrupt source in IMR so
+				 * next ISR read sees new TX events.
+				 */
+				queue_writel(queue, IER, MACB_BIT(TCOMP));
 			} else {
 				if (napi_schedule_prep(&queue->napi_tx)) {
 					netdev_vdbg(bp->dev, "scheduling TX softirq\n");
