@@ -48,20 +48,6 @@
 
 /****************************************************************************/
 
-/* Forward declarations for library API */
-extern int ecrt_lib_init(ec_log_cb_t log_cb);
-extern ec_master_t *ecrt_startup_master(
-        unsigned int index,
-        ec_transport_type_t transport_type,
-        const char *interface,
-        const char *backup_interface,
-        unsigned int debug_level,
-        unsigned int run_on_cpu);
-extern void ecrt_release_master(ec_master_t *master);
-extern void ecrt_lib_cleanup(void);
-
-/****************************************************************************/
-
 #define EC_MAX_MASTERS  16
 #define EC_PIDFILE      "/var/run/ec_master.pid"
 
