@@ -68,6 +68,7 @@ typedef struct {
     pthread_cond_t cond;
     int started;
     int bind_cpu;               /* CPU to bind to (-1 = unbound) */
+    int detached;               /* Non-zero if thread is detached */
 } ec_thread_t;
 
 /* Thread-local storage key (defined in pal_thread.c) */
@@ -82,6 +83,7 @@ extern ec_thread_t *__ec_thread_create(
         const char *namefmt, ...);
 extern int ec_thread_wake(ec_thread_t *task);
 extern int ec_thread_stop(ec_thread_t *task);
+extern void ec_thread_detach(ec_thread_t *task);
 extern void ec_thread_bind_cpu(ec_thread_t *task, unsigned int cpu);
 extern void ec_thread_set_priority(ec_thread_t *task, int nice);
 

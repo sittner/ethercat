@@ -115,17 +115,17 @@ corresponding `ec_master_t *`. A global registry array is added (similar to
 the kernel module's `masters[]` array):
 
 ```c
-/* In master/uspace/module.c */
+/* In master/uspace/cdev.c */
 #define EC_MAX_MASTERS 16
 
 static ec_master_t *master_registry[EC_MAX_MASTERS];
-static unsigned int master_count;
+static unsigned int registry_master_count;
 static pthread_mutex_t registry_mutex = PTHREAD_MUTEX_INITIALIZER;
 ```
 
 - `ecrt_startup_master()` registers the master at `master_registry[index]`
 - `ecrt_release_master()` unregisters it (`master_registry[index] = NULL`)
-- `ec_master_count()` returns the current count (for `EC_CMD_MODULE` response)
+- `ec_master_registry_count()` returns the current count (for `EC_CMD_MODULE` response)
 
 ## Wire Protocol
 
@@ -282,6 +282,9 @@ class MasterDeviceBackend
         static MasterDeviceBackend *create(const std::string &socketPath);
 };
 ```
+
+Note: `requestWithTrailingData()` is declared in the interface but not yet
+implemented (Phase 2).
 
 ### Kernel Backend (`tool/kernel/MasterDeviceKernel.cpp`)
 
@@ -456,8 +459,8 @@ in both modes.
 | `tool/MasterDeviceBackend.h` | Abstract backend interface |
 | `tool/kernel/MasterDeviceKernel.cpp` | ioctl backend + factory function |
 | `tool/uspace/MasterDeviceUspace.cpp` | Unix socket backend + factory function |
-| `master/uspace/ipc_server.c` | IPC listener thread + request dispatch |
-| `master/uspace/ipc_server.h` | IPC server interface (`ec_ipc_start()`, `ec_ipc_stop()`) |
+| `master/uspace/cdev.c` | IPC listener thread + request dispatch + master registry |
+| `master/uspace/cdev.h` | IPC server interface (`ec_ipc_server_start()`, `ec_ipc_server_stop()`) |
 
 ### Modified Files
 
@@ -536,9 +539,9 @@ server skeleton, master registry) and the following read-only commands:
 
 ### Phase 3: EoE Commands (if needed)
 
-- [ ] IPC: `EC_CMD_EOE_HANDLER`
-- [ ] IPC: `EC_CMD_SLAVE_EOE_IP_PARAM`
-- [ ] IPC: `EC_CMD_CONFIG_EOE_IP_PARAM`
+- [x] IPC: `EC_CMD_EOE_HANDLER` (implemented behind `#ifdef EC_EOE`)
+- [ ] IPC: `EC_CMD_SLAVE_EOE_IP_PARAM` (stub, returns -ENOSYS)
+- [ ] IPC: `EC_CMD_CONFIG_EOE_IP_PARAM` (stub, returns -ENOSYS)
 - [ ] Test: `ethercat eoe`, `ethercat ip`
 
 ## Items to Watch

@@ -96,6 +96,13 @@ static void *__task_thread_wrapper(void *arg)
     task->exit_code = ret;
     atomic_store(&task->state, EC_TASK_DEAD);
 
+    if (task->detached) {
+        pthread_mutex_destroy(&task->lock);
+        pthread_cond_destroy(&task->cond);
+        free(task);
+        return (void *)(long)ret;
+    }
+
     return (void *)(long)ret;
 }
 
@@ -124,6 +131,7 @@ ec_thread_t *__ec_thread_create(
     atomic_init(&task->should_stop, 0);
     task->started = 0;
     task->bind_cpu = -1;
+    task->detached = 0;
 
     va_start(args, namefmt);
     vsnprintf(task->name, sizeof(task->name), namefmt, args);
@@ -193,6 +201,17 @@ int ec_thread_stop(ec_thread_t *task)
     free(task);
 
     return ret;
+}
+
+/****************************************************************************/
+
+/**
+ * ec_thread_detach - detach a thread so it frees itself on exit
+ */
+void ec_thread_detach(ec_thread_t *task)
+{
+    pthread_detach(task->thread);
+    task->detached = 1;
 }
 
 /****************************************************************************/
