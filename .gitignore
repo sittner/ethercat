@@ -35,6 +35,7 @@ examples/dc_user/ec_dc_user_example
 examples/user/ec_user_example
 examples/user/build/
 fake_lib/libfakeethercat.la
+include/ecrt.h
 lib/*.cmake
 lib/libethercat.la
 lib/libethercat.pc
@@ -50,4 +51,6 @@ device_drivers.md
 generated_table.md
 doxygen-output/
 master/uspace/ec_master
+master/uspace/libethercat.la
+master/uspace/libethercat.pc
 master/globals.h.gch
