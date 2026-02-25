@@ -194,7 +194,7 @@ Once shared code uses only `ec_eoe_*` PAL names, remove the kernel-name-mimickin
 - [ ] `ec_master_pal_t` is empty struct with `// TODO` (`uspace/pal.h:111-113`)
 - [x] `kthread_bind()` dead code → fixed: `ec_thread_bind_cpu` now implements actual CPU affinity via `pthread_setaffinity_np()`
 - [x] Implement `pthread_mutex_destroy()` calls for rt_mutex cleanup → `ec_mutex_destroy()` added to both PAL sides
-- [ ] `uspace/cdev.h` is a stub (`//TODO struct cdev`) — needs userspace implementation or proper stub
+- [x] `uspace/cdev.h` is a stub (`//TODO struct cdev`) — implemented as Unix domain socket IPC server in `uspace/cdev.c`
 
 ---
 
