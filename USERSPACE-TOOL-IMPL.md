@@ -476,7 +476,7 @@ in both modes.
 - `tool/Command*.cpp` — all 30+ command implementations unchanged
 - `tool/Command.h` — only the `#include` path changes
 - `master/master.h`, `master/master.c`, `master/*.c` — core unchanged
-- `master/kernel/ioctl.c` — kernel ioctl handler unchanged
+- `master/kernel/ioctl.c` — format strings and `size_t` intermediates updated for fixed-width wire types
 - `lib/` — untouched (disabled when uspace-master enabled)
 
 ## Implementation Phases
@@ -569,13 +569,11 @@ one running `ethercat slaves` while another runs `ethercat upload`). The
 kernel cdev supports this naturally via multiple file descriptors. The
 IPC server should use per-connection threads or a poll loop.
 
-### 4. `size_t` Portability in Wire Protocol
+### 4. Fixed-Width Types in Wire Protocol
 
-Several `ec_ioctl_*_t` structs use `size_t` fields, which differ in size
-between 32-bit and 64-bit platforms. Since both tool and server run on
-the same machine (connected via Unix socket), this is not an immediate
-problem. If cross-architecture support is ever needed, the wire protocol
-should use fixed-width types (`uint32_t` / `uint64_t`).
+All `ec_ioctl_*_t` structs that previously used `size_t` fields have been
+updated to use `uint32_t`, ensuring a consistent wire format between 32-bit
+and 64-bit platforms.  This concern is resolved.
 
 ### 5. Connection Lifecycle
 

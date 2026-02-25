@@ -84,10 +84,8 @@ void MasterDevice::open(Permissions perm)
             << ", ethercat tool: " << EC_IOCTL_VERSION_MAGIC << endl
             << "A probable reason is that the command-line tool" << endl
             << "you are using is built with a different" << endl
-            << "source code version than the currently loaded" << endl
-            << "master process. Please install an updated version" << endl
-            << "of either the tool (ethercat) or the master" << endl
-            << "(ec_master / libethercat).";
+            << "source code version than the running master." << endl
+            << "Please rebuild and install both the tool and the master.";
         throw MasterDeviceException(err);
     }
     masterCount = module_data.master_count;
