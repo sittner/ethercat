@@ -24,8 +24,8 @@
 #include "../master.h"
 #include "../fsm_master.h"
 
+static ec_log_cb_t ec_log_callback = NULL;
 static pthread_mutex_t ec_log_lock = PTHREAD_MUTEX_INITIALIZER;
-static int ec_log_use_syslog = 0;
 
 static const char *loglevel_names[] = {
     "EMERG",
@@ -38,9 +38,9 @@ static const char *loglevel_names[] = {
     "DEBUG",
 };
 
-void ec_log_set_syslog(int enable)
+void ec_log_set_callback(ec_log_cb_t cb)
 {
-    ec_log_use_syslog = enable;
+    ec_log_callback = cb;
 }
 
 void ec_log(int level, const char *fmt, ...)
@@ -48,9 +48,10 @@ void ec_log(int level, const char *fmt, ...)
     va_list args;
     va_start(args, fmt);
 
-    if (ec_log_use_syslog) {
-        vsyslog(level, fmt, args);
+    if (ec_log_callback) {
+        ec_log_callback(level, fmt, args);
     } else {
+        /* Fallback: stderr (before ecrt_lib_init or if NULL passed) */
         pthread_mutex_lock(&ec_log_lock);
         if (level >= 0 && level <= 7)
             fprintf(stderr, "[%s] ", loglevel_names[level]);

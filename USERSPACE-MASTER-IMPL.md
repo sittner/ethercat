@@ -38,13 +38,15 @@ Application → libethercat.so (master core + PAL + transport)
  *  Must be called once before any other ecrt_* function.
  *
  *  Internally calls:
+ *    ec_log_set_callback(log_cb)
  *    ec_master_init_static()
  *    ec_pal_work_init()
  *    ec_pal_irq_work_init()
  *
+ *  \param log_cb Log callback, or NULL for default (stderr).
  *  \return 0 on success, < 0 on error.
  */
-EC_PUBLIC_API int ecrt_lib_init(void);
+EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb);
 
 /** Start a userspace master with built-in transport.
  *  Creates transport(s), opens interface(s), initializes master,
@@ -336,14 +338,19 @@ double-start prevention.
 
 ### Syslog Support
 
+Logging is done via a user-provided callback. `ec_log()` in `pal.c` dispatches
+to the registered callback, with a stderr fallback if no callback is set.
+
+`main.c` provides two callbacks:
+
+- `log_to_syslog()` — uses `vsyslog()`, for daemon mode
+- `log_to_stderr()` — uses `vfprintf(stderr, ...)`, for foreground mode
+
 | Mode | Logging destination |
 |------|---------------------|
-| Daemon (default) | `openlog("ec_master", LOG_PID, LOG_DAEMON)` then `vsyslog()` |
+| Daemon (default) | `openlog("ec_master", LOG_PID, LOG_DAEMON)` then `vsyslog()` via `log_to_syslog` callback |
 | `--foreground` (without `--log-stdout`) | syslog (same as daemon mode) |
-| `--foreground --log-stdout` | stdout/stderr (`vfprintf(stderr, ...)`) |
-
-`ec_log()` in `pal.c` uses a global flag to switch between `vsyslog()` and
-`vfprintf(stderr, ...)`. The flag is set at startup before the main loop.
+| `--foreground --log-stdout` | stderr via `log_to_stderr` callback |
 
 `--log-stdout` requires `--foreground`: when daemonized, stdin/stdout/stderr
 are redirected to `/dev/null`, so logging to stdout would silently discard
@@ -425,7 +432,7 @@ When enabled, implies:
 - [x] Add backup device setup/teardown in module.c
 - [x] Implement multi-master CLI parsing in main.c
 - [x] Implement daemonization (double-fork, setsid, PID file)
-- [x] Implement syslog support (global flag in ec_log)
+- [x] Implement syslog support (log callback in ecrt_lib_init)
 - [x] Implement --foreground / --log-stdout flags
 - [x] Update help text
 - [ ] Test: build with `--enable-uspace-master`

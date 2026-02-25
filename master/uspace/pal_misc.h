@@ -50,12 +50,19 @@
 /* Logging */
 /****************************************************************************/
 
+/** Log callback type.
+ *  \param level  Log level (EC_LOG_ERR, EC_LOG_INFO, etc.)
+ *  \param fmt    printf-style format string
+ *  \param ap     va_list arguments
+ */
+typedef void (*ec_log_cb_t)(int level, const char *fmt, va_list ap);
+
 void ec_log(int level, const char *fmt, ...)
     __attribute__((format(printf, 2, 3)));
 
 int ec_log_ratelimit(void);
 
-void ec_log_set_syslog(int enable);
+void ec_log_set_callback(ec_log_cb_t cb);
 
 /****************************************************************************/
 /* Kernel utility macros */

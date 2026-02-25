@@ -49,7 +49,7 @@
 /****************************************************************************/
 
 /* Forward declarations for library API */
-extern int ecrt_lib_init(void);
+extern int ecrt_lib_init(ec_log_cb_t log_cb);
 extern ec_master_t *ecrt_startup_master(
         unsigned int index,
         ec_transport_type_t transport_type,
@@ -94,6 +94,30 @@ static void signal_handler(int signum)
 {
     (void)signum;
     g_running = 0;
+}
+
+/****************************************************************************/
+
+/** Syslog callback. */
+static void log_to_syslog(int level, const char *fmt, va_list ap)
+{
+    vsyslog(level, fmt, ap);
+}
+
+/** Stderr log callback. */
+static pthread_mutex_t stderr_log_lock = PTHREAD_MUTEX_INITIALIZER;
+static const char *loglevel_names[] = {
+    "EMERG", "ALERT", "CRIT", "ERR", "WARN", "NOTICE", "INFO", "DEBUG",
+};
+
+static void log_to_stderr(int level, const char *fmt, va_list ap)
+{
+    pthread_mutex_lock(&stderr_log_lock);
+    if (level >= 0 && level <= 7)
+        fprintf(stderr, "[%s] ", loglevel_names[level]);
+    vfprintf(stderr, fmt, ap);
+    fflush(stderr);
+    pthread_mutex_unlock(&stderr_log_lock);
 }
 
 /****************************************************************************/
@@ -303,10 +327,9 @@ int main(int argc, char *argv[])
     }
 
     /* Set up logging */
-    if (!g_log_stdout) {
+    ec_log_cb_t log_cb = g_log_stdout ? log_to_stderr : log_to_syslog;
+    if (!g_log_stdout)
         openlog("ec_master", LOG_PID, LOG_DAEMON);
-        ec_log_set_syslog(1);
-    }
 
     /* Daemonize unless foreground mode requested */
     if (!g_foreground) {
@@ -323,7 +346,7 @@ int main(int argc, char *argv[])
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
-    ret = ecrt_lib_init();
+    ret = ecrt_lib_init(log_cb);
     if (ret < 0) {
         ec_log(EC_LOG_ERR, "Failed to initialize EtherCAT library\n");
         ret = 1;
