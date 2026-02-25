@@ -457,34 +457,36 @@ the Multi-Master CLI Design section). Each `-i` starts a new master block with
 an auto-incremented index. All masters run concurrently and are shut down
 together on SIGINT/SIGTERM.
 
-### 2. Thread Safety of `ecrt_lib_init()` / `ecrt_lib_cleanup()`
+### 2. Thread Safety of `ecrt_lib_init()` / `ecrt_lib_cleanup()` — **RESOLVED**
 
-The global workqueue initialization functions (`ec_pal_work_init()`,
-`ec_pal_irq_work_init()`) are called once during `ecrt_lib_init()`. If two
-threads race on `ecrt_lib_init()`, double initialization could occur. For
-realtime applications this is typically a non-issue (single-threaded init on
-startup), but could be hardened later with an `atomic_flag` or `pthread_once`
-guard.
+An `atomic_flag lib_initialized` guard has been added to `master/uspace/module.c`.
+A second call to `ecrt_lib_init()` logs a warning and returns 0 (no-op).
+The flag is cleared on failure (so retry is possible) and in `ecrt_lib_cleanup()`
+(so re-init after cleanup works).
 
-### 3. `ecrt_release_master()` Phase Safety
+### 3. `ecrt_release_master()` Phase Safety — **RESOLVED**
 
-The current code checks `master->phase != EC_ORPHANED` before leaving
-idle/operation phase, and checks `master->active` before calling
-`ec_master_leave_operation_phase()`. This is correct for all normal
-sequences. Edge cases to be aware of:
+A `if (!master) return;` NULL guard has been added at the top of
+`ecrt_release_master()` to prevent crashes on NULL input.
+
+The existing phase/active checks are correct for all normal sequences:
 
 - If `ecrt_master_activate()` was never called, `master->active` is 0 and the
   operation-phase teardown is correctly skipped.
 - If the master is in an error state where `phase` was not updated, the
   cleanup may skip necessary teardown. This matches kernel behavior.
 
-### 4. `EC_USPACE_MASTER` Define
+### 4. `EC_USPACE_MASTER` Define — **RESOLVED**
 
-The new `ecrt.h` API is guarded by `#ifdef EC_USPACE_MASTER`. Ensure the
-build system defines this flag (`-DEC_USPACE_MASTER`) when building with
-`--enable-uspace-master`. Verify via `configure.ac` that `AC_DEFINE` or
-`AM_CPPFLAGS` propagates this to both the library build and installed
-headers.
+`include/ecrt.h` has been renamed to `include/ecrt.h.in` and is now generated
+by `configure` via `AC_CONFIG_FILES`. The substitution `@EC_USPACE_MASTER_DEFINE@`
+is inserted after the header guard:
+
+- When `--enable-uspace-master` is active: `#define EC_USPACE_MASTER 1`
+- Otherwise: empty
+
+Applications no longer need `-DEC_USPACE_MASTER` — the installed header carries
+the define automatically.
 
 ### 5. Shared Library Versioning
 
