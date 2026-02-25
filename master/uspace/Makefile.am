@@ -69,6 +69,7 @@ libethercat_la_SOURCES = \
 	pal_thread.c \
 	device_uspace.c \
 	module.c \
+	cdev.c \
 	transport/transport.c \
 	transport/transport_raw.c
 

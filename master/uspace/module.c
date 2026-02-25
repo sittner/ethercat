@@ -144,6 +144,13 @@ static ec_master_t *ecrt_startup_master_common(ec_master_t *master,
         goto out_close_backup_device;
     }
 
+    /* Start IPC server (non-fatal if it fails — master still usable via API) */
+    if (ec_cdev_init(&master->pal.cdev, master, 0) < 0) {
+        ec_log(EC_LOG_WARNING,
+                "Failed to start IPC server for master %u; "
+                "ethercat tool will not be able to connect\n", index);
+    }
+
     return master;
 
 out_close_backup_device:
@@ -294,6 +301,9 @@ ec_master_t *ecrt_startup_master_custom(unsigned int index,
 void ecrt_release_master(ec_master_t *master)
 {
     if (!master) return;
+
+    /* Stop IPC server before shutting down master. */
+    ec_cdev_clear(&master->pal.cdev);
 
     if (master->phase != EC_ORPHANED) {
         if (master->active) {

@@ -99,6 +99,8 @@ typedef struct {
 struct ec_master;
 typedef struct ec_master ec_master_t;
 
+#include "cdev.h"
+
 
 /** Userspace-specific master fields. */
 typedef struct {
@@ -109,8 +111,7 @@ typedef struct {
     uint8_t backup_mac[ETH_ALEN];         /**< Copied backup MAC address (owned). */
     char *interface_name;                  /**< Copied interface name (strdup, owned). */
     char *backup_interface_name;           /**< Backup interface name (NULL if none). */
+    ec_cdev_t cdev;                        /**< IPC character device server. */
 } ec_master_pal_t;
-
-/* TODO: Add userspace implementations of kernel APIs */
 
 #endif /* __EC_USPACE_PAL_H__ */

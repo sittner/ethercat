@@ -30,22 +30,27 @@
 #define __EC_CDEV_H__
 
 
-#include "pal.h"
+#include "pal_thread.h"
 
 #include "../globals.h"
 
 /****************************************************************************/
 
-/** EtherCAT master character device.
-*/
+/* Forward declaration; full definition provided by pal.h → master.h. */
+struct ec_master;
+
+/** EtherCAT master character device (userspace IPC socket server). */
 typedef struct {
-    ec_master_t *master; /**< Master owning the device. */
-    //TODO struct cdev cdev; /**< Character device. */
+    struct ec_master *master; /**< Master owning the device. */
+    int               sock_fd;        /**< Listening socket fd (-1 if inactive). */
+    char              sock_path[108]; /**< Unix socket filesystem path. */
+    ec_thread_t      *thread;         /**< Listener thread handle. */
+    volatile int      shutdown;       /**< Non-zero to request shutdown. */
 } ec_cdev_t;
 
 /****************************************************************************/
 
-int ec_cdev_init(ec_cdev_t *, ec_master_t *, dev_t);
+int ec_cdev_init(ec_cdev_t *, struct ec_master *, dev_t);
 void ec_cdev_clear(ec_cdev_t *);
 
 /****************************************************************************/
