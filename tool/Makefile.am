@@ -121,6 +121,7 @@ REV = `if test -s $(top_srcdir)/revision; then \
 
 if ENABLE_USPACE_MASTER
 ethercat_SOURCES += uspace/MasterDeviceUspace.cpp
+EXTRA_DIST += kernel/MasterDeviceKernel.cpp
 ethercat_CXXFLAGS = \
 	-I$(top_srcdir)/include \
 	-I$(top_srcdir)/master \
@@ -128,6 +129,7 @@ ethercat_CXXFLAGS = \
 	-fno-strict-aliasing
 else
 ethercat_SOURCES += kernel/MasterDeviceKernel.cpp
+EXTRA_DIST += uspace/MasterDeviceUspace.cpp
 ethercat_CXXFLAGS = \
 	-I$(top_srcdir)/include \
 	-I$(top_srcdir)/master \

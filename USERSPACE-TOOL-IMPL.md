@@ -65,8 +65,10 @@ so this is not a compatibility break.
 ### Default Socket Path
 
 ```c
-/* In ecrt.h, under #ifdef EC_USPACE_MASTER */
+/* In include/ec_ioctl_types.h */
+#ifndef EC_IPC_DEFAULT_SOCKET_PATH
 #define EC_IPC_DEFAULT_SOCKET_PATH "/var/run/ethercat.sock"
+#endif
 ```
 
 ### Application Code
@@ -115,10 +117,8 @@ corresponding `ec_master_t *`. A global registry array is added (similar to
 the kernel module's `masters[]` array):
 
 ```c
-/* In master/uspace/cdev.c (EC_MAX_MASTERS defined in shared headers) */
+/* In master/uspace/cdev.c (EC_MAX_MASTERS defined in ../globals.h) */
 static ec_master_t *master_registry[EC_MAX_MASTERS];
-static unsigned int registry_master_count;
-static pthread_mutex_t registry_mutex = PTHREAD_MUTEX_INITIALIZER;
 ```
 
 - `ecrt_startup_master()` registers the master at `master_registry[index]`

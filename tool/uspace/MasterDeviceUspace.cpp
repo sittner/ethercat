@@ -94,7 +94,8 @@ class MasterDeviceUspace : public MasterDeviceBackend
             socketPath(socketPath.empty()
                     ? EC_IPC_DEFAULT_SOCKET_PATH : socketPath),
             sockfd(-1),
-            masterIndex(0U)
+            masterIndex(0U),
+            writable(false)
         {}
 
         ~MasterDeviceUspace()
@@ -102,11 +103,14 @@ class MasterDeviceUspace : public MasterDeviceBackend
             close();
         }
 
-        void open(unsigned int index, bool /*writable*/)
+        void open(unsigned int index, bool writable)
         {
             if (sockfd != -1)
                 return; // already open
             masterIndex = index;
+            this->writable = writable;
+            /* TODO: send writable flag in IPC request header for
+             * server-side access control enforcement in a future phase. */
 
             sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
             if (sockfd == -1) {
@@ -154,7 +158,7 @@ class MasterDeviceUspace : public MasterDeviceBackend
             uint32_t argVal = 0;
             if (data && size > 0) {
                 req.data_size = static_cast<uint32_t>(size);
-            } else if (!data && arg != 0) {
+            } else if (!data) {
                 argVal = static_cast<uint32_t>(arg);
                 req.data_size = static_cast<uint32_t>(sizeof(argVal));
             } else {
@@ -169,7 +173,7 @@ class MasterDeviceUspace : public MasterDeviceBackend
                 ret = send_all(sockfd, data, size);
                 if (ret < 0)
                     return ret;
-            } else if (!data && arg != 0) {
+            } else if (!data) {
                 ret = send_all(sockfd, &argVal, sizeof(argVal));
                 if (ret < 0)
                     return ret;
@@ -219,6 +223,7 @@ class MasterDeviceUspace : public MasterDeviceBackend
         string socketPath;
         int sockfd;
         unsigned int masterIndex;
+        bool writable;
 };
 
 /****************************************************************************/

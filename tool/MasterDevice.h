@@ -25,7 +25,7 @@
 #include <stdexcept>
 #include <sstream>
 #include <string>
-using namespace std;
+using namespace std; // TODO: remove — pollutes includers' namespace
 
 #include "ecrt.h"
 #include "ec_ioctl_types.h"

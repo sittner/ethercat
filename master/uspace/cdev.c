@@ -1087,6 +1087,18 @@ static int conn_handler_fn(void *arg)
 
     free(ctx); /* ctx was heap-allocated by listener */
 
+    /* Set a receive timeout so that recv_all() does not block forever if
+     * a client sends a request header with data_size > 0 but never delivers
+     * the payload.  The timeout also ensures that this thread will eventually
+     * wake up and check cdev->shutdown after ec_ipc_server_stop() is called.
+     * (SO_RCVTIMEO causes recv() to return EAGAIN/EWOULDBLOCK on expiry.) */
+    {
+        struct timeval tv;
+        tv.tv_sec  = 5;
+        tv.tv_usec = 0;
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    }
+
     while (!cdev->shutdown) {
         ec_ipc_request_t req;
         ec_master_t *master;
@@ -1430,6 +1442,12 @@ void ec_ipc_server_stop(void)
         ec_thread_stop(cdev->thread);
         cdev->thread = NULL;
     }
+
+    /* Connection handler threads that are blocked in recv_all() are not
+     * directly notified here.  They are detached threads and will exit
+     * naturally: the SO_RCVTIMEO set in conn_handler_fn() ensures that
+     * recv() returns with EAGAIN within 5 seconds, at which point the
+     * thread checks cdev->shutdown and exits the request loop. */
 
     /* Remove the socket file. */
     unlink(cdev->sock_path);

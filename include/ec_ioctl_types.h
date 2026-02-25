@@ -31,6 +31,9 @@
 #define __EC_IOCTL_TYPES_H__
 
 #include "ecrt.h"
+/* Relative path works because this header is always included via
+ * -I$(top_srcdir)/include, making ../master resolve to $(top_srcdir)/master.
+ */
 #include "../master/shared.h"
 
 /****************************************************************************/
@@ -162,7 +165,7 @@ typedef struct {
     uint16_t position;
 
     // outputs
-    unsigned int device_index;
+    uint32_t device_index;
     uint32_t vendor_id;
     uint32_t product_code;
     uint32_t revision_number;
@@ -314,7 +317,7 @@ typedef struct {
 typedef struct {
     // inputs
     uint16_t slave_position;
-    int sdo_spec; // positive: index, negative: list position
+    int32_t sdo_spec; // positive: index, negative: list position
     uint8_t sdo_entry_subindex;
 
     // outputs
@@ -332,11 +335,11 @@ typedef struct {
     uint16_t slave_position;
     uint16_t sdo_index;
     uint8_t sdo_entry_subindex;
-    size_t target_size;
+    uint32_t target_size;
     uint8_t *target;
 
     // outputs
-    size_t data_size;
+    uint32_t data_size;
     uint32_t abort_code;
 } ec_ioctl_slave_sdo_upload_t;
 
@@ -348,7 +351,7 @@ typedef struct {
     uint16_t sdo_index;
     uint8_t sdo_entry_subindex;
     uint8_t complete_access;
-    size_t data_size;
+    uint32_t data_size;
     uint8_t *data;
 
     // outputs
@@ -372,7 +375,7 @@ typedef struct {
     uint16_t slave_position;
     uint8_t emergency;
     uint16_t address;
-    size_t size;
+    uint32_t size;
     uint8_t *data;
 } ec_ioctl_slave_reg_t;
 
@@ -382,11 +385,11 @@ typedef struct {
     // inputs
     uint16_t slave_position;
     uint16_t offset;
-    size_t buffer_size;
+    uint32_t buffer_size;
     uint8_t *buffer;
 
     // outputs
-    size_t data_size;
+    uint32_t data_size;
     uint32_t result;
     uint32_t error_code;
     char file_name[32];
@@ -399,11 +402,11 @@ typedef struct {
     uint16_t slave_position;
     uint8_t drive_no;
     uint16_t idn;
-    size_t mem_size;
+    uint32_t mem_size;
     uint8_t *data;
 
     // outputs
-    size_t data_size;
+    uint32_t data_size;
     uint16_t error_code;
 } ec_ioctl_slave_soe_read_t;
 
@@ -414,7 +417,7 @@ typedef struct {
     uint16_t slave_position;
     uint8_t drive_no;
     uint16_t idn;
-    size_t data_size;
+    uint32_t data_size;
     uint8_t *data;
 
     // outputs
@@ -488,7 +491,7 @@ typedef struct {
     // outputs
     uint16_t index;
     uint8_t subindex;
-    size_t size;
+    uint32_t size;
     uint8_t data[EC_MAX_SDO_DATA_SIZE];
     uint8_t complete_access;
 } ec_ioctl_config_sdo_t;
@@ -504,7 +507,7 @@ typedef struct {
     uint8_t drive_no;
     uint16_t idn;
     ec_al_state_t state;
-    size_t size;
+    uint32_t size;
     uint8_t data[EC_MAX_IDN_DATA_SIZE];
 } ec_ioctl_config_idn_t;
 

@@ -23,7 +23,6 @@
 #define __MASTER_DEVICE_BACKEND_H__
 
 #include <string>
-#include <cstdlib>
 
 /****************************************************************************/
 
