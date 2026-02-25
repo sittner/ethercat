@@ -51,10 +51,12 @@ static int send_all(int fd, const void *buf, size_t len)
 
     while (remaining > 0) {
         ssize_t n = send(fd, p, remaining, MSG_NOSIGNAL);
-        if (n < 0) {
-            if (errno == EINTR)
+        if (n <= 0) {
+            if (n < 0 && errno == EINTR)
                 continue;
-            return -errno;
+            if (n < 0)
+                return -errno;
+            return -ECONNRESET;
         }
         p += n;
         remaining -= n;
@@ -92,8 +94,7 @@ class MasterDeviceUspace : public MasterDeviceBackend
             socketPath(socketPath.empty()
                     ? EC_IPC_DEFAULT_SOCKET_PATH : socketPath),
             sockfd(-1),
-            masterIndex(0U),
-            masterCount(0U)
+            masterIndex(0U)
         {}
 
         ~MasterDeviceUspace()
@@ -103,6 +104,8 @@ class MasterDeviceUspace : public MasterDeviceBackend
 
         void open(unsigned int index, bool /*writable*/)
         {
+            if (sockfd != -1)
+                return; // already open
             masterIndex = index;
 
             sockfd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -212,16 +215,10 @@ class MasterDeviceUspace : public MasterDeviceBackend
             return resp.ret;
         }
 
-        unsigned int getMasterCount() const
-        {
-            return masterCount;
-        }
-
     private:
         string socketPath;
         int sockfd;
         unsigned int masterIndex;
-        unsigned int masterCount;
 };
 
 /****************************************************************************/

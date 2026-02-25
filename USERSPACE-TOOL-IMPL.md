@@ -115,9 +115,7 @@ corresponding `ec_master_t *`. A global registry array is added (similar to
 the kernel module's `masters[]` array):
 
 ```c
-/* In master/uspace/cdev.c */
-#define EC_MAX_MASTERS 16
-
+/* In master/uspace/cdev.c (EC_MAX_MASTERS defined in shared headers) */
 static ec_master_t *master_registry[EC_MAX_MASTERS];
 static unsigned int registry_master_count;
 static pthread_mutex_t registry_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -274,17 +272,11 @@ class MasterDeviceBackend
         virtual void close() = 0;
         virtual int request(unsigned int cmd, void *data,
                 size_t size, unsigned long arg = 0) = 0;
-        virtual int requestWithTrailingData(unsigned int cmd,
-                void *header, size_t header_size,
-                void *trailing, size_t trailing_size,
-                void *response_trailing, size_t *response_trailing_size) = 0;
-        virtual unsigned int getMasterCount() const = 0;
         static MasterDeviceBackend *create(const std::string &socketPath);
 };
 ```
 
-Note: `requestWithTrailingData()` is declared in the interface but not yet
-implemented (Phase 2).
+Note: `requestWithTrailingData()` will be added to the interface in Phase 2.
 
 ### Kernel Backend (`tool/kernel/MasterDeviceKernel.cpp`)
 
