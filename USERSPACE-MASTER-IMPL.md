@@ -47,38 +47,72 @@ Application → libethercat.so (master core + PAL + transport)
 EC_PUBLIC_API int ecrt_lib_init(void);
 
 /** Start a userspace master with built-in transport.
- *  Creates transport, opens interface, initializes master,
+ *  Creates transport(s), opens interface(s), initializes master,
  *  and enters idle phase (slave scanning starts immediately).
  *
  *  Internally calls:
  *    malloc(sizeof(ec_master_t))
- *    ec_transport_create(transport_type)
+ *    ec_transport_create(transport_type)          — for main interface
  *    ec_transport_open(transport, interface)
- *    ec_transport_get_mac(transport, main_mac)  — MAC is copied
- *    ec_master_init(master, ...)                — interface string is copied
- *    assign transport to device PAL
+ *    ec_transport_get_mac(transport, main_mac)    — MAC is copied
+ *    if backup_interface != NULL:
+ *      ec_transport_create(transport_type)        — for backup interface (same type)
+ *      ec_transport_open(backup_transport, backup_interface)
+ *      ec_transport_get_mac(backup_transport, backup_mac)
+ *    ec_master_init(master, index, ..., debug_level, run_on_cpu)
+ *    assign transports to device PALs
  *    ec_device_open(&master->devices[EC_DEVICE_MAIN])
+ *    if backup_interface != NULL:
+ *      ec_device_open(&master->devices[EC_DEVICE_BACKUP])
  *    ec_master_enter_idle_phase(master)
  *
- *  Transport is library-owned and will be destroyed by ecrt_release_master().
+ *  Both transports are library-owned and will be destroyed by
+ *  ecrt_release_master().
  *
+ *  \param index        Master index (0-based). Stored in ec_master_t by
+ *                      ec_master_init().
+ *  \param transport_type  Transport type for both main and backup interfaces.
+ *  \param interface    Main network interface name.
+ *  \param backup_interface  Backup network interface name, or NULL for none.
+ *  \param debug_level  Debug verbosity level. Stored in ec_master_t by
+ *                      ec_master_init().
+ *  \param run_on_cpu   CPU affinity for master threads, or 0xffffffff for
+ *                      no binding. Stored in ec_master_t by ec_master_init().
  *  \return Pointer to master, or NULL on error.
  */
 EC_PUBLIC_API ec_master_t *ecrt_startup_master(
+        unsigned int index,
         ec_transport_type_t transport_type,
-        const char *interface
+        const char *interface,
+        const char *backup_interface,   /* NULL = no backup */
+        unsigned int debug_level,
+        unsigned int run_on_cpu         /* 0xffffffff = no binding */
         );
 
 /** Start a userspace master with caller-provided transport.
- *  Same as ecrt_startup_master() but uses an externally created transport.
+ *  Same as ecrt_startup_master() but the main transport is supplied by the
+ *  caller. The backup interface (if non-NULL) triggers an internally created
+ *  transport of the same type as the caller's transport for the backup device.
  *
- *  Transport is caller-owned — ecrt_release_master() will NOT destroy it.
+ *  Main transport is caller-owned — ecrt_release_master() will NOT destroy it.
+ *  Backup transport (if created) is library-owned and will be destroyed.
  *
+ *  \param index        Master index (0-based).
+ *  \param transport    Caller-provided main transport (already opened).
+ *  \param interface    Main network interface name.
+ *  \param backup_interface  Backup network interface name, or NULL for none.
+ *  \param debug_level  Debug verbosity level.
+ *  \param run_on_cpu   CPU affinity for master threads, or 0xffffffff for
+ *                      no binding.
  *  \return Pointer to master, or NULL on error.
  */
 EC_PUBLIC_API ec_master_t *ecrt_startup_master_custom(
+        unsigned int index,
         ec_transport_t *transport,
-        const char *interface
+        const char *interface,
+        const char *backup_interface,   /* NULL = no backup */
+        unsigned int debug_level,
+        unsigned int run_on_cpu         /* 0xffffffff = no binding */
         );
 
 /** Cleanup the userspace master library.
@@ -100,9 +134,14 @@ EC_PUBLIC_API void ecrt_lib_cleanup(void);
  *  In uspace-master mode, additionally:
  *    ec_master_leave_idle_phase(master)
  *    ec_device_close(&master->devices[EC_DEVICE_MAIN])
+ *    if backup device was opened:
+ *      ec_device_close(&master->devices[EC_DEVICE_BACKUP])
  *    ec_master_clear(master)
- *    ec_transport_close(transport)         — always
- *    ec_transport_destroy(transport)       — only if library-owned
+ *    ec_transport_close(transport)                — always (main)
+ *    ec_transport_destroy(transport)              — only if library-owned
+ *    if backup_transport != NULL:
+ *      ec_transport_close(backup_transport)       — always
+ *      ec_transport_destroy(backup_transport)     — always (library-owned)
  *    free(master)
  */
 EC_PUBLIC_API void ecrt_release_master(ec_master_t *master);
@@ -139,7 +178,14 @@ int main() {
 ```c
 int main() {
     ecrt_lib_init();
-    ec_master_t *master = ecrt_startup_master(EC_TRANSPORT_RAW, "eth0");
+    ec_master_t *master = ecrt_startup_master(
+            0,               /* index */
+            EC_TRANSPORT_RAW,
+            "eth0",          /* main interface */
+            NULL,            /* no backup */
+            1,               /* debug_level */
+            0xffffffff       /* no CPU binding */
+            );
 
     /* FROM HERE: identical to kernel mode */
     ec_domain_t *domain = ecrt_master_create_domain(master);
@@ -167,31 +213,141 @@ is never included by application code. **No type renames needed.**
 ### Transport Ownership
 
 `ecrt_startup_master()` and `ecrt_startup_master_custom()` differ in transport
-ownership. The flag `transport_owned` in `ec_master_uspace_ctx_t` tracks this:
+ownership. The flag `transport_owned` in `ec_master_pal_t` tracks this:
 
 - `ecrt_startup_master()` → library-owned (`transport_owned = 1`) → `ecrt_release_master()` destroys transport
 - `ecrt_startup_master_custom()` → caller-owned (`transport_owned = 0`) → `ecrt_release_master()` does NOT destroy transport
 
+The backup transport (stored in `ec_master_pal_t.backup_transport`) is always
+library-owned when present — `ecrt_release_master()` always destroys it.
+
+### Backup Device Support
+
+When `backup_interface != NULL`, `ecrt_startup_master()` creates a second
+transport instance of the **same type** as the main transport. Both transports
+use the same `transport_type` to ensure consistency and redundancy quality.
+
+The `ec_master_pal_t` struct tracks both transports:
+
+```c
+typedef struct {
+    struct ec_transport *transport;        /**< Main transport instance. */
+    struct ec_transport *backup_transport; /**< Backup transport instance (NULL if none). */
+    int transport_owned;
+    uint8_t main_mac[ETH_ALEN];
+    uint8_t backup_mac[ETH_ALEN];
+    char *interface_name;
+    char *backup_interface_name;          /**< Backup interface name (NULL if none). */
+} ec_master_pal_t;
+```
+
+Note: `index`, `debug_level`, and `run_on_cpu` are passed directly to
+`ec_master_init()` and do not need to be stored in `ec_master_pal_t` — they
+are stored in `ec_master_t` itself by `ec_master_init()`.
+
+The backup transport is assigned to `master->devices[EC_DEVICE_BACKUP].pal.transport`.
+
 ### String and MAC Lifetime
 
-MAC addresses and the interface name string are owned by `ec_master_uspace_ctx_t`
-(the wrapper struct allocated in `module.c`):
+MAC addresses and interface name strings are owned by `ec_master_pal_t`
+(the PAL fields embedded in `ec_master_t`):
 
-- `ctx->main_mac[ETH_ALEN]` — MAC address copied from transport at startup
-- `ctx->backup_mac[ETH_ALEN]` — backup MAC address (zeroed by default)
-- `ctx->interface_name` — interface name `strdup`'d in `ecrt_startup_master()` / `ecrt_startup_master_custom()`, freed in `ecrt_release_master()`
+- `pal.main_mac[ETH_ALEN]` — MAC address copied from transport at startup
+- `pal.backup_mac[ETH_ALEN]` — backup MAC address copied from backup transport (zeroed if no backup)
+- `pal.interface_name` — interface name `strdup`'d in `ecrt_startup_master()` / `ecrt_startup_master_custom()`, freed in `ecrt_release_master()`
+- `pal.backup_interface_name` — backup interface name `strdup`'d when `backup_interface != NULL`, freed in `ecrt_release_master()`
 
 This fixes a latent bug in the current `main.c` where stack-local `main_mac`
 happens to outlive the master only because it's in `main()`'s stack frame.
 
 ### Master Allocation
 
-The master is heap-allocated as part of `ec_master_uspace_ctx_t`
-(`malloc(sizeof(ec_master_uspace_ctx_t))`) since the application cannot know
-`sizeof(ec_master_t)` — the type is opaque. The `ec_master_t master` field is
-the first member of the context struct, so `(ec_master_t *)ctx == &ctx->master`.
+The master is heap-allocated via `malloc(sizeof(ec_master_t))` since the
+application cannot know `sizeof(ec_master_t)` — the type is opaque.
+`ec_master_pal_t pal` is an embedded field of `ec_master_t` (declared in
+`master/master.h`), so the PAL struct is allocated as part of the master.
 This is consistent with how the existing ioctl-based `lib/common.c` allocates
 masters.
+
+### `ecrt_startup_master_common()` Helper
+
+The internal `ecrt_startup_master_common()` function completes master
+initialization after the transport(s) and interface names are set up by the
+caller (`ecrt_startup_master()` or `ecrt_startup_master_custom()`). It uses
+the caller-provided `index`, `debug_level`, and `run_on_cpu` values when
+calling `ec_master_init()` — these are no longer hardcoded to `0`, `1`, `0`.
+
+## `ec_master` Standalone Tool
+
+### Multi-Master CLI Design
+
+The `ec_master` tool supports multiple simultaneous masters via repeated `-i`
+flags. Each `-i` starts a new master block and auto-increments the master index.
+
+```
+ec_master [-d <level>] [-f] [-l]
+          -i <iface> [-t <type>] [-b <iface>] [-c <cpu>]
+         [-i <iface> [-t <type>] [-b <iface>] [-c <cpu>]]
+         ...
+          [-h]
+```
+
+**Parameters:**
+
+| Flag | Long option | Description |
+|------|-------------|-------------|
+| `-i <name>` | `--interface <name>` | Network interface — required; starts new master block, increments index |
+| `-t <type>` | `--transport <type>` | Transport type for current block (default: raw) |
+| `-b <name>` | `--backup <name>` | Backup interface for current block |
+| `-c <id>` | `--cpu <id>` | Bind master threads to CPU for current block |
+| `-d <level>` | `--debug <level>` | Debug level (global, applies to all masters) |
+| `-f` | `--foreground` | Do not daemonize |
+| `-l` | `--log-stdout` | Log to stdout instead of syslog (requires `--foreground`) |
+| `-h` | `--help` | Show help |
+
+**Parsing strategy:** single-pass stateful parser using `getopt_long`. Each
+`-i` finalizes the previous master block and starts a new one. Block-local
+options (`-t`, `-b`, `-c`) apply to the most recent `-i`. Global options
+(`-d`, `-f`, `-l`) may appear anywhere.
+
+**Example:**
+
+```
+ec_master -d 1 -i eth0 -t raw -b eth1 -c 2 -i eth2 -t xdp
+```
+
+→ master 0: main=eth0, transport=raw, backup=eth1, cpu=2, debug=1  
+→ master 1: main=eth2, transport=xdp, no backup, no cpu binding, debug=1
+
+### Daemonization
+
+`ec_master` forks to background by default using the standard double-fork +
+setsid pattern:
+
+1. First fork: parent exits, child calls `setsid()` to become session leader
+2. Second fork: session leader exits, grandchild can never acquire a terminal
+3. Standard I/O redirected to `/dev/null`
+
+`--foreground` skips all forking and keeps the process in the foreground.
+
+A PID file is written to `/var/run/ec_master.pid` when daemonizing, and
+removed on clean shutdown. This is required for init system integration and
+double-start prevention.
+
+### Syslog Support
+
+| Mode | Logging destination |
+|------|---------------------|
+| Daemon (default) | `openlog("ec_master", LOG_PID, LOG_DAEMON)` then `vsyslog()` |
+| `--foreground` (without `--log-stdout`) | syslog (same as daemon mode) |
+| `--foreground --log-stdout` | stdout/stderr (`vfprintf(stderr, ...)`) |
+
+`ec_log()` in `pal.c` uses a global flag to switch between `vsyslog()` and
+`vfprintf(stderr, ...)`. The flag is set at startup before the main loop.
+
+`--log-stdout` requires `--foreground`: when daemonized, stdin/stdout/stderr
+are redirected to `/dev/null`, so logging to stdout would silently discard
+all messages.
 
 ## Build System
 
@@ -263,6 +419,15 @@ When enabled, implies:
 - [x] Modify `master/Makefile.am` (conditional subdirectory)
 - [x] Update `AC_CONFIG_FILES` list
 - [x] XDP/BPF library detection in configure
+- [ ] Extend `ecrt_startup_master()` signature with index, backup_interface, debug_level, run_on_cpu
+- [ ] Extend `ecrt_startup_master_custom()` signature similarly
+- [ ] Add backup transport support to `ec_master_pal_t` and `ecrt_startup_master_common()`
+- [ ] Add backup device setup/teardown in module.c
+- [ ] Implement multi-master CLI parsing in main.c
+- [ ] Implement daemonization (double-fork, setsid, PID file)
+- [ ] Implement syslog support (global flag in ec_log)
+- [ ] Implement --foreground / --log-stdout flags
+- [ ] Update help text
 - [ ] Test: build with `--enable-uspace-master`
 - [ ] Test: build without (default kernel mode unchanged)
 - [ ] Test: `ec_master` standalone binary works
@@ -275,11 +440,15 @@ future hardening and documentation.
 
 ### 1. Multiple Master Instances
 
-`module.c` does not enforce a single-instance constraint. Calling
-`ecrt_startup_master()` multiple times will create independent master
-instances, each with its own `ec_master_uspace_ctx_t`. This is intentional
-for the library model (unlike the kernel module which has a global master
-array), but should be documented for users who expect kernel-like behavior.
+The `ec_master` standalone tool is designed for multiple simultaneous masters.
+Calling `ecrt_startup_master()` multiple times creates independent master
+instances, each with its own `ec_master_pal_t` fields. This is intentional for
+the library model (unlike the kernel module which has a global master array).
+
+In `ec_master`, multiple masters are configured via repeated `-i` flags (see
+the Multi-Master CLI Design section). Each `-i` starts a new master block with
+an auto-incremented index. All masters run concurrently and are shut down
+together on SIGINT/SIGTERM.
 
 ### 2. Thread Safety of `ecrt_lib_init()` / `ecrt_lib_cleanup()`
 
