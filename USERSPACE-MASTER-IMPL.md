@@ -419,15 +419,15 @@ When enabled, implies:
 - [x] Modify `master/Makefile.am` (conditional subdirectory)
 - [x] Update `AC_CONFIG_FILES` list
 - [x] XDP/BPF library detection in configure
-- [ ] Extend `ecrt_startup_master()` signature with index, backup_interface, debug_level, run_on_cpu
-- [ ] Extend `ecrt_startup_master_custom()` signature similarly
-- [ ] Add backup transport support to `ec_master_pal_t` and `ecrt_startup_master_common()`
-- [ ] Add backup device setup/teardown in module.c
-- [ ] Implement multi-master CLI parsing in main.c
-- [ ] Implement daemonization (double-fork, setsid, PID file)
-- [ ] Implement syslog support (global flag in ec_log)
-- [ ] Implement --foreground / --log-stdout flags
-- [ ] Update help text
+- [x] Extend `ecrt_startup_master()` signature with index, backup_interface, debug_level, run_on_cpu
+- [x] Extend `ecrt_startup_master_custom()` signature similarly
+- [x] Add backup transport support to `ec_master_pal_t` and `ecrt_startup_master_common()`
+- [x] Add backup device setup/teardown in module.c
+- [x] Implement multi-master CLI parsing in main.c
+- [x] Implement daemonization (double-fork, setsid, PID file)
+- [x] Implement syslog support (global flag in ec_log)
+- [x] Implement --foreground / --log-stdout flags
+- [x] Update help text
 - [ ] Test: build with `--enable-uspace-master`
 - [ ] Test: build without (default kernel mode unchanged)
 - [ ] Test: `ec_master` standalone binary works
