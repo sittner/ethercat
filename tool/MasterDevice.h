@@ -24,10 +24,13 @@
 
 #include <stdexcept>
 #include <sstream>
+#include <string>
 using namespace std;
 
 #include "ecrt.h"
-#include "ioctl.h"
+#include "ec_ioctl_types.h"
+
+class MasterDeviceBackend;
 
 /****************************************************************************/
 
@@ -162,10 +165,14 @@ class MasterDevice
 
         unsigned int getMasterCount() const {return masterCount;}
 
+        static void setSocketPath(const string &path);
+
     private:
         unsigned int index;
         unsigned int masterCount;
-        int fd;
+        MasterDeviceBackend *backend;
+
+        static string globalSocketPath;
 };
 
 /****************************************************************************/
