@@ -146,7 +146,17 @@ class MasterDeviceUspace : public MasterDeviceBackend
             req.version_magic = EC_IOCTL_VERSION_MAGIC;
             req.cmd = cmd;
             req.master_index = masterIndex;
-            req.data_size = data ? static_cast<uint32_t>(size) : 0;
+
+            /* Determine payload before sending the header. */
+            uint32_t argVal = 0;
+            if (data && size > 0) {
+                req.data_size = static_cast<uint32_t>(size);
+            } else if (!data && arg != 0) {
+                argVal = static_cast<uint32_t>(arg);
+                req.data_size = static_cast<uint32_t>(sizeof(argVal));
+            } else {
+                req.data_size = 0;
+            }
 
             int ret = send_all(sockfd, &req, sizeof(req));
             if (ret < 0)
@@ -157,15 +167,6 @@ class MasterDeviceUspace : public MasterDeviceBackend
                 if (ret < 0)
                     return ret;
             } else if (!data && arg != 0) {
-                /* Argument-only commands (e.g. EC_CMD_MASTER_DEBUG).
-                 * Send the argument as a uint32_t payload so the server
-                 * can read it. */
-                uint32_t argVal = static_cast<uint32_t>(arg);
-                req.data_size = sizeof(argVal);
-                /* Resend request header with updated data_size. */
-                ret = send_all(sockfd, &req, sizeof(req));
-                if (ret < 0)
-                    return ret;
                 ret = send_all(sockfd, &argVal, sizeof(argVal));
                 if (ret < 0)
                     return ret;

@@ -50,20 +50,24 @@
 
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <poll.h>
 #include <unistd.h>
 #include <errno.h>
-#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
 #include <stdio.h>
+
+#ifndef UNIX_PATH_MAX
+#define UNIX_PATH_MAX (sizeof(((struct sockaddr_un *)0)->sun_path))
+#endif
 
 /****************************************************************************/
 
 /** Global singleton IPC server state. */
 typedef struct {
     int          sock_fd;        /**< Listening socket fd (-1 if inactive). */
-    char         sock_path[108]; /**< Unix socket filesystem path. */
+    char         sock_path[UNIX_PATH_MAX]; /**< Unix socket filesystem path. */
     ec_thread_t *thread;         /**< Listener thread handle. */
     volatile int shutdown;       /**< Non-zero to request shutdown. */
 } ec_cdev_t;
@@ -84,8 +88,9 @@ void ec_master_registry_add(ec_master_t *master)
     if (!master || master->index >= EC_MAX_MASTERS)
         return;
     pthread_mutex_lock(&registry_mutex);
+    if (master_registry[master->index] == NULL)
+        registry_master_count++;
     master_registry[master->index] = master;
-    registry_master_count++;
     pthread_mutex_unlock(&registry_mutex);
 }
 
@@ -156,6 +161,29 @@ static int send_all(int fd, const void *buf, size_t len)
         remaining -= (size_t)n;
     }
     return 0;
+}
+
+/****************************************************************************/
+/* Helper: wait until fd is readable or cdev shuts down.
+ * Returns 0 when data is available, -EINTR on shutdown, -errno on error.    */
+/****************************************************************************/
+
+static int wait_readable(int fd, ec_cdev_t *cdev)
+{
+    struct pollfd pfd;
+    pfd.fd     = fd;
+    pfd.events = POLLIN;
+    while (!cdev->shutdown) {
+        int ret = poll(&pfd, 1, 1000);
+        if (ret > 0)
+            return 0;
+        if (ret == 0)
+            continue;
+        if (errno == EINTR)
+            continue;
+        return -errno;
+    }
+    return -EINTR;
 }
 
 /****************************************************************************/
@@ -1079,6 +1107,10 @@ static int conn_handler_fn(void *arg)
         ec_master_t *master;
         int ret;
 
+        ret = wait_readable(fd, cdev);
+        if (ret < 0)
+            break; /* shutdown or error */
+
         ret = recv_all(fd, &req, sizeof(req));
         if (ret < 0)
             break; /* client disconnected or error */
@@ -1301,8 +1333,9 @@ static int listener_fn(void *arg)
                     "IPC: failed to create connection thread\n");
             close(client_fd);
             free(ctx);
+        } else {
+            ec_thread_detach(t);
         }
-        /* Connection thread owns ctx and client_fd; we do not join it. */
     }
 
     return 0;
@@ -1333,9 +1366,6 @@ int ec_ipc_server_start(const char *socket_path)
     snprintf(cdev->sock_path, sizeof(cdev->sock_path), "%s", socket_path);
     cdev->thread   = NULL;
     cdev->shutdown = 0;
-
-    /* Ignore SIGPIPE so that writes to closed sockets don't kill threads. */
-    signal(SIGPIPE, SIG_IGN);
 
     /* Create the listening socket. */
     sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
