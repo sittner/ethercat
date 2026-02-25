@@ -48,7 +48,6 @@
 
 /****************************************************************************/
 
-#define EC_MAX_MASTERS  16
 #define EC_PIDFILE      "/var/run/ec_master.pid"
 
 /** Per-master configuration block. */
