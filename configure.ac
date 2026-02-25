@@ -1439,6 +1439,7 @@ AC_SUBST(systemdsystemunitdir, [$with_systemdsystemunitdir])
 
 if test "x$enable_uspace_master" = "xyes"; then
     AC_DEFINE([EC_USPACE_MASTER], [1], [Userspace master library enabled])
+    EC_USPACE_MASTER_DEFINE='#define EC_USPACE_MASTER 1'
 
     # Check for libxdp and libbpf (optional XDP transport support)
     AC_CHECK_LIB([xdp], [xsk_socket__create], [have_xdp=yes], [have_xdp=no])
@@ -1447,7 +1448,11 @@ if test "x$enable_uspace_master" = "xyes"; then
     if test "x$have_xdp" = "xyes" -a "x$have_bpf" = "xyes"; then
         AC_DEFINE([HAVE_XDP], [1], [XDP transport support available])
     fi
+else
+    EC_USPACE_MASTER_DEFINE=''
 fi
+
+AC_SUBST(EC_USPACE_MASTER_DEFINE)
 
 AM_CONDITIONAL([ENABLE_USPACE_MASTER], [test "x$enable_uspace_master" = "xyes"])
 AM_CONDITIONAL([HAVE_XDP], [test "x$have_xdp" = "xyes" -a "x$have_bpf" = "xyes"])
@@ -1494,6 +1499,7 @@ AC_CONFIG_FILES([
         examples/xenomai/Makefile
         examples/xenomai_posix/Makefile
         fake_lib/Makefile
+        include/ecrt.h
         include/Makefile
         lib/Makefile
         lib/libethercat.pc

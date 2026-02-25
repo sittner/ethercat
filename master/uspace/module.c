@@ -37,24 +37,36 @@
 #include "../device.h"
 #include "../master.h"
 
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
 /****************************************************************************/
 
+static atomic_flag lib_initialized = ATOMIC_FLAG_INIT;
+
+/****************************************************************************/
+
 int ecrt_lib_init(ec_log_cb_t log_cb)
 {
+    if (atomic_flag_test_and_set(&lib_initialized)) {
+        ec_log(EC_LOG_WARNING, "ecrt_lib_init() called more than once; ignoring\n");
+        return 0;
+    }
+
     ec_log_set_callback(log_cb);
     ec_master_init_static();
 
     if (ec_pal_work_init() != 0) {
         ec_log(EC_LOG_ERR, "Failed to create system workqueue\n");
+        atomic_flag_clear(&lib_initialized);
         return -1;
     }
 
     if (ec_pal_irq_work_init() != 0) {
         ec_log(EC_LOG_ERR, "Failed to create IRQ work queue\n");
         ec_pal_work_cleanup();
+        atomic_flag_clear(&lib_initialized);
         return -1;
     }
 
@@ -281,6 +293,8 @@ ec_master_t *ecrt_startup_master_custom(unsigned int index,
 
 void ecrt_release_master(ec_master_t *master)
 {
+    if (!master) return;
+
     if (master->phase != EC_ORPHANED) {
         if (master->active) {
             ec_master_leave_operation_phase(master);
@@ -323,6 +337,7 @@ void ecrt_lib_cleanup(void)
 {
     ec_pal_irq_work_cleanup();
     ec_pal_work_cleanup();
+    atomic_flag_clear(&lib_initialized);
 }
 
 /****************************************************************************/

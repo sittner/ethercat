@@ -140,6 +140,7 @@
 #ifndef __ECRT_H__
 #define __ECRT_H__
 
+@EC_USPACE_MASTER_DEFINE@
 #ifdef __KERNEL__
 #include <asm/byteorder.h>
 #include <linux/types.h>
@@ -713,7 +714,10 @@ EC_PUBLIC_API unsigned int ecrt_version_magic(void);
  *  \param fmt    printf-style format string
  *  \param ap     va_list arguments
  */
+#ifndef EC_LOG_CB_DEFINED
+#define EC_LOG_CB_DEFINED
 typedef void (*ec_log_cb_t)(int level, const char *fmt, va_list ap);
+#endif
 
 /** Initialize the userspace master library. Must be called once before
  *  any other ecrt_* function.
