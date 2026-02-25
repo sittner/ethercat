@@ -85,9 +85,9 @@ void MasterDevice::open(Permissions perm)
             << "A probable reason is that the command-line tool" << endl
             << "you are using is built with a different" << endl
             << "source code version than the currently loaded" << endl
-            << "kernel module. Please install an updated version" << endl
-            << "of either the tool (ethercat) or the kernel" << endl
-            << "module (ec_master.ko).";
+            << "master process. Please install an updated version" << endl
+            << "of either the tool (ethercat) or the master" << endl
+            << "(ec_master / libethercat).";
         throw MasterDeviceException(err);
     }
     masterCount = module_data.master_count;

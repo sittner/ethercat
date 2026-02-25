@@ -94,8 +94,7 @@ class MasterDeviceKernel : public MasterDeviceBackend
 {
     public:
         MasterDeviceKernel():
-            fd(-1),
-            masterCount(0U)
+            fd(-1)
         {}
 
         ~MasterDeviceKernel()
@@ -150,6 +149,7 @@ class MasterDeviceKernel : public MasterDeviceBackend
     private:
         int fd;
 };
+
 
 /****************************************************************************/
 

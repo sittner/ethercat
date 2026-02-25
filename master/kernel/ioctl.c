@@ -830,6 +830,7 @@ static ATTRIBUTES int ec_ioctl_slave_sdo_upload(
 {
     ec_ioctl_slave_sdo_upload_t data;
     uint8_t *target;
+    size_t result_size = 0;
     int ret;
 
     if (copy_from_user(&data, (void __user *) arg, sizeof(data))) {
@@ -837,14 +838,15 @@ static ATTRIBUTES int ec_ioctl_slave_sdo_upload(
     }
 
     if (!(target = kmalloc(data.target_size, GFP_KERNEL))) {
-        EC_MASTER_ERR(master, "Failed to allocate %zu bytes"
+        EC_MASTER_ERR(master, "Failed to allocate %u bytes"
                 " for SDO upload.\n", data.target_size);
         return -ENOMEM;
     }
 
     ret = ecrt_master_sdo_upload(master, data.slave_position,
             data.sdo_index, data.sdo_entry_subindex, target,
-            data.target_size, &data.data_size, &data.abort_code);
+            data.target_size, &result_size, &data.abort_code);
+    data.data_size = (uint32_t)result_size;
 
     if (!ret) {
         if (copy_to_user((void __user *) data.target,
@@ -883,7 +885,7 @@ static ATTRIBUTES int ec_ioctl_slave_sdo_download(
     }
 
     if (!(sdo_data = kmalloc(data.data_size, GFP_KERNEL))) {
-        EC_MASTER_ERR(master, "Failed to allocate %zu bytes"
+        EC_MASTER_ERR(master, "Failed to allocate %u bytes"
                 " for SDO download.\n", data.data_size);
         return -ENOMEM;
     }
@@ -4661,7 +4663,7 @@ static ATTRIBUTES int ec_ioctl_slave_foe_read(
             ec_foe_request_clear(&request);
             return -ENOBUFS;
         }
-        io.data_size = request.data_size;
+        io.data_size = (uint32_t)request.data_size;
         if (copy_to_user((void __user *) io.buffer,
                     request.buffer, io.data_size)) {
             ec_foe_request_clear(&request);
@@ -4779,6 +4781,7 @@ static ATTRIBUTES int ec_ioctl_slave_soe_read(
 {
     ec_ioctl_slave_soe_read_t ioctl;
     u8 *data;
+    size_t result_size = 0;
     int retval;
 
     if (copy_from_user(&ioctl, (void __user *) arg, sizeof(ioctl))) {
@@ -4787,14 +4790,15 @@ static ATTRIBUTES int ec_ioctl_slave_soe_read(
 
     data = kmalloc(ioctl.mem_size, GFP_KERNEL);
     if (!data) {
-        EC_MASTER_ERR(master, "Failed to allocate %zu bytes of IDN data.\n",
+        EC_MASTER_ERR(master, "Failed to allocate %u bytes of IDN data.\n",
                 ioctl.mem_size);
         return -ENOMEM;
     }
 
     retval = ecrt_master_read_idn(master, ioctl.slave_position,
-            ioctl.drive_no, ioctl.idn, data, ioctl.mem_size, &ioctl.data_size,
+            ioctl.drive_no, ioctl.idn, data, ioctl.mem_size, &result_size,
             &ioctl.error_code);
+    ioctl.data_size = (uint32_t)result_size;
     if (retval) {
         kfree(data);
         return retval;
@@ -4836,7 +4840,7 @@ static ATTRIBUTES int ec_ioctl_slave_soe_write(
 
     data = kmalloc(ioctl.data_size, GFP_KERNEL);
     if (!data) {
-        EC_MASTER_ERR(master, "Failed to allocate %zu bytes of IDN data.\n",
+        EC_MASTER_ERR(master, "Failed to allocate %u bytes of IDN data.\n",
                 ioctl.data_size);
         return -ENOMEM;
     }
