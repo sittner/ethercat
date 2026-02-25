@@ -1432,7 +1432,11 @@ void ec_ipc_server_stop(void)
     /* Signal shutdown to listener and connection threads. */
     cdev->shutdown = 1;
 
-    /* Close the listening socket to unblock accept(). */
+    /* Shut down the listening socket to unblock accept().
+     * On Linux, close() alone does NOT unblock a concurrent accept()
+     * in another thread — shutdown() is required for that. */
+    shutdown(cdev->sock_fd, SHUT_RDWR);
+
     close(cdev->sock_fd);
     cdev->sock_fd = -1;
 
