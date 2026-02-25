@@ -72,6 +72,9 @@ static int g_foreground = 0;
 /** Log to stdout/stderr instead of syslog */
 static int g_log_stdout = 0;
 
+/** IPC socket path (NULL disables IPC server) */
+static const char *g_socket_path = EC_IPC_DEFAULT_SOCKET_PATH;
+
 /****************************************************************************/
 
 /** Signal handler for clean shutdown */
@@ -177,13 +180,14 @@ int main(int argc, char *argv[])
         {"backup",     required_argument, 0, 'b'},
         {"cpu",        required_argument, 0, 'c'},
         {"debug",      required_argument, 0, 'd'},
+        {"socket",     required_argument, 0, 's'},
         {"foreground", no_argument,       0, 'f'},
         {"log-stdout", no_argument,       0, 'l'},
         {"help",       no_argument,       0, 'h'},
         {0, 0, 0, 0}
     };
 
-    while ((c = getopt_long(argc, argv, "i:t:b:c:d:flh",
+    while ((c = getopt_long(argc, argv, "i:t:b:c:d:s:flh",
                     long_options, NULL)) != -1) {
         switch (c) {
             case 'i':
@@ -240,6 +244,9 @@ int main(int argc, char *argv[])
             case 'd':
                 g_debug_level = (unsigned int)strtoul(optarg, NULL, 0);
                 break;
+            case 's':
+                g_socket_path = optarg;
+                break;
             case 'f':
                 g_foreground = 1;
                 break;
@@ -265,6 +272,9 @@ int main(int argc, char *argv[])
                 fprintf(stdout,
                         "  -d, --debug <level>       Set debug level"
                         " (default: 1)\n");
+                fprintf(stdout,
+                        "  -s, --socket <path>       IPC socket path"
+                        " (default: " EC_IPC_DEFAULT_SOCKET_PATH ")\n");
                 fprintf(stdout,
                         "  -f, --foreground          Do not daemonize\n");
                 fprintf(stdout,
@@ -331,7 +341,7 @@ int main(int argc, char *argv[])
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
-    ret = ecrt_lib_init(log_cb);
+    ret = ecrt_lib_init(log_cb, g_socket_path);
     if (ret < 0) {
         ec_log(EC_LOG_ERR, "Failed to initialize EtherCAT library\n");
         ret = 1;

@@ -59,7 +59,9 @@
 #define EC_MAX_FLAG_KEY_SIZE 128
 
 /** Default Unix socket path for the userspace master IPC interface. */
+#ifndef EC_IPC_DEFAULT_SOCKET_PATH
 #define EC_IPC_DEFAULT_SOCKET_PATH "/var/run/ethercat.sock"
+#endif
 
 /****************************************************************************/
 

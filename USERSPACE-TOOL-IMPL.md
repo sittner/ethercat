@@ -491,28 +491,30 @@ in both modes.
 Implement the infrastructure (shared header, backend abstraction, IPC
 server skeleton, master registry) and the following read-only commands:
 
-- [ ] Extract `ec_ioctl_types.h` from `master/kernel/ioctl.h`
-- [ ] Make `master/kernel/ioctl.h` a thin wrapper including shared header
-- [ ] Create `tool/MasterDeviceBackend.h` (abstract interface)
-- [ ] Create `tool/kernel/MasterDeviceKernel.cpp` (ioctl backend)
-- [ ] Refactor `tool/MasterDevice.cpp` to delegate to backend
-- [ ] Change `tool/Command.h` include to `ec_ioctl_types.h`
-- [ ] Update `tool/Makefile.am` with conditional backend selection
-- [ ] Verify kernel-mode build still works unchanged
-- [ ] Change `ecrt_lib_init()` signature: add `socket_path` parameter
-- [ ] Update `master/uspace/main.c` to pass socket path
-- [ ] Implement master registry in `master/uspace/module.c`
-- [ ] Implement `master/uspace/ipc_server.c` (listener thread, accept, dispatch)
-- [ ] Create `tool/uspace/MasterDeviceUspace.cpp` (socket backend)
-- [ ] Add `--socket`/`-S` option and `EC_SOCKET_PATH` to `tool/main.cpp`
-- [ ] IPC: `EC_CMD_MODULE` (version magic + master count)
-- [ ] IPC: `EC_CMD_MASTER` (master info)
-- [ ] IPC: `EC_CMD_SLAVE` (slave info)
-- [ ] IPC: `EC_CMD_SLAVE_SYNC`, `EC_CMD_SLAVE_SYNC_PDO`, `EC_CMD_SLAVE_SYNC_PDO_ENTRY`
-- [ ] IPC: `EC_CMD_DOMAIN`, `EC_CMD_DOMAIN_FMMU`, `EC_CMD_DOMAIN_DATA`
-- [ ] IPC: `EC_CMD_SLAVE_SDO`, `EC_CMD_SLAVE_SDO_ENTRY`
-- [ ] IPC: `EC_CMD_CONFIG`, `EC_CMD_CONFIG_PDO`, `EC_CMD_CONFIG_PDO_ENTRY`
-- [ ] IPC: `EC_CMD_CONFIG_SDO`, `EC_CMD_CONFIG_IDN`, `EC_CMD_CONFIG_FLAG`
+- [x] Extract `ec_ioctl_types.h` from `master/kernel/ioctl.h`
+- [x] Make `master/kernel/ioctl.h` a thin wrapper including shared header
+- [x] Create `tool/MasterDeviceBackend.h` (abstract interface)
+- [x] Create `tool/kernel/MasterDeviceKernel.cpp` (ioctl backend)
+- [x] Refactor `tool/MasterDevice.cpp` to delegate to backend
+- [x] Change `tool/Command.h` include to `ec_ioctl_types.h`
+- [x] Update `tool/Makefile.am` with conditional backend selection
+- [x] Verify kernel-mode build still works unchanged
+- [x] Change `ecrt_lib_init()` signature: add `socket_path` parameter
+- [x] Update `master/uspace/main.c` to pass socket path (add `-s`/`--socket`)
+- [x] Implement master registry in `master/uspace/cdev.c`
+- [x] Refactor `master/uspace/cdev.c` to global singleton IPC server
+- [x] Create `tool/uspace/MasterDeviceUspace.cpp` (socket backend)
+- [x] Add `--socket`/`-S` option and `EC_SOCKET_PATH` to `tool/main.cpp`
+- [x] IPC: `EC_CMD_MODULE` (version magic + master count)
+- [x] IPC: `EC_CMD_MASTER` (master info)
+- [x] IPC: `EC_CMD_SLAVE` (slave info)
+- [x] IPC: `EC_CMD_SLAVE_SYNC`, `EC_CMD_SLAVE_SYNC_PDO`, `EC_CMD_SLAVE_SYNC_PDO_ENTRY`
+- [x] IPC: `EC_CMD_DOMAIN`, `EC_CMD_DOMAIN_FMMU`
+- [x] IPC: `EC_CMD_SLAVE_SDO`, `EC_CMD_SLAVE_SDO_ENTRY`
+- [x] IPC: `EC_CMD_CONFIG`, `EC_CMD_CONFIG_PDO`, `EC_CMD_CONFIG_PDO_ENTRY`
+- [x] IPC: `EC_CMD_CONFIG_SDO`, `EC_CMD_CONFIG_IDN`, `EC_CMD_CONFIG_FLAG`
+- [x] IPC: `EC_CMD_MASTER_DEBUG`, `EC_CMD_MASTER_RESCAN`, `EC_CMD_SLAVE_STATE`
+- [ ] IPC: `EC_CMD_DOMAIN_DATA` (requires pointer-based trailing data transfer)
 - [ ] Test: `ethercat master`, `ethercat slaves`, `ethercat pdos`, `ethercat sdos`
 - [ ] Test: `ethercat config`, `ethercat domains`, `ethercat cstruct`
 - [ ] Test: `ethercat graph`, `ethercat xml`, `ethercat version`
@@ -521,9 +523,6 @@ server skeleton, master registry) and the following read-only commands:
 
 - [ ] IPC: `EC_CMD_SLAVE_SDO_UPLOAD` (with trailing data response)
 - [ ] IPC: `EC_CMD_SLAVE_SDO_DOWNLOAD` (with trailing data request)
-- [ ] IPC: `EC_CMD_SLAVE_STATE`
-- [ ] IPC: `EC_CMD_MASTER_DEBUG`
-- [ ] IPC: `EC_CMD_MASTER_RESCAN`
 - [ ] IPC: `EC_CMD_SLAVE_SII_READ`, `EC_CMD_SLAVE_SII_WRITE` (trailing data)
 - [ ] IPC: `EC_CMD_SLAVE_REG_READ`, `EC_CMD_SLAVE_REG_WRITE` (trailing data)
 - [ ] IPC: `EC_CMD_SLAVE_FOE_READ`, `EC_CMD_SLAVE_FOE_WRITE` (trailing data)

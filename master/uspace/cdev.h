@@ -21,7 +21,7 @@
 
 /**
    \file
-   EtherCAT master character device.
+   EtherCAT master character device (userspace IPC socket server).
 */
 
 /****************************************************************************/
@@ -29,29 +29,51 @@
 #ifndef __EC_CDEV_H__
 #define __EC_CDEV_H__
 
-
-#include "pal_thread.h"
-
-#include "../globals.h"
-
 /****************************************************************************/
 
 /* Forward declaration; full definition provided by pal.h → master.h. */
 struct ec_master;
 
-/** EtherCAT master character device (userspace IPC socket server). */
-typedef struct {
-    struct ec_master *master; /**< Master owning the device. */
-    int               sock_fd;        /**< Listening socket fd (-1 if inactive). */
-    char              sock_path[108]; /**< Unix socket filesystem path. */
-    ec_thread_t      *thread;         /**< Listener thread handle. */
-    volatile int      shutdown;       /**< Non-zero to request shutdown. */
-} ec_cdev_t;
+/****************************************************************************/
+
+/** Start the global IPC server on the given socket path.
+ *
+ *  Creates the listening Unix domain socket and starts the listener thread.
+ *  Called by ecrt_lib_init() when socket_path is not NULL.
+ *
+ *  \return 0 on success, negative error code on failure.
+ */
+int ec_ipc_server_start(const char *socket_path);
+
+/** Stop the global IPC server.
+ *
+ *  Closes the listening socket and waits for the listener thread to exit.
+ *  Called by ecrt_lib_cleanup().
+ */
+void ec_ipc_server_stop(void);
 
 /****************************************************************************/
 
-int ec_cdev_init(ec_cdev_t *, struct ec_master *, dev_t);
-void ec_cdev_clear(ec_cdev_t *);
+/** Register a master in the global registry.
+ *
+ *  Called by ecrt_startup_master_common() after successful master init.
+ */
+void ec_master_registry_add(struct ec_master *master);
+
+/** Unregister a master from the global registry.
+ *
+ *  Called by ecrt_release_master() before tearing down the master.
+ */
+void ec_master_registry_remove(struct ec_master *master);
+
+/** Look up a master by index.
+ *
+ *  \return Pointer to master, or NULL if index is out of range or unregistered.
+ */
+struct ec_master *ec_master_registry_find(unsigned int index);
+
+/** Return the number of registered masters. */
+unsigned int ec_master_registry_count(void);
 
 /****************************************************************************/
 
