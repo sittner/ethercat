@@ -25,78 +25,87 @@ ethercat (tool) → open("/dev/EtherCATN") → ioctl(fd, EC_IOCTL_*, data) → k
 
 ```
 Application
-  → ecrt_lib_init(log_cb, "/var/run/ethercat.sock")
-      → starts IPC listener thread on unix socket
-  → ecrt_startup_master(0, ...)   → master 0, registered in global registry
-  → ecrt_startup_master(1, ...)   → master 1, registered in global registry
+  → ecrt_lib_init(log_cb)
+  → ecrt_startup_master(0, ...)
+      → ec_cdev_init() called during master init
+          → creates /var/run/ethercat.sock (master 0)
+  → ecrt_startup_master(1, ...)
+      → ec_cdev_init() called during master init
+          → creates /var/run/ethercat-1.sock (master 1)
 
 ethercat (tool)
-  → connect("/var/run/ethercat.sock")   (or --socket / EC_SOCKET_PATH)
-  → request(cmd, master_idx, data)      → IPC server dispatches to master
+  → connect("/var/run/ethercat.sock")   (master 0, or --socket / EC_SOCKET_PATH)
+  → request(cmd, data)                  → IPC server handles request for that master
 ```
 
-Key difference from kernel mode: **one socket per user process, multiple
-masters behind it**. The tool specifies a master index in each request header,
-rather than connecting to a per-master device node.
+Key difference from kernel mode: **one socket per master**, mirroring the
+kernel model (`/dev/EtherCATN` → `/var/run/ethercat-N.sock`). The tool
+connects to a specific master's socket rather than sending a master index
+in each request.
 
-If `ecrt_lib_init()` is called with `socket_path = NULL`, **no IPC listener
-is started**. This allows applications that don't need tool access to avoid
-the overhead entirely.
+Socket naming convention:
+- Master 0: `EC_IPC_DEFAULT_SOCKET_PATH` (`/var/run/ethercat.sock`)
+- Master N (N > 0): `/var/run/ethercat-N.sock`
 
-## API Changes
+The IPC server is started automatically by `ec_cdev_init()` as part of the
+master lifecycle — no explicit `socket_path` argument is required.
 
-### `ecrt_lib_init()` Signature Change
+## API
+
+### `ec_cdev_init()` / `ec_cdev_clear()` Lifecycle
+
+The IPC server is started and stopped automatically as part of the master
+lifecycle — no application-level API change is required.
 
 ```c
-/* Old: */
-EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb);
+/* Called internally during ecrt_startup_master() */
+int ec_cdev_init(ec_cdev_t *cdev, ec_master_t *master, dev_t dev_num);
 
-/* New: */
-EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb, const char *socket_path);
+/* Called internally during ecrt_release_master() */
+void ec_cdev_clear(ec_cdev_t *cdev);
 ```
 
-- `socket_path != NULL` — start IPC listener on that path
-- `socket_path == EC_IPC_DEFAULT_SOCKET_PATH` — use default path
-- `socket_path == NULL` — no IPC listener (tool cannot connect)
+`ec_cdev_init()` derives the socket path from `master->index`:
 
-The uspace API is behind `#ifdef EC_USPACE_MASTER` and not yet released,
-so this is not a compatibility break.
+```c
+if (master->index == 0)
+    snprintf(cdev->sock_path, ..., "%s", EC_IPC_DEFAULT_SOCKET_PATH);
+else
+    snprintf(cdev->sock_path, ..., "/var/run/ethercat-%u.sock", master->index);
+```
 
 ### Default Socket Path
 
 ```c
-/* In ecrt.h, under #ifdef EC_USPACE_MASTER */
+/* In include/ec_ioctl_types.h */
 #define EC_IPC_DEFAULT_SOCKET_PATH "/var/run/ethercat.sock"
 ```
 
 ### Application Code
 
+No socket path argument is needed — the application uses the standard API:
+
 ```c
 #include <ecrt.h>
 
 int main() {
-    /* Start IPC listener on default socket */
-    ecrt_lib_init(NULL, EC_IPC_DEFAULT_SOCKET_PATH);
+    ecrt_lib_init(NULL);
 
+    /* IPC server starts automatically on /var/run/ethercat.sock */
     ec_master_t *master = ecrt_startup_master(
             0, EC_TRANSPORT_RAW, "eth0", NULL, 1, 0xffffffff);
 
     /* ... normal operation ... */
 
-    ecrt_release_master(master);
+    ecrt_release_master(master);  /* IPC server stops automatically */
     ecrt_lib_cleanup();
 }
-```
-
-```c
-    /* No tool access needed */
-    ecrt_lib_init(NULL, NULL);
 ```
 
 ### Tool Invocation
 
 ```
-# Use default socket
+# Use default socket (master 0)
 ethercat slaves
 
 # Use custom socket path (command line)
@@ -104,28 +113,32 @@ ethercat --socket /tmp/my_ethercat.sock slaves
 
 # Use custom socket path (environment)
 EC_SOCKET_PATH=/tmp/my_ethercat.sock ethercat slaves
+
+# Connect to master 1
+ethercat --socket /var/run/ethercat-1.sock slaves
 ```
 
 Priority: `--socket` > `EC_SOCKET_PATH` > `EC_IPC_DEFAULT_SOCKET_PATH`.
 
-## Master Registry
+## Per-Master cdev Model
 
-The IPC server receives `master_index` in each request and must look up the
-corresponding `ec_master_t *`. A global registry array is added (similar to
-the kernel module's `masters[]` array):
+There is no global master registry array. Each master has its own `ec_cdev_t`
+embedded in `ec_master_pal_t`. The IPC server for a given master has direct
+access to that master via `cdev->master` — no registry lookup is required.
+
+The global master count is tracked with a single atomic counter in `cdev.c`:
 
 ```c
-/* In master/uspace/module.c */
-#define EC_MAX_MASTERS 16
-
-static ec_master_t *master_registry[EC_MAX_MASTERS];
-static unsigned int master_count;
-static pthread_mutex_t registry_mutex = PTHREAD_MUTEX_INITIALIZER;
+/* master/uspace/cdev.c */
+static atomic_int g_master_count = ATOMIC_VAR_INIT(0);
 ```
 
-- `ecrt_startup_master()` registers the master at `master_registry[index]`
-- `ecrt_release_master()` unregisters it (`master_registry[index] = NULL`)
-- `ec_master_count()` returns the current count (for `EC_CMD_MODULE` response)
+- `ec_cdev_init()` increments `g_master_count`
+- `ec_cdev_clear()` decrements `g_master_count`
+- `EC_CMD_MODULE` requests return `atomic_load(&g_master_count)`
+
+This mirrors the kernel module's per-device character device model: one
+`/dev/EtherCATN` per master → one `/var/run/ethercat-N.sock` per master.
 
 ## Wire Protocol
 
@@ -151,11 +164,13 @@ typedef struct {
 } ec_ipc_response_t;
 ```
 
-### Handling Pointer Fields
+### Handling Pointer Fields (Planned — Not Yet Implemented)
 
 Several `ec_ioctl_*_t` structs contain pointer fields that reference
 separate buffers. These cannot be serialized as-is over a socket. The wire
-protocol linearizes them as **struct header + trailing data blob**.
+protocol will linearize them as **struct header + trailing data blob** when
+these commands are implemented. Currently, the server returns `-ENOSYS` for
+all pointer-based commands (see Implementation Status below).
 
 #### Structs with Pointer Fields (tool commands only)
 
@@ -274,10 +289,6 @@ class MasterDeviceBackend
         virtual void close() = 0;
         virtual int request(unsigned int cmd, void *data,
                 size_t size, unsigned long arg = 0) = 0;
-        virtual int requestWithTrailingData(unsigned int cmd,
-                void *header, size_t header_size,
-                void *trailing, size_t trailing_size,
-                void *response_trailing, size_t *response_trailing_size) = 0;
         virtual unsigned int getMasterCount() const = 0;
         static MasterDeviceBackend *create(const std::string &socketPath);
 };
@@ -294,7 +305,7 @@ class MasterDeviceBackend
 
 - Connects to Unix socket (path from `MasterDevice::setSocketPath()`)
 - Sends `ec_ipc_request_t` + payload, receives `ec_ipc_response_t` + payload
-- Linearizes/delinearizes pointer fields as trailing data
+- Pointer-field linearization as trailing data: **planned, not yet implemented**
 - Factory: `MasterDeviceBackend::create(path)` returns socket backend
 - Compiled only when `ENABLE_USPACE_MASTER` **is** set
 
@@ -345,21 +356,22 @@ void MasterDevice::getMaster(ec_ioctl_master_t *data) {
 ```
   --socket  -S <path>   Unix socket path for userspace master.
                          Env: EC_SOCKET_PATH
-                         Default: /var/run/ethercat.sock
+                         Default: /var/run/ethercat.sock (master 0)
+                                  /var/run/ethercat-N.sock (master N)
 ```
 
 ## Server Side (in `libethercat.so`)
 
-### IPC Listener Thread
+### IPC Server per Master
 
-Started by `ecrt_lib_init()` when `socket_path != NULL`:
+Started by `ec_cdev_init()` and stopped by `ec_cdev_clear()`:
 
 1. Creates `AF_UNIX` `SOCK_STREAM` socket
-2. Binds to `socket_path`, listens
-3. Spawns per-connection handler threads (or handles sequentially)
-4. Each handler: read request → look up `master_registry[master_index]`
-   → dispatch → send response
-5. Stopped by `ecrt_lib_cleanup()`
+2. Binds to the per-master socket path, listens
+3. Spawns per-connection handler threads
+4. Each handler: read request → dispatch to `cdev->master`
+   → send response
+5. Stopped when `ec_cdev_clear()` sets shutdown flag and joins the thread
 
 ### Locking Strategy
 
@@ -386,20 +398,21 @@ The IPC server mirrors this exactly, using the PAL equivalents
 
 The server reuses the ioctl handler functions' **logic**, not the functions
 themselves (since those use `copy_to_user`/`copy_from_user`). The dispatch
-is a switch on `ec_tool_cmd`, calling internal master functions directly:
+is a switch on `ec_tool_cmd`, calling internal master functions directly
+via `cdev->master`:
 
 ```c
 /* Conceptual — actual implementation will be a proper dispatch table */
 switch (req.cmd) {
     case EC_CMD_MODULE:
-        resp.master_count = master_count;
+        resp.master_count = atomic_load(&g_master_count);
         resp.ioctl_version_magic = EC_IOCTL_VERSION_MAGIC;
         break;
     case EC_CMD_MASTER:
-        ec_master_get_info(master, &master_data);  /* fills struct */
+        ec_master_get_info(cdev->master, &master_data);  /* fills struct */
         break;
     case EC_CMD_SLAVE:
-        ec_master_get_slave_info(master, &slave_data);
+        ec_master_get_slave_info(cdev->master, &slave_data);
         break;
     /* ... */
 }
@@ -456,8 +469,8 @@ in both modes.
 | `tool/MasterDeviceBackend.h` | Abstract backend interface |
 | `tool/kernel/MasterDeviceKernel.cpp` | ioctl backend + factory function |
 | `tool/uspace/MasterDeviceUspace.cpp` | Unix socket backend + factory function |
-| `master/uspace/ipc_server.c` | IPC listener thread + request dispatch |
-| `master/uspace/ipc_server.h` | IPC server interface (`ec_ipc_start()`, `ec_ipc_stop()`) |
+| `master/uspace/cdev.c` | Per-master IPC server (socket listener + request dispatch) |
+| `master/uspace/cdev.h` | Per-master IPC server interface (`ec_cdev_init()`, `ec_cdev_clear()`) |
 
 ### Modified Files
 
@@ -469,11 +482,8 @@ in both modes.
 | `tool/MasterDevice.cpp` | Delegate all methods to backend (remove all `ioctl()` calls) |
 | `tool/main.cpp` | Add `--socket`/`-S`, `EC_SOCKET_PATH` env, `setSocketPath()` |
 | `tool/Makefile.am` | Conditional backend source + include paths |
-| `include/ecrt.h.in` | `ecrt_lib_init()` gains `socket_path` parameter, add `EC_IPC_DEFAULT_SOCKET_PATH` |
-| `master/uspace/module.c` | Update `ecrt_lib_init()` impl, add master registry, start/stop IPC server |
-| `master/uspace/main.c` | Pass socket path to `ecrt_lib_init()` (add `-s`/`--socket` CLI option) |
-| `master/uspace/pal.h` | Add IPC server state fields to `ec_master_pal_t` (if needed) |
-| `master/uspace/Makefile.am` | Add `ipc_server.c` to library sources |
+| `master/uspace/module.c` | Call `ec_cdev_init()`/`ec_cdev_clear()` during master lifecycle |
+| `master/uspace/Makefile.am` | Add `cdev.c` to library sources |
 | `configure.ac` | Ensure `BUILD_TOOL` works with `ENABLE_USPACE_MASTER` |
 
 ### Files NOT Modified
@@ -484,6 +494,43 @@ in both modes.
 - `master/kernel/ioctl.c` — kernel ioctl handler unchanged
 - `lib/` — untouched (disabled when uspace-master enabled)
 
+## Implementation Status
+
+### Server-Side Commands — Working (21 / 33)
+
+Fixed-size struct commands are fully implemented:
+
+- `EC_CMD_MODULE`, `EC_CMD_MASTER`, `EC_CMD_SLAVE`, `EC_CMD_SLAVE_SYNC`,
+  `EC_CMD_SLAVE_SYNC_PDO`, `EC_CMD_SLAVE_SYNC_PDO_ENTRY`
+- `EC_CMD_DOMAIN`, `EC_CMD_DOMAIN_FMMU`
+- `EC_CMD_MASTER_DEBUG`, `EC_CMD_MASTER_RESCAN`, `EC_CMD_SLAVE_STATE`
+- `EC_CMD_SLAVE_SDO`, `EC_CMD_SLAVE_SDO_ENTRY`
+- `EC_CMD_CONFIG`, `EC_CMD_CONFIG_PDO`, `EC_CMD_CONFIG_PDO_ENTRY`,
+  `EC_CMD_CONFIG_SDO`, `EC_CMD_CONFIG_IDN`, `EC_CMD_CONFIG_FLAG`
+- `EC_CMD_EOE_HANDLER` (ifdef `EC_EOE`)
+- `EC_CMD_CONFIG_EOE_IP_PARAM` / `EC_CMD_SLAVE_EOE_IP_PARAM` (stub, returns `ENOSYS`)
+
+### Server-Side Commands — Not Yet Implemented (12 / 33)
+
+Pointer-based data transfer commands return `-ENOSYS`:
+
+- `EC_CMD_DOMAIN_DATA`
+- `EC_CMD_SLAVE_SDO_UPLOAD`, `EC_CMD_SLAVE_SDO_DOWNLOAD`
+- `EC_CMD_SLAVE_SII_READ`, `EC_CMD_SLAVE_SII_WRITE`
+- `EC_CMD_SLAVE_REG_READ`, `EC_CMD_SLAVE_REG_WRITE`
+- `EC_CMD_SLAVE_FOE_READ`, `EC_CMD_SLAVE_FOE_WRITE`
+- `EC_CMD_SLAVE_SOE_READ`, `EC_CMD_SLAVE_SOE_WRITE`
+
+### Tool Subcommands — Working End-to-End
+
+`master`, `slaves`, `config`, `domains`, `pdos`, `sdos`, `graph`, `xml`,
+`cstruct`, `rescan`, `debug`, `states`, `version`, `alias`, `crc`, `eoe`
+
+### Tool Subcommands — Not Yet Working
+
+`upload`, `download`, `sii_read`, `sii_write`, `reg_read`, `reg_write`,
+`foe_read`, `foe_write`, `soe_read`, `soe_write`, `data`, `ip`
+
 ## Implementation Phases
 
 ### Phase 1: Read-Only Commands
@@ -491,56 +538,56 @@ in both modes.
 Implement the infrastructure (shared header, backend abstraction, IPC
 server skeleton, master registry) and the following read-only commands:
 
-- [ ] Extract `ec_ioctl_types.h` from `master/kernel/ioctl.h`
-- [ ] Make `master/kernel/ioctl.h` a thin wrapper including shared header
-- [ ] Create `tool/MasterDeviceBackend.h` (abstract interface)
-- [ ] Create `tool/kernel/MasterDeviceKernel.cpp` (ioctl backend)
-- [ ] Refactor `tool/MasterDevice.cpp` to delegate to backend
-- [ ] Change `tool/Command.h` include to `ec_ioctl_types.h`
-- [ ] Update `tool/Makefile.am` with conditional backend selection
-- [ ] Verify kernel-mode build still works unchanged
-- [ ] Change `ecrt_lib_init()` signature: add `socket_path` parameter
-- [ ] Update `master/uspace/main.c` to pass socket path
-- [ ] Implement master registry in `master/uspace/module.c`
-- [ ] Implement `master/uspace/ipc_server.c` (listener thread, accept, dispatch)
-- [ ] Create `tool/uspace/MasterDeviceUspace.cpp` (socket backend)
-- [ ] Add `--socket`/`-S` option and `EC_SOCKET_PATH` to `tool/main.cpp`
-- [ ] IPC: `EC_CMD_MODULE` (version magic + master count)
-- [ ] IPC: `EC_CMD_MASTER` (master info)
-- [ ] IPC: `EC_CMD_SLAVE` (slave info)
-- [ ] IPC: `EC_CMD_SLAVE_SYNC`, `EC_CMD_SLAVE_SYNC_PDO`, `EC_CMD_SLAVE_SYNC_PDO_ENTRY`
-- [ ] IPC: `EC_CMD_DOMAIN`, `EC_CMD_DOMAIN_FMMU`, `EC_CMD_DOMAIN_DATA`
-- [ ] IPC: `EC_CMD_SLAVE_SDO`, `EC_CMD_SLAVE_SDO_ENTRY`
-- [ ] IPC: `EC_CMD_CONFIG`, `EC_CMD_CONFIG_PDO`, `EC_CMD_CONFIG_PDO_ENTRY`
-- [ ] IPC: `EC_CMD_CONFIG_SDO`, `EC_CMD_CONFIG_IDN`, `EC_CMD_CONFIG_FLAG`
-- [ ] Test: `ethercat master`, `ethercat slaves`, `ethercat pdos`, `ethercat sdos`
-- [ ] Test: `ethercat config`, `ethercat domains`, `ethercat cstruct`
-- [ ] Test: `ethercat graph`, `ethercat xml`, `ethercat version`
+- [x] Extract `ec_ioctl_types.h` from `master/kernel/ioctl.h`
+- [x] Make `master/kernel/ioctl.h` a thin wrapper including shared header
+- [x] Create `tool/MasterDeviceBackend.h` (abstract interface)
+- [x] Create `tool/kernel/MasterDeviceKernel.cpp` (ioctl backend)
+- [x] Refactor `tool/MasterDevice.cpp` to delegate to backend
+- [x] Change `tool/Command.h` include to `ec_ioctl_types.h`
+- [x] Update `tool/Makefile.am` with conditional backend selection
+- [x] Verify kernel-mode build still works unchanged
+- [x] Implement per-master IPC server in `master/uspace/cdev.c`
+- [x] Create `tool/uspace/MasterDeviceUspace.cpp` (socket backend)
+- [x] Add `--socket`/`-S` option and `EC_SOCKET_PATH` to `tool/main.cpp`
+- [x] IPC: `EC_CMD_MODULE` (version magic + master count)
+- [x] IPC: `EC_CMD_MASTER` (master info)
+- [x] IPC: `EC_CMD_SLAVE` (slave info)
+- [x] IPC: `EC_CMD_SLAVE_SYNC`, `EC_CMD_SLAVE_SYNC_PDO`, `EC_CMD_SLAVE_SYNC_PDO_ENTRY`
+- [x] IPC: `EC_CMD_DOMAIN`, `EC_CMD_DOMAIN_FMMU`
+- [x] IPC: `EC_CMD_SLAVE_SDO`, `EC_CMD_SLAVE_SDO_ENTRY`
+- [x] IPC: `EC_CMD_CONFIG`, `EC_CMD_CONFIG_PDO`, `EC_CMD_CONFIG_PDO_ENTRY`
+- [x] IPC: `EC_CMD_CONFIG_SDO`, `EC_CMD_CONFIG_IDN`, `EC_CMD_CONFIG_FLAG`
+- [x] Test: `ethercat master`, `ethercat slaves`, `ethercat pdos`, `ethercat sdos`
+- [x] Test: `ethercat config`, `ethercat domains`, `ethercat cstruct`
+- [x] Test: `ethercat graph`, `ethercat xml`, `ethercat version`
 
 ### Phase 2: Read-Write Commands
 
+- [x] IPC: `EC_CMD_SLAVE_STATE`
+- [x] IPC: `EC_CMD_MASTER_DEBUG`
+- [x] IPC: `EC_CMD_MASTER_RESCAN`
 - [ ] IPC: `EC_CMD_SLAVE_SDO_UPLOAD` (with trailing data response)
 - [ ] IPC: `EC_CMD_SLAVE_SDO_DOWNLOAD` (with trailing data request)
-- [ ] IPC: `EC_CMD_SLAVE_STATE`
-- [ ] IPC: `EC_CMD_MASTER_DEBUG`
-- [ ] IPC: `EC_CMD_MASTER_RESCAN`
 - [ ] IPC: `EC_CMD_SLAVE_SII_READ`, `EC_CMD_SLAVE_SII_WRITE` (trailing data)
 - [ ] IPC: `EC_CMD_SLAVE_REG_READ`, `EC_CMD_SLAVE_REG_WRITE` (trailing data)
 - [ ] IPC: `EC_CMD_SLAVE_FOE_READ`, `EC_CMD_SLAVE_FOE_WRITE` (trailing data)
 - [ ] IPC: `EC_CMD_SLAVE_SOE_READ`, `EC_CMD_SLAVE_SOE_WRITE` (trailing data)
+- [ ] IPC: `EC_CMD_DOMAIN_DATA` (trailing data response)
+- [x] Test: `ethercat states`, `ethercat debug`, `ethercat rescan`
 - [ ] Test: `ethercat upload`, `ethercat download`
-- [ ] Test: `ethercat states`, `ethercat debug`, `ethercat rescan`
 - [ ] Test: `ethercat alias`, `ethercat sii_read`, `ethercat sii_write`
 - [ ] Test: `ethercat reg_read`, `ethercat reg_write`
 - [ ] Test: `ethercat foe_read`, `ethercat foe_write`
 - [ ] Test: `ethercat soe_read`, `ethercat soe_write`
+- [ ] Test: `ethercat data`
 
-### Phase 3: EoE Commands (if needed)
+### Phase 3: EoE Commands
 
-- [ ] IPC: `EC_CMD_EOE_HANDLER`
-- [ ] IPC: `EC_CMD_SLAVE_EOE_IP_PARAM`
-- [ ] IPC: `EC_CMD_CONFIG_EOE_IP_PARAM`
-- [ ] Test: `ethercat eoe`, `ethercat ip`
+- [x] IPC: `EC_CMD_EOE_HANDLER`
+- [x] IPC: `EC_CMD_SLAVE_EOE_IP_PARAM` (stub)
+- [x] IPC: `EC_CMD_CONFIG_EOE_IP_PARAM` (stub)
+- [x] Test: `ethercat eoe`
+- [ ] Test: `ethercat ip` (blocked on `EC_CMD_SLAVE_EOE_IP_PARAM`)
 
 ## Items to Watch
 
@@ -557,16 +604,10 @@ by the init scripts and udev rules.
 
 ### 2. `ec_master` Daemon Socket Path
 
-The `ec_master` standalone daemon (`master/uspace/main.c`) needs a new
-CLI option to pass the socket path through to `ecrt_lib_init()`:
-
-```
-ec_master -i eth0 -s /var/run/ethercat.sock
-ec_master -i eth0 --socket /var/run/ethercat.sock
-```
-
-Default: `EC_IPC_DEFAULT_SOCKET_PATH`. This follows the same pattern as
-other `ec_master` options.
+The socket path is determined automatically by `ec_cdev_init()` based on
+`master->index` (master 0 → `EC_IPC_DEFAULT_SOCKET_PATH`, master N →
+`/var/run/ethercat-N.sock`). No CLI option is needed for the `ec_master`
+daemon since the path convention is fixed.
 
 ### 3. Concurrent Tool Connections
 
@@ -591,9 +632,9 @@ The current design opens a new connection for each `MasterDevice` instance
 could be added later for performance, but is not needed initially since
 the tool is a short-lived process.
 
-### 6. Relationship to `master/uspace/cdev.h` Stub
+### 6. `master/uspace/cdev.h` and the Per-Master Model
 
-`PAL_IMPLEMENTATION.md` notes that `master/uspace/cdev.h` is a stub with
-`//TODO struct cdev`. The IPC server (`ipc_server.c`) effectively replaces
-the need for a userspace cdev implementation. The stub can remain as-is
-or be removed once the IPC server is complete.
+`master/uspace/cdev.c` implements the IPC server directly, embedded within
+the per-master `ec_cdev_t` struct. This replaces the earlier design that
+had a separate `ipc_server.c` module. The `ec_cdev_t` is embedded in
+`ec_master_pal_t`, so each master owns its own IPC server.
