@@ -152,10 +152,12 @@ static int send_all(int fd, const void *buf, size_t len)
 
     while (remaining > 0) {
         ssize_t n = send(fd, p, remaining, MSG_NOSIGNAL);
-        if (n < 0) {
-            if (errno == EINTR)
+        if (n <= 0) {
+            if (n < 0 && errno == EINTR)
                 continue;
-            return -errno;
+            if (n < 0)
+                return -errno;
+            return -ECONNRESET;
         }
         p += n;
         remaining -= (size_t)n;
@@ -207,23 +209,6 @@ static int recv_all(int fd, void *buf, size_t len)
             return -ECONNRESET;
         p += n;
         remaining -= (size_t)n;
-    }
-    return 0;
-}
-
-/****************************************************************************/
-/* Helper: drain \a len bytes from socket without storing them.               */
-/****************************************************************************/
-
-static int drain(int fd, size_t len)
-{
-    char buf[256];
-    while (len > 0) {
-        size_t chunk = len < sizeof(buf) ? len : sizeof(buf);
-        int ret = recv_all(fd, buf, chunk);
-        if (ret < 0)
-            return ret;
-        len -= chunk;
     }
     return 0;
 }

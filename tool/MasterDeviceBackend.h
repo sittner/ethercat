@@ -60,9 +60,6 @@ class MasterDeviceBackend
         virtual int request(unsigned int cmd, void *data,
                 size_t size, unsigned long arg = 0) = 0;
 
-        /** Return the number of masters. */
-        virtual unsigned int getMasterCount() const = 0;
-
         /** Factory: create the backend appropriate for this build.
          *
          * \param socketPath  Socket path for the userspace backend.

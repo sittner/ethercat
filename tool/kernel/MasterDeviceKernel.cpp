@@ -132,6 +132,9 @@ class MasterDeviceKernel : public MasterDeviceBackend
         int request(unsigned int cmd, void *data,
                 size_t /*size*/, unsigned long arg = 0)
         {
+            if (cmd >= sizeof(ioctl_cmd_table) / sizeof(ioctl_cmd_table[0]))
+                return -EINVAL;
+
             unsigned long ioctlCmd = ioctl_cmd_table[cmd];
             int ret;
 
@@ -144,14 +147,8 @@ class MasterDeviceKernel : public MasterDeviceBackend
             return ret < 0 ? -errno : ret;
         }
 
-        unsigned int getMasterCount() const
-        {
-            return masterCount;
-        }
-
     private:
         int fd;
-        unsigned int masterCount;
 };
 
 /****************************************************************************/
