@@ -1087,16 +1087,18 @@ static int conn_handler_fn(void *arg)
 
     free(ctx); /* ctx was heap-allocated by listener */
 
-    /* Set a receive timeout so that recv_all() does not block forever if
-     * a client sends a request header with data_size > 0 but never delivers
-     * the payload.  The timeout also ensures that this thread will eventually
-     * wake up and check cdev->shutdown after ec_ipc_server_stop() is called.
-     * (SO_RCVTIMEO causes recv() to return EAGAIN/EWOULDBLOCK on expiry.) */
+    /* Set receive and send timeouts so that recv_all()/send_all() do not block
+     * forever if a client stalls.  The receive timeout also ensures that this
+     * thread will eventually wake up and check cdev->shutdown after
+     * ec_ipc_server_stop() is called.
+     * (SO_RCVTIMEO/SO_SNDTIMEO cause recv()/send() to return EAGAIN/EWOULDBLOCK
+     * on expiry.) */
     {
         struct timeval tv;
         tv.tv_sec  = 5;
         tv.tv_usec = 0;
         setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
     }
 
     while (!cdev->shutdown) {
