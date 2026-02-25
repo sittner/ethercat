@@ -55,15 +55,72 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdatomic.h>
+#include <pthread.h>
 #include <stdio.h>
 
 /****************************************************************************/
 
-/** Global master count — incremented by ec_cdev_init(), decremented by
- *  ec_cdev_clear().  Returned by EC_CMD_MODULE requests.
- */
-static atomic_int g_master_count = ATOMIC_VAR_INIT(0);
+/** Global singleton IPC server state. */
+typedef struct {
+    int          sock_fd;        /**< Listening socket fd (-1 if inactive). */
+    char         sock_path[108]; /**< Unix socket filesystem path. */
+    ec_thread_t *thread;         /**< Listener thread handle. */
+    volatile int shutdown;       /**< Non-zero to request shutdown. */
+} ec_cdev_t;
+
+static ec_cdev_t g_cdev = { .sock_fd = -1 };
+
+/****************************************************************************/
+
+/** Global master registry — protected by registry_mutex. */
+static ec_master_t *master_registry[EC_MAX_MASTERS];
+static unsigned int registry_master_count;
+static pthread_mutex_t registry_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+/****************************************************************************/
+
+void ec_master_registry_add(ec_master_t *master)
+{
+    if (!master || master->index >= EC_MAX_MASTERS)
+        return;
+    pthread_mutex_lock(&registry_mutex);
+    master_registry[master->index] = master;
+    registry_master_count++;
+    pthread_mutex_unlock(&registry_mutex);
+}
+
+void ec_master_registry_remove(ec_master_t *master)
+{
+    if (!master || master->index >= EC_MAX_MASTERS)
+        return;
+    pthread_mutex_lock(&registry_mutex);
+    if (master_registry[master->index] == master) {
+        master_registry[master->index] = NULL;
+        if (registry_master_count > 0)
+            registry_master_count--;
+    }
+    pthread_mutex_unlock(&registry_mutex);
+}
+
+ec_master_t *ec_master_registry_find(unsigned int index)
+{
+    ec_master_t *master;
+    if (index >= EC_MAX_MASTERS)
+        return NULL;
+    pthread_mutex_lock(&registry_mutex);
+    master = master_registry[index];
+    pthread_mutex_unlock(&registry_mutex);
+    return master;
+}
+
+unsigned int ec_master_registry_count(void)
+{
+    unsigned int count;
+    pthread_mutex_lock(&registry_mutex);
+    count = registry_master_count;
+    pthread_mutex_unlock(&registry_mutex);
+    return count;
+}
 
 /****************************************************************************/
 /* Helper: copy string into fixed-size ioctl buffer (NUL-terminated).        */
@@ -180,7 +237,7 @@ static int dispatch_module(int fd, ec_master_t *master,
     (void)req_size;
 
     io.ioctl_version_magic = EC_IOCTL_VERSION_MAGIC;
-    io.master_count = (uint32_t)atomic_load(&g_master_count);
+    io.master_count = (uint32_t)ec_master_registry_count();
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -996,8 +1053,8 @@ static int dispatch_eoe_ip_unsupported(int fd, ec_master_t *master,
 
 /** State for one accepted client connection. */
 typedef struct {
-    int fd;                /**< Connected socket file descriptor. */
-    ec_cdev_t *cdev;      /**< Owning cdev. */
+    int fd;           /**< Connected socket file descriptor. */
+    ec_cdev_t *cdev;  /**< Global IPC server (for shutdown flag). */
 } ec_conn_ctx_t;
 
 /** Maximum payload size we are willing to receive (protect against OOM). */
@@ -1012,7 +1069,6 @@ static int conn_handler_fn(void *arg)
     ec_conn_ctx_t *ctx  = (ec_conn_ctx_t *)arg;
     int            fd   = ctx->fd;
     ec_cdev_t     *cdev = ctx->cdev;
-    ec_master_t   *master = (ec_master_t *)cdev->master;
     uint8_t       *payload = NULL;
     uint32_t       payload_cap = 0;
 
@@ -1020,6 +1076,7 @@ static int conn_handler_fn(void *arg)
 
     while (!cdev->shutdown) {
         ec_ipc_request_t req;
+        ec_master_t *master;
         int ret;
 
         ret = recv_all(fd, &req, sizeof(req));
@@ -1028,7 +1085,7 @@ static int conn_handler_fn(void *arg)
 
         /* Validate version magic. */
         if (req.version_magic != EC_IOCTL_VERSION_MAGIC) {
-            EC_MASTER_WARN(master,
+            ec_log(EC_LOG_WARNING,
                     "IPC: version magic mismatch (%u vs %u); dropping client\n",
                     req.version_magic, EC_IOCTL_VERSION_MAGIC);
             send_response(fd, -EINVAL, NULL, 0);
@@ -1037,7 +1094,7 @@ static int conn_handler_fn(void *arg)
 
         /* Read payload. */
         if (req.data_size > EC_IPC_MAX_PAYLOAD) {
-            EC_MASTER_WARN(master,
+            ec_log(EC_LOG_WARNING,
                     "IPC: payload too large (%u); dropping client\n",
                     req.data_size);
             send_response(fd, -EINVAL, NULL, 0);
@@ -1060,8 +1117,15 @@ static int conn_handler_fn(void *arg)
                 break;
         }
 
-        /* master_index must match our master. */
-        if (req.master_index != master->index) {
+        /* EC_CMD_MODULE does not require a valid master. */
+        if ((enum ec_tool_cmd)req.cmd == EC_CMD_MODULE) {
+            dispatch_module(fd, NULL, payload, req.data_size);
+            continue;
+        }
+
+        /* All other commands require a valid master. */
+        master = ec_master_registry_find(req.master_index);
+        if (!master) {
             send_response(fd, -EINVAL, NULL, 0);
             continue;
         }
@@ -1069,7 +1133,7 @@ static int conn_handler_fn(void *arg)
         /* Dispatch command. */
         switch ((enum ec_tool_cmd)req.cmd) {
             case EC_CMD_MODULE:
-                dispatch_module(fd, master, payload, req.data_size);
+                /* handled above */
                 break;
             case EC_CMD_MASTER:
                 dispatch_master(fd, master, payload, req.data_size);
@@ -1202,8 +1266,7 @@ static int conn_handler_fn(void *arg)
 
 static int listener_fn(void *arg)
 {
-    ec_cdev_t  *cdev   = (ec_cdev_t *)arg;
-    ec_master_t *master = (ec_master_t *)cdev->master;
+    ec_cdev_t *cdev = (ec_cdev_t *)arg;
 
     while (!cdev->shutdown) {
         struct sockaddr_un client_addr;
@@ -1218,14 +1281,14 @@ static int listener_fn(void *arg)
             if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
                 continue;
             if (!cdev->shutdown)
-                EC_MASTER_WARN(master,
+                ec_log(EC_LOG_WARNING,
                         "IPC: accept() failed: %s\n", strerror(errno));
             break;
         }
 
         ctx = malloc(sizeof(ec_conn_ctx_t));
         if (!ctx) {
-            EC_MASTER_WARN(master, "IPC: out of memory for connection\n");
+            ec_log(EC_LOG_WARNING, "IPC: out of memory for connection\n");
             close(client_fd);
             continue;
         }
@@ -1234,7 +1297,7 @@ static int listener_fn(void *arg)
 
         t = ec_thread_run(conn_handler_fn, ctx, "ec_ipc_conn");
         if (IS_ERR(t)) {
-            EC_MASTER_WARN(master,
+            ec_log(EC_LOG_WARNING,
                     "IPC: failed to create connection thread\n");
             close(client_fd);
             free(ctx);
@@ -1250,49 +1313,26 @@ static int listener_fn(void *arg)
 /****************************************************************************/
 
 /**
- * ec_master_count - return the number of active masters.
+ * ec_ipc_server_start - start the global IPC server.
  *
- * Called by the EC_CMD_MODULE handler to fill the master_count field.
- * Maintained by ec_cdev_init() / ec_cdev_clear().
- */
-unsigned int ec_master_count(void)
-{
-    return (unsigned int)atomic_load(&g_master_count);
-}
-
-/**
- * ec_cdev_init - initialise the IPC server for one master.
- *
- * Creates a Unix-domain listening socket and starts the listener thread.
- * The socket path is derived from \a master->index:
- *   index == 0  →  EC_IPC_DEFAULT_SOCKET_PATH
- *   index >  0  →  "/var/run/ethercat-<index>.sock"
- *
- * The \a dev_num parameter is ignored in the userspace build (it is the
- * kernel character-device number).
+ * Creates a Unix-domain listening socket at \a socket_path and starts the
+ * listener thread.  Called by ecrt_lib_init() when socket_path is not NULL.
  *
  * \return 0 on success, negative error code on failure.
  */
-int ec_cdev_init(ec_cdev_t *cdev, struct ec_master *master, dev_t dev_num)
+int ec_ipc_server_start(const char *socket_path)
 {
+    ec_cdev_t *cdev = &g_cdev;
     struct sockaddr_un addr;
     int sock_fd;
     int ret;
-    (void)dev_num;
 
-    cdev->master   = master;
-    cdev->sock_fd  = -1;
+    if (cdev->sock_fd != -1)
+        return 0; /* already running */
+
+    snprintf(cdev->sock_path, sizeof(cdev->sock_path), "%s", socket_path);
     cdev->thread   = NULL;
     cdev->shutdown = 0;
-
-    /* Build socket path. */
-    if (master->index == 0) {
-        snprintf(cdev->sock_path, sizeof(cdev->sock_path),
-                "%s", EC_IPC_DEFAULT_SOCKET_PATH);
-    } else {
-        snprintf(cdev->sock_path, sizeof(cdev->sock_path),
-                "/var/run/ethercat-%u.sock", master->index);
-    }
 
     /* Ignore SIGPIPE so that writes to closed sockets don't kill threads. */
     signal(SIGPIPE, SIG_IGN);
@@ -1300,7 +1340,7 @@ int ec_cdev_init(ec_cdev_t *cdev, struct ec_master *master, dev_t dev_num)
     /* Create the listening socket. */
     sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sock_fd < 0) {
-        EC_MASTER_ERR(master, "IPC: socket() failed: %s\n", strerror(errno));
+        ec_log(EC_LOG_ERR, "IPC: socket() failed: %s\n", strerror(errno));
         return -errno;
     }
 
@@ -1313,7 +1353,7 @@ int ec_cdev_init(ec_cdev_t *cdev, struct ec_master *master, dev_t dev_num)
 
     if (bind(sock_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         ret = -errno;
-        EC_MASTER_ERR(master, "IPC: bind() to %s failed: %s\n",
+        ec_log(EC_LOG_ERR, "IPC: bind() to %s failed: %s\n",
                 cdev->sock_path, strerror(errno));
         close(sock_fd);
         return ret;
@@ -1321,7 +1361,7 @@ int ec_cdev_init(ec_cdev_t *cdev, struct ec_master *master, dev_t dev_num)
 
     if (listen(sock_fd, 8) < 0) {
         ret = -errno;
-        EC_MASTER_ERR(master, "IPC: listen() failed: %s\n", strerror(errno));
+        ec_log(EC_LOG_ERR, "IPC: listen() failed: %s\n", strerror(errno));
         close(sock_fd);
         unlink(cdev->sock_path);
         return ret;
@@ -1334,33 +1374,30 @@ int ec_cdev_init(ec_cdev_t *cdev, struct ec_master *master, dev_t dev_num)
     if (IS_ERR(cdev->thread)) {
         ret = (int)PTR_ERR(cdev->thread);
         cdev->thread = NULL;
-        EC_MASTER_ERR(master,
-                "IPC: failed to start listener thread: %d\n", ret);
+        ec_log(EC_LOG_ERR, "IPC: failed to start listener thread: %d\n", ret);
         close(cdev->sock_fd);
         cdev->sock_fd = -1;
         unlink(cdev->sock_path);
         return ret;
     }
 
-    atomic_fetch_add(&g_master_count, 1);
-
-    EC_MASTER_INFO(master, "IPC server listening on %s\n", cdev->sock_path);
+    ec_log(EC_LOG_INFO, "IPC server listening on %s\n", cdev->sock_path);
     return 0;
 }
 
 /**
- * ec_cdev_clear - shut down the IPC server for one master.
+ * ec_ipc_server_stop - shut down the global IPC server.
  *
  * Signals the listener thread to stop, closes the listening socket (which
  * causes the accept() call to return), and waits for the thread to exit.
  * The socket file is removed from the filesystem.
  */
-void ec_cdev_clear(ec_cdev_t *cdev)
+void ec_ipc_server_stop(void)
 {
-    ec_master_t *master = (ec_master_t *)cdev->master;
+    ec_cdev_t *cdev = &g_cdev;
 
     if (cdev->sock_fd == -1)
-        return; /* was never initialised or already cleared */
+        return; /* was never started or already stopped */
 
     /* Signal shutdown to listener and connection threads. */
     cdev->shutdown = 1;
@@ -1378,9 +1415,7 @@ void ec_cdev_clear(ec_cdev_t *cdev)
     /* Remove the socket file. */
     unlink(cdev->sock_path);
 
-    atomic_fetch_sub(&g_master_count, 1);
-
-    EC_MASTER_INFO(master, "IPC server on %s stopped\n", cdev->sock_path);
+    ec_log(EC_LOG_INFO, "IPC server on %s stopped\n", cdev->sock_path);
 }
 
 /****************************************************************************/

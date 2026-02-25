@@ -47,7 +47,7 @@ static atomic_flag lib_initialized = ATOMIC_FLAG_INIT;
 
 /****************************************************************************/
 
-int ecrt_lib_init(ec_log_cb_t log_cb)
+int ecrt_lib_init(ec_log_cb_t log_cb, const char *socket_path)
 {
     if (atomic_flag_test_and_set(&lib_initialized)) {
         ec_log(EC_LOG_WARNING, "ecrt_lib_init() called more than once; ignoring\n");
@@ -68,6 +68,18 @@ int ecrt_lib_init(ec_log_cb_t log_cb)
         ec_pal_work_cleanup();
         atomic_flag_clear(&lib_initialized);
         return -1;
+    }
+
+    /* Start IPC server only if socket_path is provided. */
+    if (socket_path) {
+        int ret = ec_ipc_server_start(socket_path);
+        if (ret < 0) {
+            ec_log(EC_LOG_WARNING,
+                    "Failed to start IPC server on %s: %d; "
+                    "ethercat tool will not be able to connect\n",
+                    socket_path, ret);
+            /* Non-fatal — master still usable via API */
+        }
     }
 
     return 0;
@@ -144,12 +156,8 @@ static ec_master_t *ecrt_startup_master_common(ec_master_t *master,
         goto out_close_backup_device;
     }
 
-    /* Start IPC server (non-fatal if it fails — master still usable via API) */
-    if (ec_cdev_init(&master->pal.cdev, master, 0) < 0) {
-        ec_log(EC_LOG_WARNING,
-                "Failed to start IPC server for master %u; "
-                "ethercat tool will not be able to connect\n", index);
-    }
+    /* Register master in global registry for IPC dispatch. */
+    ec_master_registry_add(master);
 
     return master;
 
@@ -302,8 +310,8 @@ void ecrt_release_master(ec_master_t *master)
 {
     if (!master) return;
 
-    /* Stop IPC server before shutting down master. */
-    ec_cdev_clear(&master->pal.cdev);
+    /* Unregister master from global registry before shutting down. */
+    ec_master_registry_remove(master);
 
     if (master->phase != EC_ORPHANED) {
         if (master->active) {
@@ -345,6 +353,7 @@ void ecrt_release_master(ec_master_t *master)
 
 void ecrt_lib_cleanup(void)
 {
+    ec_ipc_server_stop();
     ec_pal_irq_work_cleanup();
     ec_pal_work_cleanup();
     atomic_flag_clear(&lib_initialized);
