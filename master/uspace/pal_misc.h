@@ -55,6 +55,8 @@ void ec_log(int level, const char *fmt, ...)
 
 int ec_log_ratelimit(void);
 
+void ec_log_set_syslog(int enable);
+
 /****************************************************************************/
 /* Kernel utility macros */
 /****************************************************************************/

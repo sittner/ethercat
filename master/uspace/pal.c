@@ -25,6 +25,7 @@
 #include "../fsm_master.h"
 
 static pthread_mutex_t ec_log_lock = PTHREAD_MUTEX_INITIALIZER;
+static int ec_log_use_syslog = 0;
 
 static const char *loglevel_names[] = {
     "EMERG",
@@ -37,22 +38,28 @@ static const char *loglevel_names[] = {
     "DEBUG",
 };
 
+void ec_log_set_syslog(int enable)
+{
+    ec_log_use_syslog = enable;
+}
+
 void ec_log(int level, const char *fmt, ...)
 {
     va_list args;
-
-    pthread_mutex_lock(&ec_log_lock);
-
-    if (level >= 0 && level <= 7)
-        fprintf(stderr, "[%s] ", loglevel_names[level]);
-
     va_start(args, fmt);
-    vfprintf(stderr, fmt, args);
+
+    if (ec_log_use_syslog) {
+        vsyslog(level, fmt, args);
+    } else {
+        pthread_mutex_lock(&ec_log_lock);
+        if (level >= 0 && level <= 7)
+            fprintf(stderr, "[%s] ", loglevel_names[level]);
+        vfprintf(stderr, fmt, args);
+        fflush(stderr);
+        pthread_mutex_unlock(&ec_log_lock);
+    }
+
     va_end(args);
-
-    fflush(stderr);
-
-    pthread_mutex_unlock(&ec_log_lock);
 }
 
 static void ec_master_nanosleep(const unsigned long nsecs) {

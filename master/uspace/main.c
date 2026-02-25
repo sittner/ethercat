@@ -41,20 +41,51 @@
 #include <signal.h>
 #include <getopt.h>
 #include <unistd.h>
+#include <syslog.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 /****************************************************************************/
 
 /* Forward declarations for library API */
 extern int ecrt_lib_init(void);
-extern ec_master_t *ecrt_startup_master(ec_transport_type_t transport_type,
-        const char *interface);
+extern ec_master_t *ecrt_startup_master(
+        unsigned int index,
+        ec_transport_type_t transport_type,
+        const char *interface,
+        const char *backup_interface,
+        unsigned int debug_level,
+        unsigned int run_on_cpu);
 extern void ecrt_release_master(ec_master_t *master);
 extern void ecrt_lib_cleanup(void);
 
 /****************************************************************************/
 
+#define EC_MAX_MASTERS  16
+#define EC_PIDFILE      "/var/run/ec_master.pid"
+
+/** Per-master configuration block. */
+struct master_config {
+    const char *interface;              /**< Main interface name. */
+    const char *backup;                 /**< Backup interface name (NULL = none). */
+    ec_transport_type_t transport;      /**< Transport type. */
+    unsigned int cpu;                   /**< CPU affinity (0xffffffff = no binding). */
+};
+
+/****************************************************************************/
+
 /** Global variable to control main loop */
 static volatile int g_running = 1;
+
+/** Global debug level */
+static unsigned int g_debug_level = 1;
+
+/** Run in foreground (do not daemonize) */
+static int g_foreground = 0;
+
+/** Log to stdout/stderr instead of syslog */
+static int g_log_stdout = 0;
 
 /****************************************************************************/
 
@@ -67,28 +98,109 @@ static void signal_handler(int signum)
 
 /****************************************************************************/
 
+/** Double-fork daemonization. */
+static int daemonize(void)
+{
+    pid_t pid;
+
+    pid = fork();
+    if (pid < 0) return -1;
+    if (pid > 0) _exit(0);
+
+    if (setsid() < 0) return -1;
+
+    pid = fork();
+    if (pid < 0) return -1;
+    if (pid > 0) _exit(0);
+
+    chdir("/");
+
+    freopen("/dev/null", "r", stdin);
+    freopen("/dev/null", "w", stdout);
+    freopen("/dev/null", "w", stderr);
+
+    return 0;
+}
+
+/****************************************************************************/
+
+/** Write PID file. */
+static int write_pidfile(const char *path)
+{
+    FILE *f = fopen(path, "w");
+    if (!f) return -1;
+    fprintf(f, "%d\n", getpid());
+    fclose(f);
+    return 0;
+}
+
+/****************************************************************************/
+
+/** Remove PID file. */
+static void remove_pidfile(const char *path)
+{
+    unlink(path);
+}
+
+/****************************************************************************/
+
 int main(int argc, char *argv[])
 {
-    const char *interface = NULL;
-    ec_transport_type_t transport_type = EC_TRANSPORT_RAW;  /* DEFAULT: raw */
-    ec_master_t *master = NULL;
+    struct master_config configs[EC_MAX_MASTERS];
+    ec_master_t *masters[EC_MAX_MASTERS];
+    int master_count = 0;
+    int current_has_interface = 0;  /* whether current block has an interface */
     int ret = 0;
+    int i;
     int c;
 
-    /* Parse command line arguments */
+    /* Current block defaults */
+    struct master_config cur = {
+        .interface = NULL,
+        .backup = NULL,
+        .transport = EC_TRANSPORT_RAW,
+        .cpu = 0xffffffff,
+    };
+
     static struct option long_options[] = {
-        {"interface", required_argument, 0, 'i'},
-        {"transport", required_argument, 0, 't'},
-        {"help",      no_argument,       0, 'h'},
+        {"interface",  required_argument, 0, 'i'},
+        {"transport",  required_argument, 0, 't'},
+        {"backup",     required_argument, 0, 'b'},
+        {"cpu",        required_argument, 0, 'c'},
+        {"debug",      required_argument, 0, 'd'},
+        {"foreground", no_argument,       0, 'f'},
+        {"log-stdout", no_argument,       0, 'l'},
+        {"help",       no_argument,       0, 'h'},
         {0, 0, 0, 0}
     };
 
-    while ((c = getopt_long(argc, argv, "i:t:h", long_options, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "i:t:b:c:d:flh",
+                    long_options, NULL)) != -1) {
         switch (c) {
             case 'i':
-                interface = optarg;
+                /* Finalize previous block if it has an interface */
+                if (current_has_interface) {
+                    if (master_count >= EC_MAX_MASTERS) {
+                        fprintf(stderr,
+                                "Error: too many masters (max %d)\n",
+                                EC_MAX_MASTERS);
+                        return 1;
+                    }
+                    configs[master_count++] = cur;
+                }
+                /* Start new block with defaults */
+                cur.interface = optarg;
+                cur.backup = NULL;
+                cur.transport = EC_TRANSPORT_RAW;
+                cur.cpu = 0xffffffff;
+                current_has_interface = 1;
                 break;
             case 't':
+                if (!current_has_interface) {
+                    fprintf(stderr,
+                            "Error: -t requires a preceding -i\n");
+                    return 1;
+                }
                 ret = ec_transport_find_by_name(optarg);
                 if (ret < 0) {
                     fprintf(stderr, "Unknown transport type: %s\n", optarg);
@@ -97,64 +209,180 @@ int main(int argc, char *argv[])
                     fprintf(stderr, "\n");
                     return 1;
                 }
-                transport_type = ret;
+                cur.transport = (ec_transport_type_t)ret;
                 ret = 0;
                 break;
+            case 'b':
+                if (!current_has_interface) {
+                    fprintf(stderr,
+                            "Error: -b requires a preceding -i\n");
+                    return 1;
+                }
+                cur.backup = optarg;
+                break;
+            case 'c':
+                if (!current_has_interface) {
+                    fprintf(stderr,
+                            "Error: -c requires a preceding -i\n");
+                    return 1;
+                }
+                cur.cpu = (unsigned int)strtoul(optarg, NULL, 0);
+                break;
+            case 'd':
+                g_debug_level = (unsigned int)strtoul(optarg, NULL, 0);
+                break;
+            case 'f':
+                g_foreground = 1;
+                break;
+            case 'l':
+                g_log_stdout = 1;
+                break;
             case 'h':
-                fprintf(stdout, "Usage: %s [OPTIONS]\n", argv[0]);
-                fprintf(stdout, "Options:\n");
-                fprintf(stdout, "  -i, --interface <name>    Network interface (required)\n");
-                fprintf(stdout, "  -t, --transport <type>    Transport type (default: raw)\n");
-                fprintf(stdout, "                            Available: ");
-                fflush(stdout);  /* Flush before stderr to ensure correct output order */
+                fprintf(stdout, "Usage: %s [OPTIONS]\n\n", argv[0]);
+                fprintf(stdout,
+                        "Per-master options (each -i starts a new master):\n");
+                fprintf(stdout,
+                        "  -i, --interface <name>    Network interface"
+                        " (required, starts new master)\n");
+                fprintf(stdout,
+                        "  -t, --transport <type>    Transport type"
+                        " (default: raw)\n");
+                fprintf(stdout,
+                        "  -b, --backup <name>       Backup interface\n");
+                fprintf(stdout,
+                        "  -c, --cpu <id>            Bind master threads"
+                        " to CPU\n");
+                fprintf(stdout, "\nGlobal options:\n");
+                fprintf(stdout,
+                        "  -d, --debug <level>       Set debug level"
+                        " (default: 1)\n");
+                fprintf(stdout,
+                        "  -f, --foreground          Do not daemonize\n");
+                fprintf(stdout,
+                        "  -l, --log-stdout          Log to stdout"
+                        " (requires --foreground)\n");
+                fprintf(stdout,
+                        "  -h, --help                Show this help\n");
+                fprintf(stdout, "\nExample:\n");
+                fprintf(stdout,
+                        "  %s -d 1 -i eth0 -t raw -b eth1 -c 2 -i eth2\n",
+                        argv[0]);
+                fprintf(stdout, "\nAvailable transports: ");
+                fflush(stdout);
                 ec_transport_print_available();
-                fprintf(stdout, "\n");
-                fprintf(stdout, "  -h, --help                Show this help\n");
+                fprintf(stderr, "\n");
                 return 0;
             default:
-                fprintf(stderr, "Usage: %s -i <interface> [-t <transport>]\n", argv[0]);
+                fprintf(stderr,
+                        "Usage: %s -i <interface> [options]\n", argv[0]);
                 return 1;
         }
     }
 
-    if (!interface) {
-        fprintf(stderr, "Error: Network interface required (-i option)\n");
-        fprintf(stderr, "Usage: %s -i <interface> [-t <transport>]\n", argv[0]);
+    /* Finalize last block */
+    if (current_has_interface) {
+        if (master_count >= EC_MAX_MASTERS) {
+            fprintf(stderr, "Error: too many masters (max %d)\n",
+                    EC_MAX_MASTERS);
+            return 1;
+        }
+        configs[master_count++] = cur;
+    }
+
+    if (master_count == 0) {
+        fprintf(stderr,
+                "Error: at least one network interface required (-i option)\n");
+        fprintf(stderr, "Usage: %s -i <interface> [options]\n", argv[0]);
         return 1;
     }
 
-    ec_log(EC_LOG_INFO, "Starting EtherCAT master on interface %s\n", interface);
-
-    ret = ecrt_lib_init();
-    if (ret < 0) {
-        fprintf(stderr, "Failed to initialize EtherCAT library\n");
+    if (g_log_stdout && !g_foreground) {
+        fprintf(stderr,
+                "Error: --log-stdout requires --foreground\n");
         return 1;
     }
 
-    ec_log(EC_LOG_INFO, "Using transport: %s\n", ec_transport_get_name(transport_type));
+    /* Set up logging */
+    if (!g_log_stdout) {
+        openlog("ec_master", LOG_PID, LOG_DAEMON);
+        ec_log_set_syslog(1);
+    }
 
-    master = ecrt_startup_master(transport_type, interface);
-    if (!master) {
-        fprintf(stderr, "Failed to start EtherCAT master\n");
-        ecrt_lib_cleanup();
-        return 1;
+    /* Daemonize unless foreground mode requested */
+    if (!g_foreground) {
+        if (daemonize() < 0) {
+            fprintf(stderr, "Error: daemonization failed\n");
+            return 1;
+        }
+        if (write_pidfile(EC_PIDFILE) < 0) {
+            ec_log(EC_LOG_WARNING, "Failed to write PID file %s\n",
+                    EC_PIDFILE);
+        }
     }
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
-    ec_log(EC_LOG_INFO, "EtherCAT master started on %s\n", interface);
+    ret = ecrt_lib_init();
+    if (ret < 0) {
+        ec_log(EC_LOG_ERR, "Failed to initialize EtherCAT library\n");
+        ret = 1;
+        goto out_cleanup_log;
+    }
+
+    /* Start all masters */
+    for (i = 0; i < master_count; i++) {
+        ec_log(EC_LOG_INFO, "Starting EtherCAT master %d on interface %s"
+                " (transport: %s)\n",
+                i, configs[i].interface,
+                ec_transport_get_name(configs[i].transport));
+        masters[i] = ecrt_startup_master(
+                (unsigned int)i,
+                configs[i].transport,
+                configs[i].interface,
+                configs[i].backup,
+                g_debug_level,
+                configs[i].cpu);
+        if (!masters[i]) {
+            ec_log(EC_LOG_ERR, "Failed to start EtherCAT master %d\n", i);
+            /* Release already-started masters */
+            while (--i >= 0) {
+                ecrt_release_master(masters[i]);
+            }
+            ecrt_lib_cleanup();
+            ret = 1;
+            goto out_cleanup_log;
+        }
+    }
+
+    ec_log(EC_LOG_INFO, "EtherCAT master(s) started (%d total)\n",
+            master_count);
 
     while (g_running) {
         pause();
     }
 
-    ec_log(EC_LOG_INFO, "Shutting down EtherCAT master\n");
+    ec_log(EC_LOG_INFO, "Shutting down EtherCAT master(s)\n");
 
-    ecrt_release_master(master);
+    for (i = 0; i < master_count; i++) {
+        if (masters[i]) {
+            ecrt_release_master(masters[i]);
+        }
+    }
     ecrt_lib_cleanup();
 
-    ec_log(EC_LOG_INFO, "EtherCAT master stopped\n");
-    return 0;
+    ec_log(EC_LOG_INFO, "EtherCAT master(s) stopped\n");
+    ret = 0;
+
+out_cleanup_log:
+    if (!g_foreground) {
+        remove_pidfile(EC_PIDFILE);
+    }
+    if (!g_log_stdout) {
+        closelog();
+    }
+
+    return ret;
 }
+
 

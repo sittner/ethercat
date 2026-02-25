@@ -716,19 +716,42 @@ EC_PUBLIC_API int ecrt_lib_init(void);
  *  opens interface, initializes master, and enters idle phase.
  *  Transport is library-owned and destroyed by ecrt_release_master().
  *
+ *  \param index Master index (0-based).
+ *  \param transport_type Transport type for both main and backup interfaces.
+ *  \param interface Main network interface name.
+ *  \param backup_interface Backup network interface name, or NULL for none.
+ *  \param debug_level Debug verbosity level.
+ *  \param run_on_cpu CPU affinity for master threads, or 0xffffffff for
+ *                    no binding.
  *  \return Pointer to master, or NULL on error. */
 EC_PUBLIC_API ec_master_t *ecrt_startup_master(
+        unsigned int index, /**< Master index (0-based). */
         ec_transport_type_t transport_type, /**< Transport type. */
-        const char *interface /**< Network interface name. */
+        const char *interface, /**< Main network interface name. */
+        const char *backup_interface, /**< Backup interface name, or NULL. */
+        unsigned int debug_level, /**< Debug verbosity level. */
+        unsigned int run_on_cpu /**< CPU affinity, or 0xffffffff for none. */
         );
 
 /** Start a userspace master with caller-provided transport.
  *  Transport is caller-owned — ecrt_release_master() will NOT destroy it.
+ *  Backup transport (if created) is library-owned and will be destroyed.
  *
+ *  \param index Master index (0-based).
+ *  \param transport Caller-provided main transport (already opened).
+ *  \param interface Main network interface name.
+ *  \param backup_interface Backup network interface name, or NULL for none.
+ *  \param debug_level Debug verbosity level.
+ *  \param run_on_cpu CPU affinity for master threads, or 0xffffffff for
+ *                    no binding.
  *  \return Pointer to master, or NULL on error. */
 EC_PUBLIC_API ec_master_t *ecrt_startup_master_custom(
+        unsigned int index, /**< Master index (0-based). */
         ec_transport_t *transport, /**< Caller-provided transport. */
-        const char *interface /**< Network interface name. */
+        const char *interface, /**< Main network interface name. */
+        const char *backup_interface, /**< Backup interface name, or NULL. */
+        unsigned int debug_level, /**< Debug verbosity level. */
+        unsigned int run_on_cpu /**< CPU affinity, or 0xffffffff for none. */
         );
 
 /** Cleanup the userspace master library.
