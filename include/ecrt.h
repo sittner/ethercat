@@ -140,7 +140,7 @@
 #ifndef __ECRT_H__
 #define __ECRT_H__
 
-#define EC_USPACE_MASTER 1
+
 #ifdef __KERNEL__
 #include <asm/byteorder.h>
 #include <linux/types.h>

@@ -101,6 +101,7 @@ noinst_HEADERS = \
 	DataTypeHandler.h \
 	FoeCommand.h \
 	MasterDevice.h \
+	MasterDeviceBackend.h \
 	NumberListParser.h \
 	SdoCommand.h \
 	SoeCommand.h \
@@ -118,11 +119,21 @@ REV = `if test -s $(top_srcdir)/revision; then \
 		git -C $(top_srcdir) describe 2>/dev/null || echo "unknown"; \
 	fi`
 
+if ENABLE_USPACE_MASTER
+ethercat_SOURCES += uspace/MasterDeviceUspace.cpp
+ethercat_CXXFLAGS = \
+	-I$(top_srcdir)/include \
+	-I$(top_srcdir)/master \
+	-Wall -DREV=$(REV) \
+	-fno-strict-aliasing
+else
+ethercat_SOURCES += kernel/MasterDeviceKernel.cpp
 ethercat_CXXFLAGS = \
 	-I$(top_srcdir)/include \
 	-I$(top_srcdir)/master \
 	-I$(top_srcdir)/master/kernel \
 	-Wall -DREV=$(REV) \
 	-fno-strict-aliasing
+endif
 
 #-----------------------------------------------------------------------------

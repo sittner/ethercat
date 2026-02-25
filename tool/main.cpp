@@ -83,6 +83,7 @@ bool emergency = false;
 bool helpRequested = false;
 string outputFile;
 string skin;
+string socketPath;
 
 /****************************************************************************/
 
@@ -115,6 +116,10 @@ string usage()
         << "                         Examples: '1,3', '5-7,9', '-3'." << endl
         << "                         Default: '-' (all)."
         << endl
+        << "  --socket  -S <path>    Unix socket path for userspace master." << endl
+        << "                         Env: EC_SOCKET_PATH" << endl
+        << "                         Default: " EC_IPC_DEFAULT_SOCKET_PATH
+        << endl
         << "  --force   -f           Force a command." << endl
         << "  --quiet   -q           Output less information." << endl
         << "  --verbose -v           Output more information." << endl
@@ -146,6 +151,7 @@ void getOptions(int argc, char **argv)
         {"type",        required_argument, NULL, 't'},
         {"output-file", required_argument, NULL, 'o'},
         {"skin",        required_argument, NULL, 's'},
+        {"socket",      required_argument, NULL, 'S'},
         {"emergency",   no_argument,       NULL, 'e'},
         {"force",       no_argument,       NULL, 'f'},
         {"quiet",       no_argument,       NULL, 'q'},
@@ -155,7 +161,7 @@ void getOptions(int argc, char **argv)
     };
 
     do {
-        c = getopt_long(argc, argv, "m:a:p:d:t:o:s:efqvh", longOptions, NULL);
+        c = getopt_long(argc, argv, "m:a:p:d:t:o:s:S:efqvh", longOptions, NULL);
 
         switch (c) {
             case 'm':
@@ -184,6 +190,10 @@ void getOptions(int argc, char **argv)
 
             case 's':
                 skin = optarg;
+                break;
+
+            case 'S':
+                socketPath = optarg;
                 break;
 
             case 'e':
@@ -305,6 +315,13 @@ int main(int argc, char **argv)
     commandList.push_back(new CommandXml());
 
     getOptions(argc, argv);
+
+    if (socketPath.empty()) {
+        const char *env = getenv("EC_SOCKET_PATH");
+        if (env)
+            socketPath = env;
+    }
+    MasterDevice::setSocketPath(socketPath);
 
     matchingCommands = getMatchingCommands(commandName);
 
