@@ -24,26 +24,27 @@ ethercat (tool) → open("/dev/EtherCATN") → ioctl(fd, EC_IOCTL_*, data) → k
 ### Userspace Mode (new)
 
 ```
-Application
+Application process
   → ecrt_lib_init(log_cb)
   → ecrt_startup_master(0, ...)
-      → ec_cdev_init() called during master init
-          → creates /var/run/ethercat.sock (master 0)
+      → ec_cdev_init() creates listening socket at /var/run/ethercat.sock
+          → listener thread calls accept() and waits
   → ecrt_startup_master(1, ...)
-      → ec_cdev_init() called during master init
-          → creates /var/run/ethercat-1.sock (master 1)
+      → ec_cdev_init() creates listening socket at /var/run/ethercat-1.sock
+          → listener thread calls accept() and waits
 
-ethercat (tool)
-  → connect("/var/run/ethercat.sock")   (master 0, or --socket / EC_SOCKET_PATH)
-  → request(cmd, data)                  → IPC server handles request for that master
+ethercat (tool) — each invocation:
+  → connect("/var/run/ethercat.sock")   → accept() creates new socket for this invocation
+  → request(cmd, data)                  → conn_handler_fn handles request for that master
+  → tool exits                          → socket closed
 ```
 
-Key difference from kernel mode: **one socket per master**, mirroring the
-kernel model (`/dev/EtherCATN` → `/var/run/ethercat-N.sock`). The tool
-connects to a specific master's socket rather than sending a master index
-in each request.
+Key difference from kernel mode: each tool invocation creates a **new socket
+per user program instance** by connecting to the master's listening socket.
+`accept()` returns a fresh connected socket for every tool run, analogous to
+`open("/dev/EtherCATN")` creating a new file descriptor in the kernel model.
 
-Socket naming convention:
+Server-side listening sockets (one per master, permanent while master runs):
 - Master 0: `EC_IPC_DEFAULT_SOCKET_PATH` (`/var/run/ethercat.sock`)
 - Master N (N > 0): `/var/run/ethercat-N.sock`
 
