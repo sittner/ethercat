@@ -706,11 +706,21 @@ EC_PUBLIC_API unsigned int ecrt_version_magic(void);
 
 #ifdef EC_USPACE_MASTER
 
+#include <stdarg.h>
+
+/** Log callback type.
+ *  \param level  Log level (EC_LOG_ERR, EC_LOG_INFO, etc.)
+ *  \param fmt    printf-style format string
+ *  \param ap     va_list arguments
+ */
+typedef void (*ec_log_cb_t)(int level, const char *fmt, va_list ap);
+
 /** Initialize the userspace master library. Must be called once before
  *  any other ecrt_* function.
  *
+ *  \param log_cb Log callback, or NULL for default (stderr).
  *  \return 0 on success, < 0 on error. */
-EC_PUBLIC_API int ecrt_lib_init(void);
+EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb);
 
 /** Start a userspace master with built-in transport. Creates transport,
  *  opens interface, initializes master, and enters idle phase.

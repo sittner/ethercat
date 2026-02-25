@@ -42,8 +42,9 @@
 
 /****************************************************************************/
 
-int ecrt_lib_init(void)
+int ecrt_lib_init(ec_log_cb_t log_cb)
 {
+    ec_log_set_callback(log_cb);
     ec_master_init_static();
 
     if (ec_pal_work_init() != 0) {
