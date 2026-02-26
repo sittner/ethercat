@@ -21,7 +21,6 @@
 
 include_HEADERS = \
 	$(builddir)/ecrt.h \
-	ec_ioctl_types.h \
 	ectty.h
 
 EXTRA_DIST = ecrt.h.in

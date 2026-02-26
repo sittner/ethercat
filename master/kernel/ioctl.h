@@ -30,7 +30,7 @@
 
 #include <linux/ioctl.h>
 
-#include "../../include/ec_ioctl_types.h"
+#include "../ioctl_types.h"
 
 /****************************************************************************/
 
