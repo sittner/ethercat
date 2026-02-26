@@ -351,10 +351,12 @@ Started by `ecrt_lib_init()` when `socket_path != NULL`:
 
 1. Creates `AF_UNIX` `SOCK_STREAM` socket
 2. Binds to `socket_path`, listens
-3. Spawns per-connection handler threads (or handles sequentially)
-4. Each handler: read request → look up `master_registry[master_index]`
-   → dispatch → send response
-5. Stopped by `ecrt_lib_cleanup()`
+3. Uses a `poll()`-based event loop (1000ms timeout) to multiplex the listening socket and all connected client sockets in a single thread
+4. On new connection: `accept()`, set `SO_SNDTIMEO`, add fd to poll array
+5. On client data: read one full request → look up `master_registry[master_index]` → dispatch → send response
+6. On client error / disconnect: close fd and remove from poll array
+7. On shutdown (`cdev->shutdown` set): exit the loop, close remaining client fds, and exit the thread
+8. Stopped by `ecrt_lib_cleanup()` — only needs to set the shutdown flag, close the listening socket, and join the single listener thread
 
 ### Locking Strategy
 
@@ -565,10 +567,12 @@ other `ec_master` options.
 
 ### 3. Concurrent Tool Connections
 
-The IPC server should accept multiple simultaneous tool connections (e.g.,
-one running `ethercat slaves` while another runs `ethercat upload`). The
-kernel cdev supports this naturally via multiple file descriptors. The
-IPC server should use per-connection threads or a poll loop.
+The IPC server accepts multiple simultaneous tool connections (e.g., one
+running `ethercat slaves` while another runs `ethercat upload`). It uses a
+single-threaded `poll()`-based event loop with a fixed-size fd array (up to
+`EC_IPC_MAX_CLIENTS` concurrent clients). Since the tool is short-lived and
+concurrent connections are rare, the single-threaded approach is sufficient
+and avoids the complexity of per-connection threads.
 
 ### 4. Fixed-Width Types in Wire Protocol
 
