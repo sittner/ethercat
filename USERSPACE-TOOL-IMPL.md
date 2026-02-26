@@ -65,7 +65,7 @@ so this is not a compatibility break.
 ### Default Socket Path
 
 ```c
-/* In include/ec_ioctl_types.h */
+/* In master/ioctl_types.h */
 #ifndef EC_IPC_DEFAULT_SOCKET_PATH
 #define EC_IPC_DEFAULT_SOCKET_PATH "/var/run/ethercat.sock"
 #endif
@@ -204,7 +204,7 @@ Command numbers are extracted from the existing ioctl numbering as a
 platform-neutral enum in the shared header:
 
 ```c
-/* include/ec_ioctl_types.h */
+/* master/ioctl_types.h */
 enum ec_tool_cmd {
     EC_CMD_MODULE               = 0x00,
     EC_CMD_MASTER               = 0x01,
@@ -245,7 +245,7 @@ enum ec_tool_cmd {
 The kernel backend maps these to `_IO`/`_IOR`/`_IOW`/`_IOWR` macros via a
 lookup table. The socket backend sends them as-is in the request header.
 
-## Shared Header: `include/ec_ioctl_types.h`
+## Shared Header: `master/ioctl_types.h`
 
 All `ec_ioctl_*_t` struct definitions and the `ec_tool_cmd` enum are
 extracted from `master/kernel/ioctl.h` into a new shared header that has
@@ -256,7 +256,7 @@ includes the shared header and adds the `_IO` macros + `#ifdef __KERNEL__`
 context.
 
 `tool/Command.h` switches from `#include "../master/kernel/ioctl.h"` to
-`#include "ec_ioctl_types.h"`.
+`#include "ioctl_types.h"`.
 
 ## Tool-Side Abstraction Layer
 
@@ -433,9 +433,9 @@ ethercat_CXXFLAGS = \
 endif
 ```
 
-Note: the uspace build needs `-I$(top_srcdir)/include` (for `ec_ioctl_types.h`
-and `ecrt.h`) and `-I$(top_srcdir)/master` (because `ec_ioctl_types.h` includes
-`../master/shared.h`). It never touches `master/kernel/`.
+Note: the uspace build needs `-I$(top_srcdir)/include` (for `ecrt.h`) and
+`-I$(top_srcdir)/master` (for `ioctl_types.h` and `shared.h`).
+It never touches `master/kernel/`.
 
 ### `configure.ac`
 
@@ -449,7 +449,7 @@ in both modes.
 
 | File | Purpose |
 |------|---------|
-| `include/ec_ioctl_types.h` | Shared data types + command enum (no platform deps) |
+| `master/ioctl_types.h` | Shared data types + command enum (no platform deps) |
 | `tool/MasterDeviceBackend.h` | Abstract backend interface |
 | `tool/kernel/MasterDeviceKernel.cpp` | ioctl backend + factory function |
 | `tool/uspace/MasterDeviceUspace.cpp` | Unix socket backend + factory function |
@@ -461,7 +461,7 @@ in both modes.
 | File | Change |
 |------|--------|
 | `master/kernel/ioctl.h` | Thin wrapper: includes shared header, adds `_IO` macros |
-| `tool/Command.h` | `#include "ec_ioctl_types.h"` (was `../master/kernel/ioctl.h`) |
+| `tool/Command.h` | `#include "ioctl_types.h"` (was `../master/kernel/ioctl.h`) |
 | `tool/MasterDevice.h` | Remove `int fd`, add `MasterDeviceBackend *backend`, add `setSocketPath()` |
 | `tool/MasterDevice.cpp` | Delegate all methods to backend (remove all `ioctl()` calls) |
 | `tool/main.cpp` | Add `--socket`/`-S`, `EC_SOCKET_PATH` env, `setSocketPath()` |
@@ -487,12 +487,12 @@ in both modes.
 Implement the infrastructure (shared header, backend abstraction, IPC
 server skeleton, master registry) and the following read-only commands:
 
-- [x] Extract `ec_ioctl_types.h` from `master/kernel/ioctl.h`
+- [x] Extract `ioctl_types.h` from `master/kernel/ioctl.h`
 - [x] Make `master/kernel/ioctl.h` a thin wrapper including shared header
 - [x] Create `tool/MasterDeviceBackend.h` (abstract interface)
 - [x] Create `tool/kernel/MasterDeviceKernel.cpp` (ioctl backend)
 - [x] Refactor `tool/MasterDevice.cpp` to delegate to backend
-- [x] Change `tool/Command.h` include to `ec_ioctl_types.h`
+- [x] Change `tool/Command.h` include to `ioctl_types.h`
 - [x] Update `tool/Makefile.am` with conditional backend selection
 - [x] Verify kernel-mode build still works unchanged
 - [x] Change `ecrt_lib_init()` signature: add `socket_path` parameter

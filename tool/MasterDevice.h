@@ -28,7 +28,7 @@
 using namespace std; // TODO: remove — pollutes includers' namespace
 
 #include "ecrt.h"
-#include "ec_ioctl_types.h"
+#include "ioctl_types.h"
 
 class MasterDeviceBackend;
 
