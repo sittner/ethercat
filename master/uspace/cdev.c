@@ -61,21 +61,12 @@
 
 /****************************************************************************/
 
-/** Entry in the active connection list. */
-typedef struct ec_conn_entry {
-    ec_thread_t            *thread; /**< Connection handler thread. */
-    int                     fd;     /**< Client socket fd. */
-    struct ec_conn_entry   *next;   /**< Next entry in list. */
-} ec_conn_entry_t;
-
 /** Global singleton IPC server state. */
 typedef struct {
     int              sock_fd;        /**< Listening socket fd (-1 if inactive). */
     char             sock_path[UNIX_PATH_MAX]; /**< Unix socket filesystem path. */
     ec_thread_t     *thread;         /**< Listener thread handle. */
     volatile int     shutdown;       /**< Non-zero to request shutdown. */
-    ec_conn_entry_t *conn_list;      /**< Head of active connection list. */
-    pthread_mutex_t  conn_mutex;     /**< Protects conn_list. */
 } ec_cdev_t;
 
 static ec_cdev_t g_cdev = { .sock_fd = -1 };
@@ -1075,241 +1066,208 @@ static int dispatch_eoe_ip_unsupported(int fd, ec_master_t *master,
 #endif /* EC_EOE */
 
 /****************************************************************************/
-/* Per-connection handler                                                      */
+/* Poll-based event loop                                                       */
 /****************************************************************************/
-
-/** State for one accepted client connection. */
-typedef struct {
-    int fd;           /**< Connected socket file descriptor. */
-    ec_cdev_t *cdev;  /**< Global IPC server (for shutdown flag). */
-} ec_conn_ctx_t;
 
 /** Maximum payload size we are willing to receive (protect against OOM). */
 #define EC_IPC_MAX_PAYLOAD 65536U
 
+/** Maximum number of concurrent tool connections. */
+#define EC_IPC_MAX_CLIENTS 16
+
 /**
- * Handle one client connection: read requests in a loop until the client
- * disconnects or the cdev shuts down.
+ * Handle exactly one request from a connected client fd.
+ *
+ * Reads the request header and payload, dispatches the command, and sends
+ * the response.  Uses \a payload / \a payload_cap as a reusable buffer
+ * owned by the caller.
+ *
+ * \return 0 to keep the connection open, non-zero to close it.
  */
-static int conn_handler_fn(void *arg)
+static int handle_client_request(int fd, uint8_t **payload,
+        uint32_t *payload_cap)
 {
-    ec_conn_ctx_t *ctx  = (ec_conn_ctx_t *)arg;
-    int            fd   = ctx->fd;
-    ec_cdev_t     *cdev = ctx->cdev;
-    uint8_t       *payload = NULL;
-    uint32_t       payload_cap = 0;
+    ec_ipc_request_t req;
+    ec_master_t *master;
+    int ret;
 
-    free(ctx); /* ctx was heap-allocated by listener */
+    ret = recv_all(fd, &req, sizeof(req));
+    if (ret < 0)
+        return 1; /* client disconnected or error */
 
-    /* Set a send timeout so that send_all() does not block forever if a
-     * client stalls on the write side. */
-    {
-        struct timeval tv;
-        tv.tv_sec  = 5;
-        tv.tv_usec = 0;
-        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+    /* Validate version magic. */
+    if (req.version_magic != EC_IOCTL_VERSION_MAGIC) {
+        ec_log(EC_LOG_WARNING,
+                "IPC: version magic mismatch (%u vs %u); dropping client\n",
+                req.version_magic, EC_IOCTL_VERSION_MAGIC);
+        send_response(fd, -EINVAL, NULL, 0);
+        return 1;
     }
 
-    while (!cdev->shutdown) {
-        ec_ipc_request_t req;
-        ec_master_t *master;
-        int ret;
-        struct pollfd pfd;
+    /* Reject oversized payloads. */
+    if (req.data_size > EC_IPC_MAX_PAYLOAD) {
+        ec_log(EC_LOG_WARNING,
+                "IPC: payload too large (%u); dropping client\n",
+                req.data_size);
+        send_response(fd, -EINVAL, NULL, 0);
+        return 1;
+    }
 
-        /* Wait for data or check shutdown periodically. */
-        pfd.fd     = fd;
-        pfd.events = POLLIN;
-        ret = poll(&pfd, 1, 1000);
-        if (ret == 0)
-            continue;  /* timeout, recheck shutdown */
-        if (ret < 0) {
-            if (errno == EINTR)
-                continue;
-            break;
+    /* Grow the shared payload buffer if needed. */
+    if (req.data_size > *payload_cap) {
+        free(*payload);
+        *payload = malloc(req.data_size);
+        if (!*payload) {
+            send_response(fd, -ENOMEM, NULL, 0);
+            return 1;
         }
-        if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))
-            break;
+        *payload_cap = req.data_size;
+    }
 
-        ret = recv_all(fd, &req, sizeof(req));
+    if (req.data_size > 0) {
+        ret = recv_all(fd, *payload, req.data_size);
         if (ret < 0)
-            break; /* client disconnected or error */
-
-        /* Validate version magic. */
-        if (req.version_magic != EC_IOCTL_VERSION_MAGIC) {
-            ec_log(EC_LOG_WARNING,
-                    "IPC: version magic mismatch (%u vs %u); dropping client\n",
-                    req.version_magic, EC_IOCTL_VERSION_MAGIC);
-            send_response(fd, -EINVAL, NULL, 0);
-            break;
-        }
-
-        /* Read payload. */
-        if (req.data_size > EC_IPC_MAX_PAYLOAD) {
-            ec_log(EC_LOG_WARNING,
-                    "IPC: payload too large (%u); dropping client\n",
-                    req.data_size);
-            send_response(fd, -EINVAL, NULL, 0);
-            break;
-        }
-
-        if (req.data_size > payload_cap) {
-            free(payload);
-            payload = malloc(req.data_size);
-            if (!payload) {
-                send_response(fd, -ENOMEM, NULL, 0);
-                break;
-            }
-            payload_cap = req.data_size;
-        }
-
-        if (req.data_size > 0) {
-            ret = recv_all(fd, payload, req.data_size);
-            if (ret < 0)
-                break;
-        }
-
-        /* EC_CMD_MODULE does not require a valid master. */
-        if ((enum ec_tool_cmd)req.cmd == EC_CMD_MODULE) {
-            dispatch_module(fd, NULL, payload, req.data_size);
-            continue;
-        }
-
-        /* All other commands require a valid master. */
-        master = ec_master_registry_get(req.master_index);
-        if (!master) {
-            send_response(fd, -EINVAL, NULL, 0);
-            continue;
-        }
-
-        /* Dispatch command. */
-        switch ((enum ec_tool_cmd)req.cmd) {
-            case EC_CMD_MODULE:
-                /* handled above */
-                break;
-            case EC_CMD_MASTER:
-                dispatch_master(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_SLAVE:
-                dispatch_slave(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_SLAVE_SYNC:
-                dispatch_slave_sync(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_SLAVE_SYNC_PDO:
-                dispatch_slave_sync_pdo(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_SLAVE_SYNC_PDO_ENTRY:
-                dispatch_slave_sync_pdo_entry(fd, master, payload,
-                        req.data_size);
-                break;
-            case EC_CMD_DOMAIN:
-                dispatch_domain(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_DOMAIN_FMMU:
-                dispatch_domain_fmmu(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_DOMAIN_DATA:
-                /* Domain data requires pointer-based transfer. */
-                send_response(fd, -ENOSYS, NULL, 0);
-                break;
-            case EC_CMD_MASTER_DEBUG:
-                dispatch_master_debug(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_MASTER_RESCAN:
-                dispatch_master_rescan(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_SLAVE_STATE:
-                dispatch_slave_state(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_SLAVE_SDO:
-                dispatch_slave_sdo(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_SLAVE_SDO_ENTRY:
-                dispatch_slave_sdo_entry(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_SLAVE_SDO_UPLOAD:
-                /* SDO upload requires pointer-based data transfer. */
-                send_response(fd, -ENOSYS, NULL, 0);
-                break;
-            case EC_CMD_SLAVE_SDO_DOWNLOAD:
-                /* SDO download requires pointer-based data transfer. */
-                send_response(fd, -ENOSYS, NULL, 0);
-                break;
-            case EC_CMD_SLAVE_SII_READ:
-                /* SII read requires pointer-based data transfer. */
-                send_response(fd, -ENOSYS, NULL, 0);
-                break;
-            case EC_CMD_SLAVE_SII_WRITE:
-                /* SII write requires pointer-based data transfer. */
-                send_response(fd, -ENOSYS, NULL, 0);
-                break;
-            case EC_CMD_SLAVE_REG_READ:
-                /* Register read requires pointer-based data transfer. */
-                send_response(fd, -ENOSYS, NULL, 0);
-                break;
-            case EC_CMD_SLAVE_REG_WRITE:
-                /* Register write requires pointer-based data transfer. */
-                send_response(fd, -ENOSYS, NULL, 0);
-                break;
-            case EC_CMD_SLAVE_FOE_READ:
-                /* FoE read requires pointer-based data transfer. */
-                send_response(fd, -ENOSYS, NULL, 0);
-                break;
-            case EC_CMD_SLAVE_FOE_WRITE:
-                /* FoE write requires pointer-based data transfer. */
-                send_response(fd, -ENOSYS, NULL, 0);
-                break;
-            case EC_CMD_SLAVE_SOE_READ:
-                /* SoE read requires pointer-based data transfer. */
-                send_response(fd, -ENOSYS, NULL, 0);
-                break;
-            case EC_CMD_SLAVE_SOE_WRITE:
-                /* SoE write requires pointer-based data transfer. */
-                send_response(fd, -ENOSYS, NULL, 0);
-                break;
-#ifdef EC_EOE
-            case EC_CMD_SLAVE_EOE_IP_PARAM:
-                dispatch_eoe_ip_unsupported(fd, master, payload,
-                        req.data_size);
-                break;
-#endif
-            case EC_CMD_CONFIG:
-                dispatch_config(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_CONFIG_PDO:
-                dispatch_config_pdo(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_CONFIG_PDO_ENTRY:
-                dispatch_config_pdo_entry(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_CONFIG_SDO:
-                dispatch_config_sdo(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_CONFIG_IDN:
-                dispatch_config_idn(fd, master, payload, req.data_size);
-                break;
-            case EC_CMD_CONFIG_FLAG:
-                dispatch_config_flag(fd, master, payload, req.data_size);
-                break;
-#ifdef EC_EOE
-            case EC_CMD_CONFIG_EOE_IP_PARAM:
-                dispatch_eoe_ip_unsupported(fd, master, payload,
-                        req.data_size);
-                break;
-            case EC_CMD_EOE_HANDLER:
-                dispatch_eoe_handler(fd, master, payload, req.data_size);
-                break;
-#endif
-            default:
-                send_response(fd, -ENOTTY, NULL, 0);
-                break;
-        }
-
-        ec_master_registry_put(master);
+            return 1;
     }
 
-    free(payload);
-    close(fd);
+    /* EC_CMD_MODULE does not require a valid master. */
+    if ((enum ec_tool_cmd)req.cmd == EC_CMD_MODULE) {
+        dispatch_module(fd, NULL, *payload, req.data_size);
+        return 0;
+    }
+
+    /* All other commands require a valid master. */
+    master = ec_master_registry_get(req.master_index);
+    if (!master) {
+        send_response(fd, -EINVAL, NULL, 0);
+        return 0;
+    }
+
+    /* Dispatch command. */
+    switch ((enum ec_tool_cmd)req.cmd) {
+        case EC_CMD_MODULE:
+            /* handled above */
+            break;
+        case EC_CMD_MASTER:
+            dispatch_master(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_SLAVE:
+            dispatch_slave(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_SLAVE_SYNC:
+            dispatch_slave_sync(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_SLAVE_SYNC_PDO:
+            dispatch_slave_sync_pdo(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_SLAVE_SYNC_PDO_ENTRY:
+            dispatch_slave_sync_pdo_entry(fd, master, *payload,
+                    req.data_size);
+            break;
+        case EC_CMD_DOMAIN:
+            dispatch_domain(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_DOMAIN_FMMU:
+            dispatch_domain_fmmu(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_DOMAIN_DATA:
+            /* Domain data requires pointer-based transfer. */
+            send_response(fd, -ENOSYS, NULL, 0);
+            break;
+        case EC_CMD_MASTER_DEBUG:
+            dispatch_master_debug(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_MASTER_RESCAN:
+            dispatch_master_rescan(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_SLAVE_STATE:
+            dispatch_slave_state(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_SLAVE_SDO:
+            dispatch_slave_sdo(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_SLAVE_SDO_ENTRY:
+            dispatch_slave_sdo_entry(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_SLAVE_SDO_UPLOAD:
+            /* SDO upload requires pointer-based data transfer. */
+            send_response(fd, -ENOSYS, NULL, 0);
+            break;
+        case EC_CMD_SLAVE_SDO_DOWNLOAD:
+            /* SDO download requires pointer-based data transfer. */
+            send_response(fd, -ENOSYS, NULL, 0);
+            break;
+        case EC_CMD_SLAVE_SII_READ:
+            /* SII read requires pointer-based data transfer. */
+            send_response(fd, -ENOSYS, NULL, 0);
+            break;
+        case EC_CMD_SLAVE_SII_WRITE:
+            /* SII write requires pointer-based data transfer. */
+            send_response(fd, -ENOSYS, NULL, 0);
+            break;
+        case EC_CMD_SLAVE_REG_READ:
+            /* Register read requires pointer-based data transfer. */
+            send_response(fd, -ENOSYS, NULL, 0);
+            break;
+        case EC_CMD_SLAVE_REG_WRITE:
+            /* Register write requires pointer-based data transfer. */
+            send_response(fd, -ENOSYS, NULL, 0);
+            break;
+        case EC_CMD_SLAVE_FOE_READ:
+            /* FoE read requires pointer-based data transfer. */
+            send_response(fd, -ENOSYS, NULL, 0);
+            break;
+        case EC_CMD_SLAVE_FOE_WRITE:
+            /* FoE write requires pointer-based data transfer. */
+            send_response(fd, -ENOSYS, NULL, 0);
+            break;
+        case EC_CMD_SLAVE_SOE_READ:
+            /* SoE read requires pointer-based data transfer. */
+            send_response(fd, -ENOSYS, NULL, 0);
+            break;
+        case EC_CMD_SLAVE_SOE_WRITE:
+            /* SoE write requires pointer-based data transfer. */
+            send_response(fd, -ENOSYS, NULL, 0);
+            break;
+#ifdef EC_EOE
+        case EC_CMD_SLAVE_EOE_IP_PARAM:
+            dispatch_eoe_ip_unsupported(fd, master, *payload,
+                    req.data_size);
+            break;
+#endif
+        case EC_CMD_CONFIG:
+            dispatch_config(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_CONFIG_PDO:
+            dispatch_config_pdo(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_CONFIG_PDO_ENTRY:
+            dispatch_config_pdo_entry(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_CONFIG_SDO:
+            dispatch_config_sdo(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_CONFIG_IDN:
+            dispatch_config_idn(fd, master, *payload, req.data_size);
+            break;
+        case EC_CMD_CONFIG_FLAG:
+            dispatch_config_flag(fd, master, *payload, req.data_size);
+            break;
+#ifdef EC_EOE
+        case EC_CMD_CONFIG_EOE_IP_PARAM:
+            dispatch_eoe_ip_unsupported(fd, master, *payload,
+                    req.data_size);
+            break;
+        case EC_CMD_EOE_HANDLER:
+            dispatch_eoe_handler(fd, master, *payload, req.data_size);
+            break;
+#endif
+        default:
+            send_response(fd, -ENOTTY, NULL, 0);
+            break;
+    }
+
+    ec_master_registry_put(master);
     return 0;
 }
 
@@ -1317,63 +1275,104 @@ static int conn_handler_fn(void *arg)
 /* Listener thread                                                             */
 /****************************************************************************/
 
+/**
+ * Listener thread: poll()-based event loop that multiplexes the listening
+ * socket and all connected client sockets in a single thread.
+ *
+ * On new connection: accept(), set SO_SNDTIMEO, add to poll array.
+ * On client data:    read one full request, dispatch, send response.
+ * On client error:   close fd and remove from poll array.
+ * On shutdown:       exit the loop; close remaining client fds.
+ */
 static int listener_fn(void *arg)
 {
     ec_cdev_t *cdev = (ec_cdev_t *)arg;
+    /* fds[0] = listening socket; fds[1..nfds-1] = connected clients */
+    struct pollfd fds[1 + EC_IPC_MAX_CLIENTS];
+    int nfds = 1;
+    uint8_t *payload = NULL;
+    uint32_t payload_cap = 0;
+    int i;
+
+    fds[0].fd     = cdev->sock_fd;
+    fds[0].events = POLLIN;
 
     while (!cdev->shutdown) {
-        struct sockaddr_un client_addr;
-        socklen_t client_len = sizeof(client_addr);
-        int client_fd;
-        ec_conn_ctx_t *ctx;
-        ec_thread_t *t;
-
-        client_fd = accept(cdev->sock_fd,
-                (struct sockaddr *)&client_addr, &client_len);
-        if (client_fd < 0) {
-            if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK)
+        int ret = poll(fds, (nfds_t)nfds, 1000);
+        if (ret < 0) {
+            if (errno == EINTR)
                 continue;
             if (!cdev->shutdown)
                 ec_log(EC_LOG_WARNING,
-                        "IPC: accept() failed: %s\n", strerror(errno));
+                        "IPC: poll() failed: %s\n", strerror(errno));
             break;
         }
+        if (ret == 0)
+            continue; /* timeout — recheck shutdown flag */
 
-        ctx = malloc(sizeof(ec_conn_ctx_t));
-        if (!ctx) {
-            ec_log(EC_LOG_WARNING, "IPC: out of memory for connection\n");
-            close(client_fd);
-            continue;
-        }
-        ctx->fd   = client_fd;
-        ctx->cdev = cdev;
-
-        t = ec_thread_run(conn_handler_fn, ctx, "ec_ipc_conn");
-        if (IS_ERR(t)) {
-            ec_log(EC_LOG_WARNING,
-                    "IPC: failed to create connection thread\n");
-            close(client_fd);
-            free(ctx);
-        } else {
-            ec_conn_entry_t *entry = malloc(sizeof(*entry));
-            if (!entry) {
-                ec_log(EC_LOG_WARNING,
-                        "IPC: out of memory for connection entry\n");
-                /* Thread is running but untracked — it will still exit on
-                 * shutdown via cdev->shutdown flag. Detach it. */
-                ec_thread_detach(t);
-            } else {
-                entry->thread = t;
-                entry->fd     = client_fd;
-                entry->next   = NULL;
-                pthread_mutex_lock(&cdev->conn_mutex);
-                entry->next   = cdev->conn_list;
-                cdev->conn_list = entry;
-                pthread_mutex_unlock(&cdev->conn_mutex);
+        /* New connection on the listening socket. */
+        if (fds[0].revents & POLLIN) {
+            struct sockaddr_un client_addr;
+            socklen_t client_len = sizeof(client_addr);
+            int client_fd = accept(cdev->sock_fd,
+                    (struct sockaddr *)&client_addr, &client_len);
+            if (client_fd >= 0) {
+                if (nfds < 1 + EC_IPC_MAX_CLIENTS) {
+                    struct timeval tv;
+                    tv.tv_sec  = 5;
+                    tv.tv_usec = 0;
+                    setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO,
+                            &tv, sizeof(tv));
+                    fds[nfds].fd     = client_fd;
+                    fds[nfds].events = POLLIN;
+                    nfds++;
+                } else {
+                    ec_log(EC_LOG_WARNING,
+                            "IPC: too many connections, rejecting\n");
+                    close(client_fd);
+                }
+            } else if (!cdev->shutdown) {
+                if (errno != EINTR && errno != EAGAIN &&
+                        errno != EWOULDBLOCK)
+                    ec_log(EC_LOG_WARNING,
+                            "IPC: accept() failed: %s\n", strerror(errno));
             }
+        }
+
+        /* Service existing client connections. */
+        for (i = 1; i < nfds; ) {
+            if (!fds[i].revents) {
+                i++;
+                continue;
+            }
+
+            if (fds[i].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                close(fds[i].fd);
+                fds[i] = fds[--nfds];
+                fds[i].revents = 0; /* don't re-process moved entry's stale events */
+                continue; /* recheck same index (now holds last entry) */
+            }
+
+            if (fds[i].revents & POLLIN) {
+                int drop = handle_client_request(fds[i].fd,
+                        &payload, &payload_cap);
+                if (drop) {
+                    close(fds[i].fd);
+                    fds[i] = fds[--nfds];
+                    fds[i].revents = 0; /* don't re-process moved entry's stale events */
+                    continue; /* recheck same index */
+                }
+            }
+
+            i++;
         }
     }
 
+    /* Close all remaining client connections. */
+    for (i = 1; i < nfds; i++)
+        close(fds[i].fd);
+
+    free(payload);
     return 0;
 }
 
@@ -1402,8 +1401,6 @@ int ec_ipc_server_start(const char *socket_path)
     snprintf(cdev->sock_path, sizeof(cdev->sock_path), "%s", socket_path);
     cdev->thread   = NULL;
     cdev->shutdown = 0;
-    cdev->conn_list = NULL;
-    pthread_mutex_init(&cdev->conn_mutex, NULL);
 
     /* Create the listening socket. */
     sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -1457,8 +1454,10 @@ int ec_ipc_server_start(const char *socket_path)
  * ec_ipc_server_stop - shut down the global IPC server.
  *
  * Signals the listener thread to stop, closes the listening socket (which
- * causes the accept() call to return), and waits for the thread to exit.
- * The socket file is removed from the filesystem.
+ * causes the poll() call to return on the next timeout), and waits for the
+ * single listener thread to exit.  All client fds are closed by the listener
+ * thread itself before it exits.  The socket file is removed from the
+ * filesystem.
  */
 void ec_ipc_server_stop(void)
 {
@@ -1467,44 +1466,20 @@ void ec_ipc_server_stop(void)
     if (cdev->sock_fd == -1)
         return; /* was never started or already stopped */
 
-    /* Signal shutdown to listener and connection threads. */
+    /* Signal shutdown to the listener thread. */
     cdev->shutdown = 1;
 
-    /* Shut down the listening socket to unblock accept().
-     * On Linux, close() alone does NOT unblock a concurrent accept()
-     * in another thread — shutdown() is required for that. */
+    /* Shut down the listening socket to wake poll() on Linux.
+     * The listener thread will see cdev->shutdown on the next iteration. */
     shutdown(cdev->sock_fd, SHUT_RDWR);
-
     close(cdev->sock_fd);
     cdev->sock_fd = -1;
 
-    /* Wait for the listener thread to exit. */
+    /* Wait for the listener thread to exit (it closes client fds itself). */
     if (cdev->thread) {
         ec_thread_stop(cdev->thread);
         cdev->thread = NULL;
     }
-
-    /* Shut down all client connections to unblock their poll/recv. */
-    pthread_mutex_lock(&cdev->conn_mutex);
-    for (ec_conn_entry_t *e = cdev->conn_list; e; e = e->next)
-        shutdown(e->fd, SHUT_RDWR);
-    pthread_mutex_unlock(&cdev->conn_mutex);
-
-    /* Join all connection handler threads. */
-    while (1) {
-        ec_conn_entry_t *entry;
-        pthread_mutex_lock(&cdev->conn_mutex);
-        entry = cdev->conn_list;
-        if (entry)
-            cdev->conn_list = entry->next;
-        pthread_mutex_unlock(&cdev->conn_mutex);
-        if (!entry)
-            break;
-        ec_thread_stop(entry->thread);
-        free(entry);
-    }
-
-    pthread_mutex_destroy(&cdev->conn_mutex);
 
     /* Remove the socket file. */
     unlink(cdev->sock_path);
