@@ -29,6 +29,12 @@
 #ifndef __EC_MASTER_SHARED_H__
 #define __EC_MASTER_SHARED_H__
 
+#ifdef __KERNEL__
+#include <linux/types.h>
+#else
+#include <stdint.h>
+#endif
+
 #include "../globals.h"
 #include "../include/ecrt.h"
 
