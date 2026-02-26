@@ -120,7 +120,7 @@ class MasterDeviceKernel : public MasterDeviceBackend
         }
 
         int request(unsigned int cmd, void *data,
-                size_t /*size*/, unsigned long arg = 0)
+                size_t /*size*/, uint32_t arg = 0)
         {
             if (cmd >= sizeof(ioctl_cmd_table) / sizeof(ioctl_cmd_table[0]))
                 return -EINVAL;

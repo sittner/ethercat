@@ -147,7 +147,7 @@ class MasterDeviceUspace : public MasterDeviceBackend
         }
 
         int request(unsigned int cmd, void *data,
-                size_t size, unsigned long arg = 0)
+                size_t size, uint32_t arg = 0)
         {
             ec_ipc_request_t req;
             req.version_magic = EC_IOCTL_VERSION_MAGIC;
@@ -159,7 +159,7 @@ class MasterDeviceUspace : public MasterDeviceBackend
             if (data && size > 0) {
                 req.data_size = static_cast<uint32_t>(size);
             } else if (!data) {
-                argVal = static_cast<uint32_t>(arg);
+                argVal = arg;
                 req.data_size = static_cast<uint32_t>(sizeof(argVal));
             } else {
                 req.data_size = 0;

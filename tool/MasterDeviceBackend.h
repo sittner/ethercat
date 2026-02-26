@@ -22,6 +22,7 @@
 #ifndef __MASTER_DEVICE_BACKEND_H__
 #define __MASTER_DEVICE_BACKEND_H__
 
+#include <stdint.h>
 #include <string>
 
 /****************************************************************************/
@@ -57,7 +58,7 @@ class MasterDeviceBackend
          * \return 0 on success, -errno on failure.
          */
         virtual int request(unsigned int cmd, void *data,
-                size_t size, unsigned long arg = 0) = 0;
+                size_t size, uint32_t arg = 0) = 0;
 
         /** Factory: create the backend appropriate for this build.
          *
