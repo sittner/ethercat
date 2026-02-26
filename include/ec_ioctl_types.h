@@ -30,9 +30,10 @@
 #ifndef __EC_IOCTL_TYPES_H__
 #define __EC_IOCTL_TYPES_H__
 
+#include <stdint.h>
 #include "ecrt.h"
-/* Relative path works because this header is always included via
- * -I$(top_srcdir)/include, making ../master resolve to $(top_srcdir)/master.
+/* Relative path works because this header lives in the include/ directory,
+ * so ../master/ resolves to the master/ directory of the source tree.
  */
 #include "../master/shared.h"
 
