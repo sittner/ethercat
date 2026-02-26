@@ -49,18 +49,12 @@ enum ec_transport_type {
 #endif
 };
 
-#ifndef EC_TRANSPORT_TYPE_DEFINED
-#define EC_TRANSPORT_TYPE_DEFINED
 typedef enum ec_transport_type ec_transport_type_t;
-#endif /* EC_TRANSPORT_TYPE_DEFINED */
 
 /****************************************************************************/
 
 /* Forward declarations */
-#ifndef EC_TRANSPORT_STRUCT_DEFINED
-#define EC_TRANSPORT_STRUCT_DEFINED
 typedef struct ec_transport ec_transport_t;
-#endif /* EC_TRANSPORT_STRUCT_DEFINED */
 typedef struct ec_transport_ops ec_transport_ops_t;
 
 /****************************************************************************/
