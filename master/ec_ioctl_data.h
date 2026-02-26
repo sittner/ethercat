@@ -36,6 +36,7 @@
 #include <stdint.h>
 #endif
 #include "ec_ipc_types.h"
+#include "../globals.h"
 
 /****************************************************************************/
 
