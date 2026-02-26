@@ -29,7 +29,7 @@
 
 #include "pal.h"
 
-#include "globals.h"
+#include "master_globals.h"
 #include "master.h"
 #include "slave.h"
 #include "mailbox.h"

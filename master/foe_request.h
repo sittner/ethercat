@@ -34,7 +34,7 @@
 
 #include "../include/ecrt.h"
 
-#include "globals.h"
+#include "master_globals.h"
 
 /****************************************************************************/
 

@@ -27,15 +27,16 @@
 
 /****************************************************************************/
 
-#ifndef __EC_IOCTL_TYPES_H__
-#define __EC_IOCTL_TYPES_H__
+#ifndef __EC_IOCTL_DATA_H__
+#define __EC_IOCTL_DATA_H__
 
 #ifdef __KERNEL__
 #include <linux/types.h>
 #else
 #include <stdint.h>
 #endif
-#include "shared.h"
+#include "ec_ipc_types.h"
+#include "../globals.h"
 
 /****************************************************************************/
 
@@ -581,5 +582,203 @@ typedef struct {
 } ec_ipc_response_t;
 
 /****************************************************************************/
+
+/*****************************************************************************/
+
+typedef struct {
+    // outputs
+    void *process_data;
+    size_t process_data_size;
+} ec_ioctl_master_activate_t;
+
+/****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t config_index;
+    uint16_t pdo_index;
+    uint16_t entry_index;
+    uint8_t entry_subindex;
+    uint8_t entry_bit_length;
+} ec_ioctl_add_pdo_entry_t;
+
+/****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t config_index;
+    uint16_t entry_index;
+    uint8_t entry_subindex;
+    uint32_t domain_index;
+
+    // outputs
+    unsigned int bit_position;
+} ec_ioctl_reg_pdo_entry_t;
+
+/****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t config_index;
+    uint32_t sync_index;
+    uint32_t pdo_pos;
+    uint32_t entry_pos;
+    uint32_t domain_index;
+
+    // outputs
+    unsigned int bit_position;
+} ec_ioctl_reg_pdo_pos_t;
+
+/****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t config_index;
+    uint16_t index;
+    uint8_t subindex;
+    const uint8_t *data;
+    size_t size;
+    uint8_t complete_access;
+} ec_ioctl_sc_sdo_t;
+
+/****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t config_index;
+    size_t size;
+    uint8_t *target;
+
+    // outputs
+    int32_t overruns;
+} ec_ioctl_sc_emerg_t;
+
+/****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t config_index;
+
+    // outputs
+    ec_slave_config_state_t *state;
+} ec_ioctl_sc_state_t;
+
+/****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t config_index;
+    uint8_t drive_no;
+    uint16_t idn;
+    ec_al_state_t al_state;
+    const uint8_t *data;
+    size_t size;
+} ec_ioctl_sc_idn_t;
+
+/****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t config_index;
+    size_t key_size;
+    char *key;
+    int32_t value;
+} ec_ioctl_sc_flag_t;
+
+/****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t config_index;
+    ec_al_state_t from_state;
+    ec_al_state_t to_state;
+    uint32_t timeout_ms;
+} ec_ioctl_sc_state_timeout_t;
+
+/****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t domain_index;
+
+    // outputs
+    ec_domain_state_t *state;
+} ec_ioctl_domain_state_t;
+
+/****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t config_index;
+
+    // inputs/outputs
+    uint32_t request_index;
+    uint16_t sdo_index;
+    uint8_t sdo_subindex;
+    size_t size;
+    uint8_t *data;
+    uint32_t timeout;
+    ec_request_state_t state;
+} ec_ioctl_sdo_request_t;
+
+/****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t config_index;
+
+    // inputs/outputs
+    uint32_t request_index;
+    uint8_t drive_no;
+    uint16_t idn;
+    size_t size;
+    uint8_t *data;
+    uint32_t timeout;
+    ec_request_state_t state;
+} ec_ioctl_soe_request_t;
+
+/****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t config_index;
+    size_t mem_size;
+
+    // inputs/outputs
+    uint32_t request_index;
+    uint8_t *data;
+    ec_request_state_t state;
+    uint8_t new_data;
+    uint16_t address;
+    size_t transfer_size;
+} ec_ioctl_reg_request_t;
+
+/****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t config_index;
+
+    // inputs/outputs
+    uint32_t voe_index;
+    uint32_t *vendor_id;
+    uint16_t *vendor_type;
+    size_t size;
+    uint8_t *data;
+    ec_request_state_t state;
+} ec_ioctl_voe_t;
+
+/****************************************************************************/
+
+typedef struct {
+    // inputs
+    uint32_t dev_idx;
+
+    // outputs
+    ec_master_link_state_t *state;
+} ec_ioctl_link_state_t;
+
+/****************************************************************************/
+
 
 #endif

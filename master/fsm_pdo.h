@@ -29,7 +29,7 @@
 #ifndef __EC_FSM_PDO_H__
 #define __EC_FSM_PDO_H__
 
-#include "globals.h"
+#include "master_globals.h"
 #include "datagram.h"
 #include "fsm_coe.h"
 #include "fsm_pdo_entry.h"

@@ -27,7 +27,8 @@
 #ifndef __EC_MASTER_GLOBALS_H__
 #define __EC_MASTER_GLOBALS_H__
 
-#include "shared.h"
+#include "ec_ipc_types.h"
+#include "../globals.h"
 
 /*****************************************************************************
  * EtherCAT master

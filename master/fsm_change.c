@@ -26,7 +26,7 @@
 
 /****************************************************************************/
 
-#include "globals.h"
+#include "master_globals.h"
 #include "master.h"
 #include "fsm_change.h"
 #include "slave_config.h"

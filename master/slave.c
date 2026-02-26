@@ -29,7 +29,7 @@
 
 #include "pal.h"
 
-#include "globals.h"
+#include "master_globals.h"
 #include "datagram.h"
 #include "master.h"
 #include "slave_config.h"

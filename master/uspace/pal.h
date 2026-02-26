@@ -47,7 +47,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "../globals.h"
+#include "../master_globals.h"
 
 #include "pal_misc.h"
 #include "pal_sem.h"

@@ -28,7 +28,7 @@
 #ifndef __EC_FMMU_CONFIG_H__
 #define __EC_FMMU_CONFIG_H__
 
-#include "globals.h"
+#include "master_globals.h"
 #include "sync.h"
 
 /****************************************************************************/

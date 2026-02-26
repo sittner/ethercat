@@ -29,7 +29,7 @@
 #ifndef __EC_FSM_SLAVE_SCAN_H__
 #define __EC_FSM_SLAVE_SCAN_H__
 
-#include "globals.h"
+#include "master_globals.h"
 #include "datagram.h"
 #include "slave.h"
 #include "fsm_sii.h"

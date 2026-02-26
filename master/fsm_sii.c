@@ -26,7 +26,7 @@
 
 /****************************************************************************/
 
-#include "globals.h"
+#include "master_globals.h"
 #include "mailbox.h"
 #include "master.h"
 #include "fsm_sii.h"

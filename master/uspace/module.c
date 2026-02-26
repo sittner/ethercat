@@ -27,7 +27,7 @@
 /****************************************************************************/
 
 /* ec_transport.h must be included before pal.h (which pulls in ecrt.h via
- * globals.h -> shared.h) so that __EC_TRANSPORT_H__ is defined when ecrt.h
+ * master_globals.h -> ec_ipc_types.h) so that __EC_TRANSPORT_H__ is defined when ecrt.h
  * runs, preventing redeclaration conflicts with the inline transport
  * definitions in ecrt.h. */
 #include "transport/ec_transport.h"

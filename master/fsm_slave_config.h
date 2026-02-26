@@ -28,7 +28,7 @@
 #ifndef __EC_FSM_SLAVE_CONFIG_H__
 #define __EC_FSM_SLAVE_CONFIG_H__
 
-#include "globals.h"
+#include "master_globals.h"
 #include "slave.h"
 #include "datagram.h"
 #include "fsm_change.h"

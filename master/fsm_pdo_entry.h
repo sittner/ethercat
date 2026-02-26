@@ -28,7 +28,7 @@
 #ifndef __EC_FSM_PDO_ENTRY_H__
 #define __EC_FSM_PDO_ENTRY_H__
 
-#include "globals.h"
+#include "master_globals.h"
 #include "datagram.h"
 #include "fsm_coe.h"
 

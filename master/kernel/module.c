@@ -29,7 +29,7 @@
 #include "pal.h"
 #include "priv.h"
 
-#include "../globals.h"
+#include "../master_globals.h"
 #include "../master.h"
 #include "../device.h"
 
