@@ -29,7 +29,7 @@
 #ifndef __EC_FSM_SLAVE_H__
 #define __EC_FSM_SLAVE_H__
 
-#include "globals.h"
+#include "master_globals.h"
 #include "datagram.h"
 #include "sdo_request.h"
 #include "reg_request.h"

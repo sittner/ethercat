@@ -28,7 +28,7 @@
 #include <sstream>
 using namespace std;
 
-#include "ioctl_types.h"
+#include "ec_ioctl_data.h"
 
 class MasterDevice;
 

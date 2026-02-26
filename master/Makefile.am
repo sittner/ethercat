@@ -55,7 +55,9 @@ noinst_HEADERS = \
 	fsm_slave_config.c fsm_slave_config.h \
 	fsm_slave_scan.c fsm_slave_scan.h \
 	fsm_soe.c fsm_soe.h \
-	globals.h \
+	ec_ipc_types.h \
+	ec_ioctl_data.h \
+	master_globals.h \
 	utils.c \
 	kernel/ioctl.c kernel/ioctl.h \
 	mailbox.c mailbox.h \

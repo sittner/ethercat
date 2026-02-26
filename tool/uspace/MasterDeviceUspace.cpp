@@ -25,7 +25,7 @@
  * Connects to a Unix domain socket exposed by the userspace master library
  * (libethercat.so running in the application process).  Each request/response
  * follows the ec_ipc_request_t / ec_ipc_response_t wire protocol defined in
- * ioctl_types.h.
+ * ec_ioctl_data.h.
  */
 
 #include <sys/socket.h>
@@ -39,7 +39,7 @@
 using namespace std;
 
 #include "../MasterDeviceBackend.h"
-#include "ioctl_types.h"
+#include "ec_ioctl_data.h"
 
 /****************************************************************************/
 

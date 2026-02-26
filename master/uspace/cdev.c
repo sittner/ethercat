@@ -26,7 +26,7 @@
    Implements a Unix domain socket server that allows the \a ethercat
    command-line tool to communicate with a userspace master running inside
    an application process.  The protocol matches the \c ec_ipc_request_t /
-   \c ec_ipc_response_t wire format defined in \c master/ioctl_types.h.
+   \c ec_ipc_response_t wire format defined in \c master/ec_ioctl_data.h.
 */
 
 /****************************************************************************/
@@ -45,8 +45,8 @@
 #include "../pdo.h"
 #include "../pdo_list.h"
 #include "../pdo_entry.h"
-#include "../globals.h"
-#include "../ioctl_types.h"
+#include "../master_globals.h"
+#include "../ec_ioctl_data.h"
 
 #include <sys/socket.h>
 #include <sys/un.h>

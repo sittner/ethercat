@@ -28,7 +28,7 @@
 #ifndef __EC_SYNC_H__
 #define __EC_SYNC_H__
 
-#include "globals.h"
+#include "master_globals.h"
 #include "pdo_list.h"
 #include "sync_config.h"
 

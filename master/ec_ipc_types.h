@@ -19,15 +19,15 @@
  ****************************************************************************/
 
 /** \file
- * Shared protocol-level constants and types used by both the ioctl interface
- * and the shared master source code.  Safe to include from kernel module code
- * and from userspace tool code.
+ * Protocol-level types shared across the IPC/ioctl boundary (slave states,
+ * mailbox protocols, SII details, device index, etc.). Safe to include from
+ * kernel module code and from userspace tool code.
  */
 
 /****************************************************************************/
 
-#ifndef __EC_MASTER_SHARED_H__
-#define __EC_MASTER_SHARED_H__
+#ifndef __EC_MASTER_EC_IPC_TYPES_H__
+#define __EC_MASTER_EC_IPC_TYPES_H__
 
 #ifdef __KERNEL__
 #include <linux/types.h>
@@ -35,7 +35,6 @@
 #include <stdint.h>
 #endif
 
-#include "../globals.h"
 #include "../include/ecrt.h"
 
 /****************************************************************************/

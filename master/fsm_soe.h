@@ -29,7 +29,7 @@
 #ifndef __EC_FSM_SOE_H__
 #define __EC_FSM_SOE_H__
 
-#include "globals.h"
+#include "master_globals.h"
 #include "datagram.h"
 #include "slave.h"
 #include "soe_request.h"

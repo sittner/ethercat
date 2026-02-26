@@ -28,7 +28,7 @@
 
 #include "pal.h"
 
-#include "globals.h"
+#include "master_globals.h"
 #include "master.h"
 #include "mailbox.h"
 #include "slave_config.h"

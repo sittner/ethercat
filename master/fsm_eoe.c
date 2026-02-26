@@ -26,7 +26,7 @@
 
 /****************************************************************************/
 
-#include "globals.h"
+#include "master_globals.h"
 #include "master.h"
 #include "mailbox.h"
 #include "fsm_eoe.h"

@@ -32,7 +32,7 @@
 
 #include "pal.h"
 
-#include "globals.h"
+#include "master_globals.h"
 #include "datagram.h"
 #include "pdo.h"
 #include "sync.h"

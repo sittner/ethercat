@@ -25,7 +25,7 @@
 
 /****************************************************************************/
 
-#include "globals.h"
+#include "master_globals.h"
 #include "slave.h"
 #include "master.h"
 #include "pdo.h"

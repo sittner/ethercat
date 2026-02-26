@@ -32,7 +32,7 @@
 
 #include "pal.h"
 
-#include "globals.h"
+#include "master_globals.h"
 #include "sdo_entry.h"
 
 /****************************************************************************/

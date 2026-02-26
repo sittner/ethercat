@@ -41,7 +41,7 @@
 #include <linux/termios_internal.h>
 #endif
 
-#include "../master/globals.h"
+#include "../master/master_globals.h"
 #include "../include/ectty.h"
 
 /****************************************************************************/

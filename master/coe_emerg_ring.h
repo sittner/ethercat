@@ -29,7 +29,7 @@
 #ifndef __EC_COE_EMERG_RING_H__
 #define __EC_COE_EMERG_RING_H__
 
-#include "globals.h"
+#include "master_globals.h"
 
 /****************************************************************************/
 

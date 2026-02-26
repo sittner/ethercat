@@ -32,7 +32,7 @@
 
 #include "pal.h"
 
-#include "../globals.h"
+#include "master_globals.h"
 
 #ifdef EC_DEBUG_IF
 #include "debug.h"

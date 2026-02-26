@@ -25,7 +25,7 @@
 
 /****************************************************************************/
 
-#include "globals.h"
+#include "master_globals.h"
 #include "slave_config.h"
 #include "master.h"
 

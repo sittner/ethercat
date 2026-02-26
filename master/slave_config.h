@@ -32,7 +32,7 @@
 
 #include "pal.h"
 
-#include "globals.h"
+#include "master_globals.h"
 #include "slave.h"
 #include "sync_config.h"
 #include "fmmu_config.h"

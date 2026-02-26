@@ -29,7 +29,7 @@
 #ifndef __EC_FSM_MASTER_H__
 #define __EC_FSM_MASTER_H__
 
-#include "globals.h"
+#include "master_globals.h"
 #include "datagram.h"
 #include "foe_request.h"
 #include "sdo_request.h"
