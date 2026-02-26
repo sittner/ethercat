@@ -526,8 +526,6 @@ typedef struct {
 
 /****************************************************************************/
 
-#ifdef EC_EOE
-
 typedef struct {
     // input
     uint16_t eoe_index;
@@ -543,8 +541,6 @@ typedef struct {
     uint32_t tx_queued_frames;
     uint32_t tx_queue_size;
 } ec_ioctl_eoe_handler_t;
-
-#endif
 
 /****************************************************************************/
 
