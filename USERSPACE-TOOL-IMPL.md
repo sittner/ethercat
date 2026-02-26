@@ -419,6 +419,7 @@ if ENABLE_USPACE_MASTER
 ethercat_SOURCES += uspace/MasterDeviceUspace.cpp
 ethercat_CXXFLAGS = \
     -I$(top_srcdir)/include \
+    -I$(top_srcdir)/master \
     -Wall -DREV=$(REV) \
     -fno-strict-aliasing
 else
@@ -432,8 +433,9 @@ ethercat_CXXFLAGS = \
 endif
 ```
 
-Note: the uspace build only needs `-I$(top_srcdir)/include` (for
-`ec_ioctl_types.h` and `ecrt.h`). It never touches `master/kernel/`.
+Note: the uspace build needs `-I$(top_srcdir)/include` (for `ec_ioctl_types.h`
+and `ecrt.h`) and `-I$(top_srcdir)/master` (because `ec_ioctl_types.h` includes
+`../master/shared.h`). It never touches `master/kernel/`.
 
 ### `configure.ac`
 
@@ -468,13 +470,12 @@ in both modes.
 | `master/uspace/module.c` | Update `ecrt_lib_init()` impl, add master registry, start/stop IPC server |
 | `master/uspace/main.c` | Pass socket path to `ecrt_lib_init()` (add `-s`/`--socket` CLI option) |
 | `master/uspace/pal.h` | Add IPC server state fields to `ec_master_pal_t` (if needed) |
-| `master/uspace/Makefile.am` | Add `ipc_server.c` to library sources |
+| `master/uspace/Makefile.am` | Add `cdev.c` to library sources |
 | `configure.ac` | Ensure `BUILD_TOOL` works with `ENABLE_USPACE_MASTER` |
 
 ### Files NOT Modified
 
 - `tool/Command*.cpp` — all 30+ command implementations unchanged
-- `tool/Command.h` — only the `#include` path changes
 - `master/master.h`, `master/master.c`, `master/*.c` — core unchanged
 - `master/kernel/ioctl.c` — format strings and `size_t` intermediates updated for fixed-width wire types
 - `lib/` — untouched (disabled when uspace-master enabled)
@@ -586,6 +587,6 @@ the tool is a short-lived process.
 ### 6. Relationship to `master/uspace/cdev.h` Stub
 
 `PAL_IMPLEMENTATION.md` notes that `master/uspace/cdev.h` is a stub with
-`//TODO struct cdev`. The IPC server (`ipc_server.c`) effectively replaces
+`//TODO struct cdev`. The IPC server (`cdev.c`) effectively replaces
 the need for a userspace cdev implementation. The stub can remain as-is
 or be removed once the IPC server is complete.
