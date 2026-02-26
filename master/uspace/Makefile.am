@@ -83,7 +83,7 @@ libethercat_la_CFLAGS = \
 	-I$(srcdir) \
 	-I$(srcdir)/.. \
 	-I$(top_srcdir) \
-	-I$(srcdir)/transport
+	-I$(top_srcdir)/include
 
 if HAVE_XDP
 libethercat_la_CFLAGS += -DHAVE_XDP

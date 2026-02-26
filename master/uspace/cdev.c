@@ -31,9 +31,6 @@
 
 /****************************************************************************/
 
-/* Pull in ec_transport.h before pal.h to avoid ecrt.h redeclaration issues. */
-#include "transport/ec_transport.h"
-
 #include "pal.h"
 
 #include "../master.h"
