@@ -68,24 +68,15 @@ static const unsigned long ioctl_cmd_table[] = {
     EC_IOCTL_SLAVE_FOE_WRITE,       // EC_CMD_SLAVE_FOE_WRITE = 0x15
     EC_IOCTL_SLAVE_SOE_READ,        // EC_CMD_SLAVE_SOE_READ = 0x16
     EC_IOCTL_SLAVE_SOE_WRITE,       // EC_CMD_SLAVE_SOE_WRITE = 0x17
-#ifdef EC_EOE
     EC_IOCTL_SLAVE_EOE_IP_PARAM,    // EC_CMD_SLAVE_EOE_IP_PARAM = 0x18
-#else
-    0,                              // EC_CMD_SLAVE_EOE_IP_PARAM = 0x18 (unused)
-#endif
     EC_IOCTL_CONFIG,                // EC_CMD_CONFIG = 0x19
     EC_IOCTL_CONFIG_PDO,            // EC_CMD_CONFIG_PDO = 0x1a
     EC_IOCTL_CONFIG_PDO_ENTRY,      // EC_CMD_CONFIG_PDO_ENTRY = 0x1b
     EC_IOCTL_CONFIG_SDO,            // EC_CMD_CONFIG_SDO = 0x1c
     EC_IOCTL_CONFIG_IDN,            // EC_CMD_CONFIG_IDN = 0x1d
     EC_IOCTL_CONFIG_FLAG,           // EC_CMD_CONFIG_FLAG = 0x1e
-#ifdef EC_EOE
     EC_IOCTL_CONFIG_EOE_IP_PARAM,   // EC_CMD_CONFIG_EOE_IP_PARAM = 0x1f
     EC_IOCTL_EOE_HANDLER,           // EC_CMD_EOE_HANDLER = 0x20
-#else
-    0,                              // EC_CMD_CONFIG_EOE_IP_PARAM = 0x1f (unused)
-    0,                              // EC_CMD_EOE_HANDLER = 0x20 (unused)
-#endif
 };
 
 /****************************************************************************/

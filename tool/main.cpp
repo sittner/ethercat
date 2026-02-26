@@ -83,7 +83,9 @@ bool emergency = false;
 bool helpRequested = false;
 string outputFile;
 string skin;
+#ifdef EC_USPACE_MASTER
 string socketPath;
+#endif
 
 /****************************************************************************/
 
@@ -116,10 +118,12 @@ string usage()
         << "                         Examples: '1,3', '5-7,9', '-3'." << endl
         << "                         Default: '-' (all)."
         << endl
+#ifdef EC_USPACE_MASTER
         << "  --socket  -S <path>    Unix socket path for userspace master." << endl
         << "                         Env: EC_SOCKET_PATH" << endl
         << "                         Default: " EC_IPC_DEFAULT_SOCKET_PATH
         << endl
+#endif
         << "  --force   -f           Force a command." << endl
         << "  --quiet   -q           Output less information." << endl
         << "  --verbose -v           Output more information." << endl
@@ -151,7 +155,9 @@ void getOptions(int argc, char **argv)
         {"type",        required_argument, NULL, 't'},
         {"output-file", required_argument, NULL, 'o'},
         {"skin",        required_argument, NULL, 's'},
+#ifdef EC_USPACE_MASTER
         {"socket",      required_argument, NULL, 'S'},
+#endif
         {"emergency",   no_argument,       NULL, 'e'},
         {"force",       no_argument,       NULL, 'f'},
         {"quiet",       no_argument,       NULL, 'q'},
@@ -161,7 +167,11 @@ void getOptions(int argc, char **argv)
     };
 
     do {
-        c = getopt_long(argc, argv, "m:a:p:d:t:o:s:S:efqvh", longOptions, NULL);
+        c = getopt_long(argc, argv, "m:a:p:d:t:o:s:"
+#ifdef EC_USPACE_MASTER
+                "S:"
+#endif
+                "efqvh", longOptions, NULL);
 
         switch (c) {
             case 'm':
@@ -192,9 +202,11 @@ void getOptions(int argc, char **argv)
                 skin = optarg;
                 break;
 
+#ifdef EC_USPACE_MASTER
             case 'S':
                 socketPath = optarg;
                 break;
+#endif
 
             case 'e':
                 emergency = true;
@@ -316,12 +328,14 @@ int main(int argc, char **argv)
 
     getOptions(argc, argv);
 
+#ifdef EC_USPACE_MASTER
     if (socketPath.empty()) {
         const char *env = getenv("EC_SOCKET_PATH");
         if (env)
             socketPath = env;
     }
     MasterDevice::setSocketPath(socketPath);
+#endif
 
     matchingCommands = getMatchingCommands(commandName);
 

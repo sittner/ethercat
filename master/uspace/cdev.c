@@ -64,12 +64,21 @@
 
 /****************************************************************************/
 
+/** Entry in the active connection list. */
+typedef struct ec_conn_entry {
+    ec_thread_t            *thread; /**< Connection handler thread. */
+    int                     fd;     /**< Client socket fd. */
+    struct ec_conn_entry   *next;   /**< Next entry in list. */
+} ec_conn_entry_t;
+
 /** Global singleton IPC server state. */
 typedef struct {
-    int          sock_fd;        /**< Listening socket fd (-1 if inactive). */
-    char         sock_path[UNIX_PATH_MAX]; /**< Unix socket filesystem path. */
-    ec_thread_t *thread;         /**< Listener thread handle. */
-    volatile int shutdown;       /**< Non-zero to request shutdown. */
+    int              sock_fd;        /**< Listening socket fd (-1 if inactive). */
+    char             sock_path[UNIX_PATH_MAX]; /**< Unix socket filesystem path. */
+    ec_thread_t     *thread;         /**< Listener thread handle. */
+    volatile int     shutdown;       /**< Non-zero to request shutdown. */
+    ec_conn_entry_t *conn_list;      /**< Head of active connection list. */
+    pthread_mutex_t  conn_mutex;     /**< Protects conn_list. */
 } ec_cdev_t;
 
 static ec_cdev_t g_cdev = { .sock_fd = -1 };
@@ -105,6 +114,11 @@ void ec_master_registry_remove(ec_master_t *master)
             registry_master_count--;
     }
     pthread_mutex_unlock(&registry_mutex);
+
+    /* Wait for all IPC handlers to release their references. */
+    while (atomic_load(&master->ipc_refcount) > 0) {
+        usleep(1000);  /* 1ms poll — only during shutdown */
+    }
 }
 
 ec_master_t *ec_master_registry_find(unsigned int index)
@@ -116,6 +130,28 @@ ec_master_t *ec_master_registry_find(unsigned int index)
     master = master_registry[index];
     pthread_mutex_unlock(&registry_mutex);
     return master;
+}
+
+/** Acquire a reference to a master from the registry.
+ * Returns the master pointer with refcount incremented, or NULL. */
+static ec_master_t *ec_master_registry_get(unsigned int index)
+{
+    ec_master_t *master;
+    if (index >= EC_MAX_MASTERS)
+        return NULL;
+    pthread_mutex_lock(&registry_mutex);
+    master = master_registry[index];
+    if (master)
+        atomic_fetch_add(&master->ipc_refcount, 1);
+    pthread_mutex_unlock(&registry_mutex);
+    return master;
+}
+
+/** Release a reference to a master. */
+static void ec_master_registry_put(ec_master_t *master)
+{
+    if (master)
+        atomic_fetch_sub(&master->ipc_refcount, 1);
 }
 
 unsigned int ec_master_registry_count(void)
@@ -163,29 +199,6 @@ static int send_all(int fd, const void *buf, size_t len)
         remaining -= (size_t)n;
     }
     return 0;
-}
-
-/****************************************************************************/
-/* Helper: wait until fd is readable or cdev shuts down.
- * Returns 0 when data is available, -EINTR on shutdown, -errno on error.    */
-/****************************************************************************/
-
-static int wait_readable(int fd, ec_cdev_t *cdev)
-{
-    struct pollfd pfd;
-    pfd.fd     = fd;
-    pfd.events = POLLIN;
-    while (!cdev->shutdown) {
-        int ret = poll(&pfd, 1, 1000);
-        if (ret > 0)
-            return 0;
-        if (ret == 0)
-            continue;
-        if (errno == EINTR)
-            continue;
-        return -errno;
-    }
-    return -EINTR;
 }
 
 /****************************************************************************/
@@ -1037,10 +1050,14 @@ static int dispatch_eoe_handler(int fd, ec_master_t *master,
         ? eoe->slave->ring_position : 0xffff;
     snprintf(io.name, EC_DATAGRAM_NAME_SIZE, "%s", eoe->dev->name);
     io.open               = eoe->opened;
+    /* EoE statistics are reported from the EtherCAT bus perspective:
+     * tool "Rx" = data received from bus = net_device tx (interface sends to bus)
+     * tool "Tx" = data sent to bus = net_device rx (interface receives from bus)
+     */
     io.rx_bytes           = eoe->stats.tx_bytes;
     io.rx_rate            = eoe->tx_rate;
     io.tx_bytes           = eoe->stats.rx_bytes;
-    io.tx_rate            = eoe->tx_rate;
+    io.tx_rate            = eoe->rx_rate;
     io.tx_queued_frames   = eoe->tx_queued_frames;
     io.tx_queue_size      = eoe->tx_queue_size;
 
@@ -1087,17 +1104,12 @@ static int conn_handler_fn(void *arg)
 
     free(ctx); /* ctx was heap-allocated by listener */
 
-    /* Set receive and send timeouts so that recv_all()/send_all() do not block
-     * forever if a client stalls.  The receive timeout also ensures that this
-     * thread will eventually wake up and check cdev->shutdown after
-     * ec_ipc_server_stop() is called.
-     * (SO_RCVTIMEO/SO_SNDTIMEO cause recv()/send() to return EAGAIN/EWOULDBLOCK
-     * on expiry.) */
+    /* Set a send timeout so that send_all() does not block forever if a
+     * client stalls on the write side. */
     {
         struct timeval tv;
         tv.tv_sec  = 5;
         tv.tv_usec = 0;
-        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
     }
 
@@ -1105,10 +1117,21 @@ static int conn_handler_fn(void *arg)
         ec_ipc_request_t req;
         ec_master_t *master;
         int ret;
+        struct pollfd pfd;
 
-        ret = wait_readable(fd, cdev);
-        if (ret < 0)
-            break; /* shutdown or error */
+        /* Wait for data or check shutdown periodically. */
+        pfd.fd     = fd;
+        pfd.events = POLLIN;
+        ret = poll(&pfd, 1, 1000);
+        if (ret == 0)
+            continue;  /* timeout, recheck shutdown */
+        if (ret < 0) {
+            if (errno == EINTR)
+                continue;
+            break;
+        }
+        if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))
+            break;
 
         ret = recv_all(fd, &req, sizeof(req));
         if (ret < 0)
@@ -1155,7 +1178,7 @@ static int conn_handler_fn(void *arg)
         }
 
         /* All other commands require a valid master. */
-        master = ec_master_registry_find(req.master_index);
+        master = ec_master_registry_get(req.master_index);
         if (!master) {
             send_response(fd, -EINVAL, NULL, 0);
             continue;
@@ -1284,6 +1307,8 @@ static int conn_handler_fn(void *arg)
                 send_response(fd, -ENOTTY, NULL, 0);
                 break;
         }
+
+        ec_master_registry_put(master);
     }
 
     free(payload);
@@ -1333,7 +1358,22 @@ static int listener_fn(void *arg)
             close(client_fd);
             free(ctx);
         } else {
-            ec_thread_detach(t);
+            ec_conn_entry_t *entry = malloc(sizeof(*entry));
+            if (!entry) {
+                ec_log(EC_LOG_WARNING,
+                        "IPC: out of memory for connection entry\n");
+                /* Thread is running but untracked — it will still exit on
+                 * shutdown via cdev->shutdown flag. Detach it. */
+                ec_thread_detach(t);
+            } else {
+                entry->thread = t;
+                entry->fd     = client_fd;
+                entry->next   = NULL;
+                pthread_mutex_lock(&cdev->conn_mutex);
+                entry->next   = cdev->conn_list;
+                cdev->conn_list = entry;
+                pthread_mutex_unlock(&cdev->conn_mutex);
+            }
         }
     }
 
@@ -1365,6 +1405,8 @@ int ec_ipc_server_start(const char *socket_path)
     snprintf(cdev->sock_path, sizeof(cdev->sock_path), "%s", socket_path);
     cdev->thread   = NULL;
     cdev->shutdown = 0;
+    cdev->conn_list = NULL;
+    pthread_mutex_init(&cdev->conn_mutex, NULL);
 
     /* Create the listening socket. */
     sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -1445,11 +1487,27 @@ void ec_ipc_server_stop(void)
         cdev->thread = NULL;
     }
 
-    /* Connection handler threads that are blocked in recv_all() are not
-     * directly notified here.  They are detached threads and will exit
-     * naturally: the SO_RCVTIMEO set in conn_handler_fn() ensures that
-     * recv() returns with EAGAIN within 5 seconds, at which point the
-     * thread checks cdev->shutdown and exits the request loop. */
+    /* Shut down all client connections to unblock their poll/recv. */
+    pthread_mutex_lock(&cdev->conn_mutex);
+    for (ec_conn_entry_t *e = cdev->conn_list; e; e = e->next)
+        shutdown(e->fd, SHUT_RDWR);
+    pthread_mutex_unlock(&cdev->conn_mutex);
+
+    /* Join all connection handler threads. */
+    while (1) {
+        ec_conn_entry_t *entry;
+        pthread_mutex_lock(&cdev->conn_mutex);
+        entry = cdev->conn_list;
+        if (entry)
+            cdev->conn_list = entry->next;
+        pthread_mutex_unlock(&cdev->conn_mutex);
+        if (!entry)
+            break;
+        ec_thread_stop(entry->thread);
+        free(entry);
+    }
+
+    pthread_mutex_destroy(&cdev->conn_mutex);
 
     /* Remove the socket file. */
     unlink(cdev->sock_path);

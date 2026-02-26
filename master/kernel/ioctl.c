@@ -1695,10 +1695,14 @@ static ATTRIBUTES int ec_ioctl_eoe_handler(
     }
     snprintf(data.name, EC_DATAGRAM_NAME_SIZE, eoe->dev->name);
     data.open = eoe->opened;
+    /* EoE statistics are reported from the EtherCAT bus perspective:
+     * tool "Rx" = data received from bus = net_device tx (interface sends to bus)
+     * tool "Tx" = data sent to bus = net_device rx (interface receives from bus)
+     */
     data.rx_bytes = eoe->stats.tx_bytes;
     data.rx_rate = eoe->tx_rate;
     data.tx_bytes = eoe->stats.rx_bytes;
-    data.tx_rate = eoe->tx_rate;
+    data.tx_rate = eoe->rx_rate;
     data.tx_queued_frames = eoe->tx_queued_frames;
     data.tx_queue_size = eoe->tx_queue_size;
 

@@ -68,19 +68,15 @@
 #define EC_IOCTL_SLAVE_FOE_WRITE       EC_IOW(0x15, ec_ioctl_slave_foe_t)
 #define EC_IOCTL_SLAVE_SOE_READ       EC_IOWR(0x16, ec_ioctl_slave_soe_read_t)
 #define EC_IOCTL_SLAVE_SOE_WRITE      EC_IOWR(0x17, ec_ioctl_slave_soe_write_t)
-#ifdef EC_EOE
 #define EC_IOCTL_SLAVE_EOE_IP_PARAM    EC_IOW(0x18, ec_ioctl_eoe_ip_t)
-#endif
 #define EC_IOCTL_CONFIG               EC_IOWR(0x19, ec_ioctl_config_t)
 #define EC_IOCTL_CONFIG_PDO           EC_IOWR(0x1a, ec_ioctl_config_pdo_t)
 #define EC_IOCTL_CONFIG_PDO_ENTRY     EC_IOWR(0x1b, ec_ioctl_config_pdo_entry_t)
 #define EC_IOCTL_CONFIG_SDO           EC_IOWR(0x1c, ec_ioctl_config_sdo_t)
 #define EC_IOCTL_CONFIG_IDN           EC_IOWR(0x1d, ec_ioctl_config_idn_t)
 #define EC_IOCTL_CONFIG_FLAG          EC_IOWR(0x1e, ec_ioctl_config_flag_t)
-#ifdef EC_EOE
 #define EC_IOCTL_CONFIG_EOE_IP_PARAM  EC_IOWR(0x1f, ec_ioctl_eoe_ip_t)
 #define EC_IOCTL_EOE_HANDLER          EC_IOWR(0x20, ec_ioctl_eoe_handler_t)
-#endif
 
 // Application interface
 #define EC_IOCTL_REQUEST                EC_IO(0x21)

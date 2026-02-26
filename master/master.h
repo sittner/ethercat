@@ -287,6 +287,10 @@ struct ec_master {
     ec_work_t sc_reset_work; /**< Task to reset slave configuration. */
     ec_irq_work_t sc_reset_work_kicker; /**< NMI-Safe kicker to trigger
                                             reset task above. */
+
+#ifdef EC_USPACE_MASTER
+    atomic_int ipc_refcount; /**< Reference count for IPC connection handlers. */
+#endif
 };
 
 /****************************************************************************/
