@@ -116,7 +116,7 @@ void ec_master_registry_remove(ec_master_t *master)
     pthread_mutex_unlock(&registry_mutex);
 
     /* Wait for all IPC handlers to release their references. */
-    while (atomic_load(&master->ipc_refcount) > 0) {
+    while (atomic_load(&master->pal.ipc_refcount) > 0) {
         usleep(1000);  /* 1ms poll — only during shutdown */
     }
 }
@@ -142,7 +142,7 @@ static ec_master_t *ec_master_registry_get(unsigned int index)
     pthread_mutex_lock(&registry_mutex);
     master = master_registry[index];
     if (master)
-        atomic_fetch_add(&master->ipc_refcount, 1);
+        atomic_fetch_add(&master->pal.ipc_refcount, 1);
     pthread_mutex_unlock(&registry_mutex);
     return master;
 }
@@ -151,7 +151,7 @@ static ec_master_t *ec_master_registry_get(unsigned int index)
 static void ec_master_registry_put(ec_master_t *master)
 {
     if (master)
-        atomic_fetch_sub(&master->ipc_refcount, 1);
+        atomic_fetch_sub(&master->pal.ipc_refcount, 1);
 }
 
 unsigned int ec_master_registry_count(void)

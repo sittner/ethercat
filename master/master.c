@@ -209,7 +209,7 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     master->thread = NULL;
 
 #ifdef EC_USPACE_MASTER
-    atomic_init(&master->ipc_refcount, 0);
+    atomic_init(&master->pal.ipc_refcount, 0);
 #endif
 
 #ifdef EC_EOE

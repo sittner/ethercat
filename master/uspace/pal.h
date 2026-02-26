@@ -111,6 +111,7 @@ typedef struct {
     uint8_t backup_mac[ETH_ALEN];         /**< Copied backup MAC address (owned). */
     char *interface_name;                  /**< Copied interface name (strdup, owned). */
     char *backup_interface_name;           /**< Backup interface name (NULL if none). */
+    atomic_int ipc_refcount;               /**< Reference count for IPC connection handlers. */
 } ec_master_pal_t;
 
 #endif /* __EC_USPACE_PAL_H__ */
