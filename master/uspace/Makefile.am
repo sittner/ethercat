@@ -74,7 +74,7 @@ libethercat_la_SOURCES = \
 	transport/transport.c \
 	transport/transport_raw.c
 
-if HAVE_XDP
+if EC_USPACE_HAVE_XDP
 libethercat_la_SOURCES += transport/transport_xdp.c
 endif
 
@@ -87,8 +87,8 @@ libethercat_la_CFLAGS = \
 	-I$(top_srcdir) \
 	-I$(top_srcdir)/include
 
-if HAVE_XDP
-libethercat_la_CFLAGS += -DHAVE_XDP
+if EC_USPACE_HAVE_XDP
+libethercat_la_CFLAGS += -DEC_USPACE_HAVE_XDP
 endif
 
 #
@@ -109,8 +109,8 @@ libethercat_la_LDFLAGS = -version-info 0:0:0 \
 
 libethercat_la_LIBADD = -lpthread
 
-if HAVE_XDP
-libethercat_la_LIBADD += -lxdp -lbpf
+if EC_USPACE_HAVE_XDP
+libethercat_la_LIBADD += -lxdp
 endif
 
 bin_PROGRAMS = ec_master
