@@ -70,6 +70,7 @@ libethercat_la_SOURCES = \
 	device_uspace.c \
 	module.c \
 	cdev.c \
+	$(top_srcdir)/lib/shared.c \
 	transport/transport.c \
 	transport/transport_raw.c
 
@@ -80,6 +81,7 @@ endif
 libethercat_la_CFLAGS = \
 	-DEC_USPACE_MASTER \
 	-D_GNU_SOURCE \
+	-Dethercat_EXPORTS \
 	-I$(srcdir) \
 	-I$(srcdir)/.. \
 	-I$(top_srcdir) \
