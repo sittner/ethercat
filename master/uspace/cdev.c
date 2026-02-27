@@ -232,6 +232,33 @@ static int send_response(int fd, int32_t ret_val,
     return ret;
 }
 
+/** Send a response with both struct data and a trailing data blob. */
+static int send_response_with_trailing(int fd, int32_t ret_val,
+        const void *data, uint32_t data_size,
+        const void *trailing, uint32_t trailing_size)
+{
+    ec_ipc_response_t resp;
+    int ret;
+
+    resp.ret       = ret_val;
+    resp.data_size = data_size + trailing_size;
+
+    ret = send_all(fd, &resp, sizeof(resp));
+    if (ret < 0)
+        return ret;
+
+    if (data && data_size > 0) {
+        ret = send_all(fd, data, data_size);
+        if (ret < 0)
+            return ret;
+    }
+
+    if (trailing && trailing_size > 0)
+        ret = send_all(fd, trailing, trailing_size);
+
+    return ret;
+}
+
 /****************************************************************************/
 /* Command dispatch                                                            */
 /****************************************************************************/
@@ -1060,6 +1087,116 @@ static int dispatch_eoe_ip_unsupported(int fd, ec_master_t *master,
 #endif /* EC_EOE */
 
 /****************************************************************************/
+/* Trailing-data dispatch functions                                            */
+/****************************************************************************/
+
+/** EC_CMD_DOMAIN_DATA — return domain process data. */
+static int dispatch_domain_data(int fd, ec_master_t *master,
+        const uint8_t *req, uint32_t req_size)
+{
+    ec_ioctl_domain_data_t io;
+    const ec_domain_t *domain;
+
+    if (req_size < sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
+
+    if (ec_sem_down_interruptible(&master->master_sem))
+        return send_response(fd, -EINTR, NULL, 0);
+
+    domain = ec_master_find_domain_const(master, io.domain_index);
+    if (!domain) {
+        ec_sem_up(&master->master_sem);
+        EC_MASTER_ERR(master, "Domain %u does not exist!\n", io.domain_index);
+        return send_response(fd, -EINVAL, NULL, 0);
+    }
+
+    if (domain->data_size != io.data_size) {
+        ec_sem_up(&master->master_sem);
+        EC_MASTER_ERR(master, "Data size mismatch %u/%zu!\n",
+                io.data_size, domain->data_size);
+        return send_response(fd, -EFAULT, NULL, 0);
+    }
+
+    {
+        int ret = send_response_with_trailing(fd, 0,
+                &io, sizeof(io),
+                domain->data, io.data_size);
+        ec_sem_up(&master->master_sem);
+        return ret;
+    }
+}
+
+/** EC_CMD_SLAVE_SDO_UPLOAD — read an SDO entry from a slave. */
+static int dispatch_slave_sdo_upload(int fd, ec_master_t *master,
+        const uint8_t *req, uint32_t req_size)
+{
+    ec_ioctl_slave_sdo_upload_t io;
+    uint8_t *target;
+    size_t result_size = 0;
+    int ret;
+
+    if (req_size < sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
+
+    if (!io.target_size)
+        return send_response(fd, -EINVAL, NULL, 0);
+
+    target = malloc(io.target_size);
+    if (!target) {
+        EC_MASTER_ERR(master, "Failed to allocate %u bytes for SDO upload.\n",
+                io.target_size);
+        return send_response(fd, -ENOMEM, NULL, 0);
+    }
+
+    ret = ecrt_master_sdo_upload(master, io.slave_position,
+            io.sdo_index, io.sdo_entry_subindex, target,
+            io.target_size, &result_size, &io.abort_code);
+    io.data_size = (uint32_t)result_size;
+
+    if (!ret) {
+        int send_ret = send_response_with_trailing(fd, 0,
+                &io, sizeof(io),
+                target, io.data_size);
+        free(target);
+        return send_ret;
+    } else {
+        free(target);
+        return send_response(fd, ret, &io, sizeof(io));
+    }
+}
+
+/** EC_CMD_SLAVE_SDO_DOWNLOAD — write an SDO entry to a slave. */
+static int dispatch_slave_sdo_download(int fd, ec_master_t *master,
+        const uint8_t *req, uint32_t req_size)
+{
+    ec_ioctl_slave_sdo_download_t io;
+    const uint8_t *sdo_data;
+    int retval;
+
+    if (req_size < sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
+
+    /* Trailing SDO data follows the struct in the request payload. */
+    if (req_size < sizeof(io) + io.data_size)
+        return send_response(fd, -EINVAL, NULL, 0);
+    sdo_data = req + sizeof(io);
+
+    if (io.complete_access) {
+        retval = ecrt_master_sdo_download_complete(master, io.slave_position,
+                io.sdo_index, sdo_data, io.data_size, &io.abort_code);
+    } else {
+        retval = ecrt_master_sdo_download(master, io.slave_position,
+                io.sdo_index, io.sdo_entry_subindex, sdo_data,
+                io.data_size, &io.abort_code);
+    }
+
+    return send_response(fd, retval, &io, sizeof(io));
+}
+
+/****************************************************************************/
 /* Poll-based event loop                                                       */
 /****************************************************************************/
 
@@ -1166,8 +1303,7 @@ static int handle_client_request(int fd, uint8_t **payload,
             dispatch_domain_fmmu(fd, master, *payload, req.data_size);
             break;
         case EC_CMD_DOMAIN_DATA:
-            /* Domain data requires pointer-based transfer. */
-            send_response(fd, -ENOSYS, NULL, 0);
+            dispatch_domain_data(fd, master, *payload, req.data_size);
             break;
         case EC_CMD_MASTER_DEBUG:
             dispatch_master_debug(fd, master, *payload, req.data_size);
@@ -1185,12 +1321,10 @@ static int handle_client_request(int fd, uint8_t **payload,
             dispatch_slave_sdo_entry(fd, master, *payload, req.data_size);
             break;
         case EC_CMD_SLAVE_SDO_UPLOAD:
-            /* SDO upload requires pointer-based data transfer. */
-            send_response(fd, -ENOSYS, NULL, 0);
+            dispatch_slave_sdo_upload(fd, master, *payload, req.data_size);
             break;
         case EC_CMD_SLAVE_SDO_DOWNLOAD:
-            /* SDO download requires pointer-based data transfer. */
-            send_response(fd, -ENOSYS, NULL, 0);
+            dispatch_slave_sdo_download(fd, master, *payload, req.data_size);
             break;
         case EC_CMD_SLAVE_SII_READ:
             /* SII read requires pointer-based data transfer. */

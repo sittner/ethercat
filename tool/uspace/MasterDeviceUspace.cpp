@@ -219,6 +219,89 @@ class MasterDeviceUspace : public MasterDeviceBackend
             return resp.ret;
         }
 
+        int requestTrailingData(unsigned int cmd, void *data,
+                size_t size,
+                const void *trailingIn, size_t trailingInSize,
+                void *trailingOut, size_t trailingOutSize)
+        {
+            ec_ipc_request_t req;
+            req.version_magic = EC_IOCTL_VERSION_MAGIC;
+            req.cmd = cmd;
+            req.master_index = masterIndex;
+            req.data_size = static_cast<uint32_t>(size + trailingInSize);
+
+            int ret = send_all(sockfd, &req, sizeof(req));
+            if (ret < 0)
+                return ret;
+
+            /* Send the struct with pointer field zeroed on the wire. */
+            if (data && size > 0) {
+                ret = send_all(sockfd, data, size);
+                if (ret < 0)
+                    return ret;
+            }
+
+            /* Send trailing input data (e.g. SDO download payload). */
+            if (trailingIn && trailingInSize > 0) {
+                ret = send_all(sockfd, trailingIn, trailingInSize);
+                if (ret < 0)
+                    return ret;
+            }
+
+            ec_ipc_response_t resp;
+            ret = recv_all(sockfd, &resp, sizeof(resp));
+            if (ret < 0)
+                return ret;
+
+            /* Receive struct portion. */
+            if (resp.data_size > 0 && data && size > 0) {
+                size_t structBytes = resp.data_size < size
+                        ? resp.data_size : size;
+                ret = recv_all(sockfd, data, structBytes);
+                if (ret < 0)
+                    return ret;
+
+                /* Receive trailing output data (e.g. SDO upload / domain data). */
+                if (resp.data_size > size) {
+                    size_t trailingBytes = resp.data_size - size;
+                    if (trailingOut && trailingOutSize > 0) {
+                        size_t recvTrailing = trailingBytes < trailingOutSize
+                                ? trailingBytes : trailingOutSize;
+                        ret = recv_all(sockfd, trailingOut, recvTrailing);
+                        if (ret < 0)
+                            return ret;
+                        trailingBytes -= recvTrailing;
+                    }
+                    /* Discard any excess bytes. */
+                    if (trailingBytes > 0) {
+                        char discard[256];
+                        while (trailingBytes > 0) {
+                            size_t chunk = trailingBytes < sizeof(discard)
+                                    ? trailingBytes : sizeof(discard);
+                            ret = recv_all(sockfd, discard, chunk);
+                            if (ret < 0)
+                                return ret;
+                            trailingBytes -= chunk;
+                        }
+                    }
+                }
+            } else if (resp.data_size > 0) {
+                /* Drain response payload we cannot store. */
+                char discard[256];
+                size_t remaining = resp.data_size;
+                while (remaining > 0) {
+                    size_t chunk = remaining < sizeof(discard)
+                            ? remaining : sizeof(discard);
+                    ret = recv_all(sockfd, discard, chunk);
+                    if (ret < 0)
+                        return ret;
+                    remaining -= chunk;
+                }
+            }
+
+            return resp.ret;
+        }
+
     private:
         string socketPath;
         int sockfd;

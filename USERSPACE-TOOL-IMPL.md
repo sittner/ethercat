@@ -532,9 +532,9 @@ server skeleton, master registry) and the following read-only commands:
 
 ### Phase 2: Read-Write Commands
 
-- [ ] IPC: `EC_CMD_DOMAIN_DATA` (requires pointer-based trailing data transfer)
-- [ ] IPC: `EC_CMD_SLAVE_SDO_UPLOAD` (with trailing data response)
-- [ ] IPC: `EC_CMD_SLAVE_SDO_DOWNLOAD` (with trailing data request)
+- [x] IPC: `EC_CMD_DOMAIN_DATA` (requires pointer-based trailing data transfer)
+- [x] IPC: `EC_CMD_SLAVE_SDO_UPLOAD` (with trailing data response)
+- [x] IPC: `EC_CMD_SLAVE_SDO_DOWNLOAD` (with trailing data request)
 - [ ] IPC: `EC_CMD_SLAVE_SII_READ`, `EC_CMD_SLAVE_SII_WRITE` (trailing data)
 - [ ] IPC: `EC_CMD_SLAVE_REG_READ`, `EC_CMD_SLAVE_REG_WRITE` (trailing data)
 - [ ] IPC: `EC_CMD_SLAVE_FOE_READ`, `EC_CMD_SLAVE_FOE_WRITE` (trailing data)

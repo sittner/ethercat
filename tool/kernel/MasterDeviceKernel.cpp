@@ -137,6 +137,15 @@ class MasterDeviceKernel : public MasterDeviceBackend
             return ret < 0 ? -errno : ret;
         }
 
+        int requestTrailingData(unsigned int cmd, void *data,
+                size_t size,
+                const void * /*trailingIn*/, size_t /*trailingInSize*/,
+                void * /*trailingOut*/, size_t /*trailingOutSize*/)
+        {
+            // Kernel ioctl follows pointers in the struct directly
+            return request(cmd, data, size);
+        }
+
     private:
         int fd;
 };
