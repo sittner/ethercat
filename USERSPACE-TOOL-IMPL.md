@@ -65,7 +65,7 @@ so this is not a compatibility break.
 ### Default Socket Path
 
 ```c
-/* In master/ioctl_types.h */
+/* In include/ecrt.h.in */
 #ifndef EC_IPC_DEFAULT_SOCKET_PATH
 #define EC_IPC_DEFAULT_SOCKET_PATH "/var/run/ethercat.sock"
 #endif
@@ -218,7 +218,7 @@ Command numbers are extracted from the existing ioctl numbering as a
 platform-neutral enum in the shared header:
 
 ```c
-/* master/ioctl_types.h */
+/* master/ec_ioctl_data.h */
 enum ec_tool_cmd {
     EC_CMD_MODULE               = 0x00,
     EC_CMD_MASTER               = 0x01,
@@ -259,7 +259,7 @@ enum ec_tool_cmd {
 The kernel backend maps these to `_IO`/`_IOR`/`_IOW`/`_IOWR` macros via a
 lookup table. The socket backend sends them as-is in the request header.
 
-## Shared Header: `master/ioctl_types.h`
+## Shared Header: `master/ec_ioctl_data.h`
 
 All `ec_ioctl_*_t` struct definitions and the `ec_tool_cmd` enum are
 extracted from `master/kernel/ioctl.h` into a new shared header that has
@@ -270,7 +270,7 @@ includes the shared header and adds the `_IO` macros + `#ifdef __KERNEL__`
 context.
 
 `tool/Command.h` switches from `#include "../master/kernel/ioctl.h"` to
-`#include "ioctl_types.h"`.
+`#include "ec_ioctl_data.h"`.
 
 ## Tool-Side Abstraction Layer
 
@@ -450,7 +450,7 @@ endif
 ```
 
 Note: the uspace build needs `-I$(top_srcdir)/include` (for `ecrt.h`) and
-`-I$(top_srcdir)/master` (for `ioctl_types.h` and `shared.h`).
+`-I$(top_srcdir)/master` (for `ec_ioctl_data.h` and `shared.h`).
 It never touches `master/kernel/`.
 
 ### `configure.ac`
@@ -465,7 +465,7 @@ in both modes.
 
 | File | Purpose |
 |------|---------|
-| `master/ioctl_types.h` | Shared data types + command enum (no platform deps) |
+| `master/ec_ioctl_data.h` | Shared data types + command enum (no platform deps) |
 | `tool/MasterDeviceBackend.h` | Abstract backend interface |
 | `tool/kernel/MasterDeviceKernel.cpp` | ioctl backend + factory function |
 | `tool/uspace/MasterDeviceUspace.cpp` | Unix socket backend + factory function |
@@ -477,7 +477,7 @@ in both modes.
 | File | Change |
 |------|--------|
 | `master/kernel/ioctl.h` | Thin wrapper: includes shared header, adds `_IO` macros |
-| `tool/Command.h` | `#include "ioctl_types.h"` (was `../master/kernel/ioctl.h`) |
+| `tool/Command.h` | `#include "ec_ioctl_data.h"` (was `../master/kernel/ioctl.h`) |
 | `tool/MasterDevice.h` | Remove `int fd`, add `MasterDeviceBackend *backend`, add `setSocketPath()` |
 | `tool/MasterDevice.cpp` | Delegate all methods to backend (remove all `ioctl()` calls) |
 | `tool/main.cpp` | Add `--socket`/`-S`, `EC_SOCKET_PATH` env, `setSocketPath()` |
@@ -503,12 +503,12 @@ in both modes.
 Implement the infrastructure (shared header, backend abstraction, IPC
 server skeleton, master registry) and the following read-only commands:
 
-- [x] Extract `ioctl_types.h` from `master/kernel/ioctl.h`
+- [x] Extract `ec_ioctl_data.h` from `master/kernel/ioctl.h`
 - [x] Make `master/kernel/ioctl.h` a thin wrapper including shared header
 - [x] Create `tool/MasterDeviceBackend.h` (abstract interface)
 - [x] Create `tool/kernel/MasterDeviceKernel.cpp` (ioctl backend)
 - [x] Refactor `tool/MasterDevice.cpp` to delegate to backend
-- [x] Change `tool/Command.h` include to `ioctl_types.h`
+- [x] Change `tool/Command.h` include to `ec_ioctl_data.h`
 - [x] Update `tool/Makefile.am` with conditional backend selection
 - [x] Verify kernel-mode build still works unchanged
 - [x] Change `ecrt_lib_init()` signature: add `socket_path` parameter
@@ -526,13 +526,13 @@ server skeleton, master registry) and the following read-only commands:
 - [x] IPC: `EC_CMD_CONFIG`, `EC_CMD_CONFIG_PDO`, `EC_CMD_CONFIG_PDO_ENTRY`
 - [x] IPC: `EC_CMD_CONFIG_SDO`, `EC_CMD_CONFIG_IDN`, `EC_CMD_CONFIG_FLAG`
 - [x] IPC: `EC_CMD_MASTER_DEBUG`, `EC_CMD_MASTER_RESCAN`, `EC_CMD_SLAVE_STATE`
-- [ ] IPC: `EC_CMD_DOMAIN_DATA` (requires pointer-based trailing data transfer)
 - [ ] Test: `ethercat master`, `ethercat slaves`, `ethercat pdos`, `ethercat sdos`
 - [ ] Test: `ethercat config`, `ethercat domains`, `ethercat cstruct`
 - [ ] Test: `ethercat graph`, `ethercat xml`, `ethercat version`
 
 ### Phase 2: Read-Write Commands
 
+- [ ] IPC: `EC_CMD_DOMAIN_DATA` (requires pointer-based trailing data transfer)
 - [ ] IPC: `EC_CMD_SLAVE_SDO_UPLOAD` (with trailing data response)
 - [ ] IPC: `EC_CMD_SLAVE_SDO_DOWNLOAD` (with trailing data request)
 - [ ] IPC: `EC_CMD_SLAVE_SII_READ`, `EC_CMD_SLAVE_SII_WRITE` (trailing data)
@@ -549,8 +549,8 @@ server skeleton, master registry) and the following read-only commands:
 ### Phase 3: EoE Commands (if needed)
 
 - [x] IPC: `EC_CMD_EOE_HANDLER` (implemented behind `#ifdef EC_EOE`)
-- [ ] IPC: `EC_CMD_SLAVE_EOE_IP_PARAM` (stub, returns -ENOSYS)
-- [ ] IPC: `EC_CMD_CONFIG_EOE_IP_PARAM` (stub, returns -ENOSYS)
+- [x] IPC: `EC_CMD_SLAVE_EOE_IP_PARAM` (stub, returns -ENOSYS)
+- [x] IPC: `EC_CMD_CONFIG_EOE_IP_PARAM` (stub, returns -ENOSYS)
 - [ ] Test: `ethercat eoe`, `ethercat ip`
 
 ## Items to Watch
