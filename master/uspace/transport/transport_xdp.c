@@ -142,6 +142,7 @@ static int xdp_open(ec_transport_t *transport, const char *interface,
 
     xdp->ioctl_sock = -1;
     xdp->tx_frame_addr = INVALID_UMEM_FRAME;
+    xdp->xdp_flags = xdp_flags;
     transport->priv = xdp;
 
     /* Create temporary socket to get interface info */
@@ -223,7 +224,6 @@ static int xdp_open(ec_transport_t *transport, const char *interface,
         fprintf(stderr, "Failed to create XSK socket: %s\n", strerror(-ret));
         goto err_free_umem;
     }
-    xdp->xdp_flags = xdp_flags;
 
     /* Populate fill queue */
     ret = xsk_ring_prod__reserve(&xdp->fq, XSK_RING_PROD__DEFAULT_NUM_DESCS, &idx);
