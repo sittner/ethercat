@@ -1110,7 +1110,7 @@ static int handle_client_request(int fd, uint8_t **payload,
     /* Grow the shared payload buffer if needed. */
     if (req.data_size > *payload_cap) {
         free(*payload);
-	*payload_cap = 0;
+        *payload_cap = 0;
         *payload = malloc(req.data_size);
         if (!*payload) {
             send_response(fd, -ENOMEM, NULL, 0);
