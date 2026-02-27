@@ -1590,8 +1590,9 @@ static int listener_fn(void *arg)
                         ec_log(EC_LOG_WARNING,
                                 "IPC: SO_RCVTIMEO failed: %s\n",
                                 strerror(errno));
-                    fds[nfds].fd     = client_fd;
-                    fds[nfds].events = POLLIN;
+                    fds[nfds].fd      = client_fd;
+                    fds[nfds].events  = POLLIN;
+                    fds[nfds].revents = 0;
                     nfds++;
                 } else {
                     ec_log(EC_LOG_WARNING,
