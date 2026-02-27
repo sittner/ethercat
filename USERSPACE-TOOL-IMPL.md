@@ -526,9 +526,10 @@ server skeleton, master registry) and the following read-only commands:
 - [x] IPC: `EC_CMD_CONFIG`, `EC_CMD_CONFIG_PDO`, `EC_CMD_CONFIG_PDO_ENTRY`
 - [x] IPC: `EC_CMD_CONFIG_SDO`, `EC_CMD_CONFIG_IDN`, `EC_CMD_CONFIG_FLAG`
 - [x] IPC: `EC_CMD_MASTER_DEBUG`, `EC_CMD_MASTER_RESCAN`, `EC_CMD_SLAVE_STATE`
-- [ ] Test: `ethercat master`, `ethercat slaves`, `ethercat pdos`, `ethercat sdos`
-- [ ] Test: `ethercat config`, `ethercat domains`, `ethercat cstruct`
-- [ ] Test: `ethercat graph`, `ethercat xml`, `ethercat version`
+- [x] Test: `ethercat master`, `ethercat slaves`, `ethercat pdos`, `ethercat sdos` ✅
+- [ ] Test: `ethercat config`, `ethercat domains` *(requires userspace application with active config/domains)*
+- [x] Test: `ethercat cstruct` ✅
+- [x] Test: `ethercat graph`, `ethercat xml`, `ethercat version` ✅
 
 ### Phase 2: Read-Write Commands
 
@@ -539,21 +540,19 @@ server skeleton, master registry) and the following read-only commands:
 - [x] IPC: `EC_CMD_SLAVE_REG_READ`, `EC_CMD_SLAVE_REG_WRITE` (trailing data)
 - [x] IPC: `EC_CMD_SLAVE_FOE_READ`, `EC_CMD_SLAVE_FOE_WRITE` (trailing data)
 - [x] IPC: `EC_CMD_SLAVE_SOE_READ`, `EC_CMD_SLAVE_SOE_WRITE` (trailing data)
-- [ ] Test: `ethercat upload`, `ethercat download`
-- [ ] Test: `ethercat states`, `ethercat debug`, `ethercat rescan`
-- [ ] Test: `ethercat alias`, `ethercat sii_read`, `ethercat sii_write`
-- [x] Test: SDO upload/download (confirmed working)
-- [x] Test: SII read/write (confirmed working)
-- [ ] Test: `ethercat reg_read`, `ethercat reg_write`
-- [ ] Test: `ethercat foe_read`, `ethercat foe_write`
-- [ ] Test: `ethercat soe_read`, `ethercat soe_write`
+- [x] Test: `ethercat upload`, `ethercat download` ✅
+- [x] Test: `ethercat states`, `ethercat debug`, `ethercat rescan` ✅
+- [x] Test: `ethercat alias`, `ethercat sii_read`, `ethercat sii_write` ✅
+- [x] Test: `ethercat reg_read`, `ethercat reg_write` ✅ *(reg_write confirmed working on writable registers; read-only registers correctly return EIO)*
+- [ ] Test: `ethercat foe_read`, `ethercat foe_write` *(requires FoE-capable slave)*
+- [ ] Test: `ethercat soe_read`, `ethercat soe_write` *(requires SoE/Sercos-capable slave)*
 
 ### Phase 3: EoE Commands (if needed)
 
 - [x] IPC: `EC_CMD_EOE_HANDLER` (implemented behind `#ifdef EC_EOE`)
 - [x] IPC: `EC_CMD_SLAVE_EOE_IP_PARAM` (stub, returns -ENOSYS)
 - [x] IPC: `EC_CMD_CONFIG_EOE_IP_PARAM` (stub, returns -ENOSYS)
-- [ ] Test: `ethercat eoe`, `ethercat ip`
+- [ ] Test: `ethercat eoe`, `ethercat ip` *(requires EoE-capable slave)*
 
 ## Items to Watch
 
