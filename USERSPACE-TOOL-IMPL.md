@@ -352,11 +352,11 @@ Started by `ecrt_lib_init()` when `socket_path != NULL`:
 1. Creates `AF_UNIX` `SOCK_STREAM` socket
 2. Binds to `socket_path`, listens
 3. Uses a `poll()`-based event loop (1000ms timeout) to multiplex the listening socket and all connected client sockets in a single thread
-4. On new connection: `accept()`, set `SO_SNDTIMEO`, add fd to poll array
+4. On new connection: `accept()`, set `SO_SNDTIMEO` and `SO_RCVTIMEO` (5s each), add fd to poll array
 5. On client data: read one full request → look up `master_registry[master_index]` → dispatch → send response
 6. On client error / disconnect: close fd and remove from poll array
-7. On shutdown (`cdev->shutdown` set): exit the loop, close remaining client fds, and exit the thread
-8. Stopped by `ecrt_lib_cleanup()` — only needs to set the shutdown flag, close the listening socket, and join the single listener thread
+7. On shutdown (`cdev->shutdown` set): exit the loop, close remaining client fds, close listening socket, and exit the thread
+8. Stopped by `ecrt_lib_cleanup()` — sets shutdown flag, calls `shutdown()` on the listening socket (to wake `poll()`), and joins the single listener thread; the listener thread closes the listening socket itself to avoid a close-vs-accept race
 
 ### Locking Strategy
 
