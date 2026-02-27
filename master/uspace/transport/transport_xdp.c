@@ -63,6 +63,7 @@ typedef struct {
     uint8_t mac_addr[6];               /**< Interface MAC address */
     int ioctl_sock;                    /**< Socket for ioctl operations (link state, etc.) */
     uint64_t tx_frame_addr;            /**< Pre-allocated TX frame for zero-copy */
+    uint32_t xdp_flags;               /**< XDP flags used during open (needed for detach) */
 } ec_transport_xdp_t;
 
 /****************************************************************************/
@@ -223,6 +224,7 @@ static int xdp_open(ec_transport_t *transport, const char *interface,
         fprintf(stderr, "Failed to create XSK socket: %s\n", strerror(-ret));
         goto err_free_umem;
     }
+    xdp->xdp_flags = xdp_flags;
 
     /* Populate fill queue */
     ret = xsk_ring_prod__reserve(&xdp->fq, XSK_RING_PROD__DEFAULT_NUM_DESCS, &idx);
@@ -282,6 +284,9 @@ static void xdp_close(ec_transport_t *transport)
 
     if (xdp) {
         if (xdp->xsk) {
+            if (xdp->if_index > 0) {
+                bpf_xdp_detach(xdp->if_index, xdp->xdp_flags, NULL);
+            }
             xsk_socket__delete(xdp->xsk);
         }
         if (xdp->umem) {
