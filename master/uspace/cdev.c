@@ -288,7 +288,7 @@ static int dispatch_master(int fd, ec_master_t *master,
 
         /* In userspace there is no net_device; use stored MAC address. */
         memcpy(io.devices[dev_idx].address, master->macs[dev_idx], ETH_ALEN);
-        io.devices[dev_idx].attached   = device->link_state ? 1 : 0;
+        io.devices[dev_idx].attached   = 1;
         io.devices[dev_idx].link_state = device->link_state ? 1 : 0;
         io.devices[dev_idx].tx_count   = device->tx_count;
         io.devices[dev_idx].rx_count   = device->rx_count;
