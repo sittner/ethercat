@@ -208,10 +208,6 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
 
     master->thread = NULL;
 
-#ifdef EC_USPACE_MASTER
-    atomic_init(&master->pal.ipc_refcount, 0);
-#endif
-
 #ifdef EC_EOE
     master->eoe_thread = NULL;
     INIT_LIST_HEAD(&master->eoe_handlers);

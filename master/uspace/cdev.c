@@ -73,10 +73,10 @@ static ec_cdev_t g_cdev = { .sock_fd = -1 };
 
 /****************************************************************************/
 
-/** Global master registry — protected by registry_mutex. */
+/** Global master registry — protected by registry_rwlock. */
 static ec_master_t *master_registry[EC_MAX_MASTERS];
 static unsigned int registry_master_count;
-static pthread_mutex_t registry_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_rwlock_t registry_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
 /****************************************************************************/
 
@@ -84,29 +84,24 @@ void ec_master_registry_add(ec_master_t *master)
 {
     if (!master || master->index >= EC_MAX_MASTERS)
         return;
-    pthread_mutex_lock(&registry_mutex);
+    pthread_rwlock_wrlock(&registry_rwlock);
     if (master_registry[master->index] == NULL)
         registry_master_count++;
     master_registry[master->index] = master;
-    pthread_mutex_unlock(&registry_mutex);
+    pthread_rwlock_unlock(&registry_rwlock);
 }
 
 void ec_master_registry_remove(ec_master_t *master)
 {
     if (!master || master->index >= EC_MAX_MASTERS)
         return;
-    pthread_mutex_lock(&registry_mutex);
+    pthread_rwlock_wrlock(&registry_rwlock);
     if (master_registry[master->index] == master) {
         master_registry[master->index] = NULL;
         if (registry_master_count > 0)
             registry_master_count--;
     }
-    pthread_mutex_unlock(&registry_mutex);
-
-    /* Wait for all IPC handlers to release their references. */
-    while (atomic_load(&master->pal.ipc_refcount) > 0) {
-        usleep(1000);  /* 1ms poll — only during shutdown */
-    }
+    pthread_rwlock_unlock(&registry_rwlock);
 }
 
 ec_master_t *ec_master_registry_find(unsigned int index)
@@ -114,40 +109,40 @@ ec_master_t *ec_master_registry_find(unsigned int index)
     ec_master_t *master;
     if (index >= EC_MAX_MASTERS)
         return NULL;
-    pthread_mutex_lock(&registry_mutex);
+    pthread_rwlock_rdlock(&registry_rwlock);
     master = master_registry[index];
-    pthread_mutex_unlock(&registry_mutex);
+    pthread_rwlock_unlock(&registry_rwlock);
     return master;
 }
 
-/** Acquire a reference to a master from the registry.
- * Returns the master pointer with refcount incremented, or NULL. */
+/** Acquire the registry read lock and return the master pointer.
+ * The read lock is held on return and must be released by
+ * ec_master_registry_put().  Returns NULL (with lock released) if not found. */
 static ec_master_t *ec_master_registry_get(unsigned int index)
 {
     ec_master_t *master;
     if (index >= EC_MAX_MASTERS)
         return NULL;
-    pthread_mutex_lock(&registry_mutex);
+    pthread_rwlock_rdlock(&registry_rwlock);
     master = master_registry[index];
-    if (master)
-        atomic_fetch_add(&master->pal.ipc_refcount, 1);
-    pthread_mutex_unlock(&registry_mutex);
+    if (!master)
+        pthread_rwlock_unlock(&registry_rwlock);
     return master;
 }
 
-/** Release a reference to a master. */
+/** Release the registry read lock acquired by ec_master_registry_get(). */
 static void ec_master_registry_put(ec_master_t *master)
 {
     if (master)
-        atomic_fetch_sub(&master->pal.ipc_refcount, 1);
+        pthread_rwlock_unlock(&registry_rwlock);
 }
 
 unsigned int ec_master_registry_count(void)
 {
     unsigned int count;
-    pthread_mutex_lock(&registry_mutex);
+    pthread_rwlock_rdlock(&registry_rwlock);
     count = registry_master_count;
-    pthread_mutex_unlock(&registry_mutex);
+    pthread_rwlock_unlock(&registry_rwlock);
     return count;
 }
 

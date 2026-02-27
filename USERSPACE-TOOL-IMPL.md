@@ -121,6 +121,20 @@ the kernel module's `masters[]` array):
 static ec_master_t *master_registry[EC_MAX_MASTERS];
 ```
 
+The registry is protected by a global `pthread_rwlock_t registry_rwlock`:
+
+- `ec_master_registry_add()` and `ec_master_registry_remove()` take the
+  **write lock**, so removal blocks until any in-flight request finishes.
+- `ec_master_registry_find()` and `ec_master_registry_count()` take the
+  **read lock** for a snapshot lookup.
+- `ec_master_registry_get()` acquires the **read lock** and returns with it
+  held; the caller (`handle_client_request`) holds it across the entire
+  dispatch until `ec_master_registry_put()` releases it.  If no master is
+  found, `_get()` releases the lock before returning NULL.
+
+This replaces the previous design of a `pthread_mutex_t` for lookup combined
+with a per-master `atomic_int ipc_refcount` and a shutdown busy-wait loop.
+
 - `ecrt_startup_master()` registers the master at `master_registry[index]`
 - `ecrt_release_master()` unregisters it (`master_registry[index] = NULL`)
 - `ec_master_registry_count()` returns the current count (for `EC_CMD_MODULE` response)
