@@ -7,10 +7,14 @@ KBUILD = $(MAKE) -C "$(LINUX_SOURCE_DIR)" M="$(abs_builddir)" INSTALL_MOD_DIR="$
 
 
 modules:
-	+$(KBUILD) modules
+	@if test -n "$(LINUX_SOURCE_DIR)"; then \
+	  +$(KBUILD) modules; \
+	fi
 
 modules_install:
-	+$(KBUILD) modules_install
+	@if test -n "$(LINUX_SOURCE_DIR)"; then \
+	  +$(KBUILD) modules_install; \
+	fi
 
 
 # Override default `clean` target to call Kbuild clean *before* automake
@@ -23,6 +27,8 @@ clean: kbuild-clean
 	fi
 
 kbuild-clean:
-	$(KBUILD) clean
+	@if test -n "$(LINUX_SOURCE_DIR)"; then \
+	  $(KBUILD) clean; \
+	fi
 
 .PHONY: kbuild-clean
