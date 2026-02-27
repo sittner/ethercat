@@ -1279,10 +1279,10 @@ static int handle_client_request(int fd, uint8_t **payload,
  * Listener thread: poll()-based event loop that multiplexes the listening
  * socket and all connected client sockets in a single thread.
  *
- * On new connection: accept(), set SO_SNDTIMEO, add to poll array.
+ * On new connection: accept(), set SO_SNDTIMEO and SO_RCVTIMEO, add to poll array.
  * On client data:    read one full request, dispatch, send response.
  * On client error:   close fd and remove from poll array.
- * On shutdown:       exit the loop; close remaining client fds.
+ * On shutdown:       exit the loop; close remaining client fds and listening socket.
  */
 static int listener_fn(void *arg)
 {
@@ -1321,8 +1321,16 @@ static int listener_fn(void *arg)
                     struct timeval tv;
                     tv.tv_sec  = 5;
                     tv.tv_usec = 0;
-                    setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO,
-                            &tv, sizeof(tv));
+                    if (setsockopt(client_fd, SOL_SOCKET, SO_SNDTIMEO,
+                            &tv, sizeof(tv)) < 0)
+                        ec_log(EC_LOG_WARNING,
+                                "IPC: SO_SNDTIMEO failed: %s\n",
+                                strerror(errno));
+                    if (setsockopt(client_fd, SOL_SOCKET, SO_RCVTIMEO,
+                            &tv, sizeof(tv)) < 0)
+                        ec_log(EC_LOG_WARNING,
+                                "IPC: SO_RCVTIMEO failed: %s\n",
+                                strerror(errno));
                     fds[nfds].fd     = client_fd;
                     fds[nfds].events = POLLIN;
                     nfds++;
@@ -1371,6 +1379,12 @@ static int listener_fn(void *arg)
     /* Close all remaining client connections. */
     for (i = 1; i < nfds; i++)
         close(fds[i].fd);
+
+    /* Close the listening socket here so ec_ipc_server_stop() does not race
+     * with accept() on the same fd.  ec_ipc_server_stop() only calls
+     * shutdown() to wake poll() and then joins this thread. */
+    close(cdev->sock_fd);
+    cdev->sock_fd = -1;
 
     free(payload);
     return 0;
@@ -1453,11 +1467,12 @@ int ec_ipc_server_start(const char *socket_path)
 /**
  * ec_ipc_server_stop - shut down the global IPC server.
  *
- * Signals the listener thread to stop, closes the listening socket (which
- * causes the poll() call to return on the next timeout), and waits for the
- * single listener thread to exit.  All client fds are closed by the listener
- * thread itself before it exits.  The socket file is removed from the
- * filesystem.
+ * Signals the listener thread to stop by setting the shutdown flag and calling
+ * shutdown() on the listening socket (which wakes poll()), then waits for the
+ * single listener thread to exit.  The listener thread closes all client fds
+ * and the listening socket itself before it exits, avoiding any race between
+ * close() and accept() on the same fd.  The socket file is removed from the
+ * filesystem after the thread has joined.
  */
 void ec_ipc_server_stop(void)
 {
@@ -1469,11 +1484,10 @@ void ec_ipc_server_stop(void)
     /* Signal shutdown to the listener thread. */
     cdev->shutdown = 1;
 
-    /* Shut down the listening socket to wake poll() on Linux.
-     * The listener thread will see cdev->shutdown on the next iteration. */
+    /* Wake poll() on the listening socket so the listener thread sees the
+     * shutdown flag quickly.  Do NOT close() here — the listener thread
+     * closes sock_fd itself to avoid a race with accept(). */
     shutdown(cdev->sock_fd, SHUT_RDWR);
-    close(cdev->sock_fd);
-    cdev->sock_fd = -1;
 
     /* Wait for the listener thread to exit (it closes client fds itself). */
     if (cdev->thread) {
