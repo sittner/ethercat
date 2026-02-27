@@ -285,17 +285,18 @@ static void xdp_close(ec_transport_t *transport)
 
     if (xdp) {
         if (xdp->xsk) {
-            if (xdp->if_index > 0) {
-                /* Detach XDP program before deleting socket.
-                 * Try with original flags first, fall back to flags=0
-                 * (force detach) if that fails (e.g. lost capabilities).
-                 */
-                if (bpf_xdp_detach(xdp->if_index, xdp->xdp_flags, NULL) < 0) {
-                    bpf_xdp_detach(xdp->if_index, 0, NULL);
-                }
-            }
+            /* Let libxdp try its own cleanup first */
             xsk_socket__delete(xdp->xsk);
+            xdp->xsk = NULL;
         }
+
+        /* Safety net: forcibly detach XDP program if libxdp's cleanup
+         * failed (e.g. due to dropped privileges). This is what ensures
+         * the next start won't get "Permission denied". Ignore errors. */
+        if (xdp->if_index > 0) {
+            bpf_xdp_detach(xdp->if_index, xdp->xdp_flags, NULL);
+        }
+
         if (xdp->umem) {
             xsk_umem__delete(xdp->umem);
         }
