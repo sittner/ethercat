@@ -439,7 +439,10 @@ void MasterDevice::readSii(
         ec_ioctl_slave_sii_t *data
         )
 {
-    int ret = backend->request(EC_CMD_SLAVE_SII_READ, data, sizeof(*data));
+    int ret = backend->requestTrailingData(EC_CMD_SLAVE_SII_READ,
+            data, sizeof(*data),
+            NULL, 0,
+            data->words, data->nwords * 2);
     if (ret < 0) {
         errno = -ret;
         stringstream err;
@@ -454,7 +457,10 @@ void MasterDevice::writeSii(
         ec_ioctl_slave_sii_t *data
         )
 {
-    int ret = backend->request(EC_CMD_SLAVE_SII_WRITE, data, sizeof(*data));
+    int ret = backend->requestTrailingData(EC_CMD_SLAVE_SII_WRITE,
+            data, sizeof(*data),
+            data->words, data->nwords * 2,
+            NULL, 0);
     if (ret < 0) {
         errno = -ret;
         stringstream err;
