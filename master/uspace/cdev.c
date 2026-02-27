@@ -1196,6 +1196,138 @@ static int dispatch_slave_sdo_download(int fd, ec_master_t *master,
     return send_response(fd, retval, &io, sizeof(io));
 }
 
+/** EC_CMD_SLAVE_SII_READ — read SII words from a slave's EEPROM. */
+static int dispatch_slave_sii_read(int fd, ec_master_t *master,
+        const uint8_t *req, uint32_t req_size)
+{
+    ec_ioctl_slave_sii_t io;
+    const ec_slave_t *slave;
+    uint16_t *words;
+    int ret;
+
+    if (req_size < sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
+
+    if (!io.nwords)
+        return send_response(fd, -EINVAL, NULL, 0);
+
+    words = malloc(io.nwords * 2);
+    if (!words) {
+        EC_MASTER_ERR(master, "Failed to allocate %u bytes for SII read.\n",
+                io.nwords * 2);
+        return send_response(fd, -ENOMEM, NULL, 0);
+    }
+
+    if (ec_sem_down_interruptible(&master->master_sem)) {
+        free(words);
+        return send_response(fd, -EINTR, NULL, 0);
+    }
+
+    if (!(slave = ec_master_find_slave_const(master, 0, io.slave_position))) {
+        ec_sem_up(&master->master_sem);
+        EC_MASTER_ERR(master, "Slave %u does not exist!\n",
+                io.slave_position);
+        free(words);
+        return send_response(fd, -EINVAL, NULL, 0);
+    }
+
+    if (io.offset + io.nwords > slave->sii_nwords) {
+        ec_sem_up(&master->master_sem);
+        EC_SLAVE_ERR(slave, "Invalid SII read offset/size %u/%u for slave SII"
+                " size %zu!\n", io.offset, io.nwords, slave->sii_nwords);
+        free(words);
+        return send_response(fd, -EINVAL, NULL, 0);
+    }
+
+    memcpy(words, slave->sii_words + io.offset, io.nwords * 2);
+    ec_sem_up(&master->master_sem);
+
+    ret = send_response_with_trailing(fd, 0,
+            &io, sizeof(io),
+            words, io.nwords * 2);
+    free(words);
+    return ret;
+}
+
+/** EC_CMD_SLAVE_SII_WRITE — write SII words to a slave's EEPROM. */
+static int dispatch_slave_sii_write(int fd, ec_master_t *master,
+        const uint8_t *req, uint32_t req_size)
+{
+    ec_ioctl_slave_sii_t io;
+    ec_slave_t *slave;
+    uint16_t *words;
+    ec_sii_write_request_t request;
+
+    if (req_size < sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
+
+    if (!io.nwords)
+        return send_response(fd, 0, NULL, 0);
+
+    /* Trailing word data follows the struct in the request payload. */
+    if (req_size < sizeof(io) + (uint32_t)io.nwords * 2)
+        return send_response(fd, -EINVAL, NULL, 0);
+
+    /* Copy word data to heap so it remains valid during FSM processing. */
+    words = malloc((size_t)io.nwords * 2);
+    if (!words) {
+        EC_MASTER_ERR(master, "Failed to allocate %u bytes for SII write.\n",
+                io.nwords * 2);
+        return send_response(fd, -ENOMEM, NULL, 0);
+    }
+    memcpy(words, req + sizeof(io), (size_t)io.nwords * 2);
+
+    if (ec_sem_down_interruptible(&master->master_sem)) {
+        free(words);
+        return send_response(fd, -EINTR, NULL, 0);
+    }
+
+    if (!(slave = ec_master_find_slave(master, 0, io.slave_position))) {
+        ec_sem_up(&master->master_sem);
+        EC_MASTER_ERR(master, "Slave %u does not exist!\n",
+                io.slave_position);
+        free(words);
+        return send_response(fd, -EINVAL, NULL, 0);
+    }
+
+    /* Init SII write request. */
+    INIT_LIST_HEAD(&request.list);
+    request.slave = slave;
+    request.words = words;
+    request.offset = io.offset;
+    request.nwords = io.nwords;
+    request.state = EC_INT_REQUEST_QUEUED;
+
+    /* Schedule SII write request. */
+    list_add_tail(&request.list, &master->sii_requests);
+    ec_sem_up(&master->master_sem);
+
+    /* Wait for processing through FSM. */
+    if (ec_wq_wait_interruptible(master->request_queue,
+                request.state != EC_INT_REQUEST_QUEUED)) {
+        ec_sem_down(&master->master_sem);
+        if (request.state == EC_INT_REQUEST_QUEUED) {
+            list_del(&request.list);
+            ec_sem_up(&master->master_sem);
+            free(words);
+            return send_response(fd, -EINTR, NULL, 0);
+        }
+        ec_sem_up(&master->master_sem);
+    }
+
+    /* Wait until master FSM has finished processing. */
+    ec_wq_wait(master->request_queue,
+            request.state != EC_INT_REQUEST_BUSY);
+
+    free(words);
+
+    return send_response(fd,
+            request.state == EC_INT_REQUEST_SUCCESS ? 0 : -EIO,
+            NULL, 0);
+}
+
 /****************************************************************************/
 /* Poll-based event loop                                                       */
 /****************************************************************************/
@@ -1327,12 +1459,10 @@ static int handle_client_request(int fd, uint8_t **payload,
             dispatch_slave_sdo_download(fd, master, *payload, req.data_size);
             break;
         case EC_CMD_SLAVE_SII_READ:
-            /* SII read requires pointer-based data transfer. */
-            send_response(fd, -ENOSYS, NULL, 0);
+            dispatch_slave_sii_read(fd, master, *payload, req.data_size);
             break;
         case EC_CMD_SLAVE_SII_WRITE:
-            /* SII write requires pointer-based data transfer. */
-            send_response(fd, -ENOSYS, NULL, 0);
+            dispatch_slave_sii_write(fd, master, *payload, req.data_size);
             break;
         case EC_CMD_SLAVE_REG_READ:
             /* Register read requires pointer-based data transfer. */
