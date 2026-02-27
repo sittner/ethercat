@@ -37,7 +37,6 @@
 #include <arpa/inet.h>
 #include <linux/if_link.h>
 #include <xdp/xsk.h>
-#include <bpf/bpf.h>
 
 #include "ec_transport.h"
 
@@ -63,7 +62,6 @@ typedef struct {
     uint8_t mac_addr[6];               /**< Interface MAC address */
     int ioctl_sock;                    /**< Socket for ioctl operations (link state, etc.) */
     uint64_t tx_frame_addr;            /**< Pre-allocated TX frame for zero-copy */
-    uint32_t xdp_flags;               /**< XDP flags used during open (needed for detach) */
 } ec_transport_xdp_t;
 
 /****************************************************************************/
@@ -215,7 +213,7 @@ static int xdp_open(ec_transport_t *transport, const char *interface,
     cfg.tx_size = XSK_RING_PROD__DEFAULT_NUM_DESCS;
     cfg.xdp_flags = xdp_flags;
     cfg.bind_flags = bind_flags;
-    cfg.libbpf_flags = 0;
+    cfg.libbpf_flags = XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD;
 
     /* Create XSK socket (queue 0) */
     ret = xsk_socket__create(&xdp->xsk, interface, 0, xdp->umem,
@@ -224,7 +222,6 @@ static int xdp_open(ec_transport_t *transport, const char *interface,
         fprintf(stderr, "Failed to create XSK socket: %s\n", strerror(-ret));
         goto err_free_umem;
     }
-    xdp->xdp_flags = xdp_flags;
 
     /* Populate fill queue */
     ret = xsk_ring_prod__reserve(&xdp->fq, XSK_RING_PROD__DEFAULT_NUM_DESCS, &idx);
@@ -262,7 +259,8 @@ err_free:
  */
 static int xdp_open_skb(ec_transport_t *transport, const char *interface)
 {
-    return xdp_open(transport, interface, XDP_FLAGS_SKB_MODE, XDP_COPY);
+    return xdp_open(transport, interface, XDP_FLAGS_SKB_MODE,
+                    XDP_COPY | XDP_USE_NEED_WAKEUP);
 }
 
 /**
@@ -270,7 +268,8 @@ static int xdp_open_skb(ec_transport_t *transport, const char *interface)
  */
 static int xdp_open_native(ec_transport_t *transport, const char *interface)
 {
-    return xdp_open(transport, interface, XDP_FLAGS_DRV_MODE, XDP_COPY);
+    return xdp_open(transport, interface, XDP_FLAGS_DRV_MODE,
+                    XDP_COPY | XDP_USE_NEED_WAKEUP);
 }
 
 /****************************************************************************/
@@ -284,9 +283,6 @@ static void xdp_close(ec_transport_t *transport)
 
     if (xdp) {
         if (xdp->xsk) {
-            if (xdp->if_index > 0) {
-                bpf_xdp_detach(xdp->if_index, xdp->xdp_flags, NULL);
-            }
             xsk_socket__delete(xdp->xsk);
         }
         if (xdp->umem) {

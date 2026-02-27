@@ -141,6 +141,7 @@
 #define __ECRT_H__
 
 @EC_USPACE_MASTER_DEFINE@
+@EC_USPACE_HAVE_XDP_DEFINE@
 #ifdef __KERNEL__
 #include <asm/byteorder.h>
 #include <linux/types.h>

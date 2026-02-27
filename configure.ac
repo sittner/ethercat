@@ -1441,21 +1441,25 @@ if test "x$enable_uspace_master" = "xyes"; then
     AC_DEFINE([EC_USPACE_MASTER], [1], [Userspace master library enabled])
     EC_USPACE_MASTER_DEFINE='#define EC_USPACE_MASTER 1'
 
-    # Check for libxdp and libbpf (optional XDP transport support)
+    # Check for libxdp (optional XDP transport support)
     AC_CHECK_LIB([xdp], [xsk_socket__create], [have_xdp=yes], [have_xdp=no])
-    AC_CHECK_LIB([bpf], [bpf_object__open], [have_bpf=yes], [have_bpf=no])
 
-    if test "x$have_xdp" = "xyes" -a "x$have_bpf" = "xyes"; then
-        AC_DEFINE([HAVE_XDP], [1], [XDP transport support available])
+    if test "x$have_xdp" = "xyes"; then
+        AC_DEFINE([EC_USPACE_HAVE_XDP], [1], [XDP transport support available])
+        EC_USPACE_HAVE_XDP_DEFINE='#define EC_USPACE_HAVE_XDP 1'
+    else
+        EC_USPACE_HAVE_XDP_DEFINE=''
     fi
 else
     EC_USPACE_MASTER_DEFINE=''
+    EC_USPACE_HAVE_XDP_DEFINE=''
 fi
 
 AC_SUBST(EC_USPACE_MASTER_DEFINE)
+AC_SUBST(EC_USPACE_HAVE_XDP_DEFINE)
 
 AM_CONDITIONAL([ENABLE_USPACE_MASTER], [test "x$enable_uspace_master" = "xyes"])
-AM_CONDITIONAL([HAVE_XDP], [test "x$have_xdp" = "xyes" -a "x$have_bpf" = "xyes"])
+AM_CONDITIONAL([EC_USPACE_HAVE_XDP], [test "x$have_xdp" = "xyes"])
 
 #-----------------------------------------------------------------------------
 

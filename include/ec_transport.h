@@ -43,7 +43,7 @@
 /** Transport type enumeration values */
 enum ec_transport_type {
     EC_TRANSPORT_RAW = 0,   /**< AF_PACKET raw socket */
-#ifdef HAVE_XDP
+#ifdef EC_USPACE_HAVE_XDP
     EC_TRANSPORT_XDP_SKB,   /**< AF_XDP Generic SKB mode (universal compatibility) */
     EC_TRANSPORT_XDP_NATIVE,   /**< AF_XDP Native driver mode with copy */
 #endif
@@ -238,7 +238,7 @@ void ec_transport_print_available(void);
 
 /* Transport operation tables (implemented by each transport) */
 extern const ec_transport_ops_t ec_transport_raw_ops;
-#ifdef HAVE_XDP
+#ifdef EC_USPACE_HAVE_XDP
 extern const ec_transport_ops_t ec_transport_xdp_skb_ops;
 extern const ec_transport_ops_t ec_transport_xdp_native_ops;
 #endif

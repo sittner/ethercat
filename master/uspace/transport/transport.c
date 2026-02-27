@@ -39,7 +39,7 @@ static const struct {
     const ec_transport_ops_t *ops;
 } transport_registry[] = {
     { EC_TRANSPORT_RAW,        &ec_transport_raw_ops },
-#ifdef HAVE_XDP
+#ifdef EC_USPACE_HAVE_XDP
     { EC_TRANSPORT_XDP_SKB,    &ec_transport_xdp_skb_ops },
     { EC_TRANSPORT_XDP_NATIVE, &ec_transport_xdp_native_ops },
 #endif
