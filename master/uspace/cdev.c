@@ -1473,7 +1473,7 @@ void ec_ipc_server_stop(void)
 {
     ec_cdev_t *cdev = &g_cdev;
 
-    if (cdev->sock_fd == -1)
+    if (!cdev->thread)
         return; /* was never started or already stopped */
 
     /* Signal shutdown to the listener thread. */
@@ -1481,14 +1481,14 @@ void ec_ipc_server_stop(void)
 
     /* Wake poll() on the listening socket so the listener thread sees the
      * shutdown flag quickly.  Do NOT close() here — the listener thread
-     * closes sock_fd itself to avoid a race with accept(). */
-    shutdown(cdev->sock_fd, SHUT_RDWR);
+     * closes sock_fd itself to avoid a race with accept().
+     * Guard against sock_fd already being -1 if the listener exited early. */
+    if (cdev->sock_fd != -1)
+        shutdown(cdev->sock_fd, SHUT_RDWR);
 
     /* Wait for the listener thread to exit (it closes client fds itself). */
-    if (cdev->thread) {
-        ec_thread_stop(cdev->thread);
-        cdev->thread = NULL;
-    }
+    ec_thread_stop(cdev->thread);
+    cdev->thread = NULL;
 
     /* Remove the socket file. */
     unlink(cdev->sock_path);
