@@ -62,6 +62,7 @@ typedef struct {
     uint8_t mac_addr[6];               /**< Interface MAC address */
     int ioctl_sock;                    /**< Socket for ioctl operations (link state, etc.) */
     uint64_t tx_frame_addr;            /**< Pre-allocated TX frame for zero-copy */
+    uint32_t xdp_flags;                /**< XDP flags used during open (needed for detach) */
 } ec_transport_xdp_t;
 
 /****************************************************************************/
@@ -213,7 +214,7 @@ static int xdp_open(ec_transport_t *transport, const char *interface,
     cfg.tx_size = XSK_RING_PROD__DEFAULT_NUM_DESCS;
     cfg.xdp_flags = xdp_flags;
     cfg.bind_flags = bind_flags;
-    cfg.libbpf_flags = XSK_LIBBPF_FLAGS__INHIBIT_PROG_LOAD;
+    cfg.libbpf_flags = 0;
 
     /* Create XSK socket (queue 0) */
     ret = xsk_socket__create(&xdp->xsk, interface, 0, xdp->umem,
@@ -222,6 +223,7 @@ static int xdp_open(ec_transport_t *transport, const char *interface,
         fprintf(stderr, "Failed to create XSK socket: %s\n", strerror(-ret));
         goto err_free_umem;
     }
+    xdp->xdp_flags = xdp_flags;
 
     /* Populate fill queue */
     ret = xsk_ring_prod__reserve(&xdp->fq, XSK_RING_PROD__DEFAULT_NUM_DESCS, &idx);
@@ -283,6 +285,15 @@ static void xdp_close(ec_transport_t *transport)
 
     if (xdp) {
         if (xdp->xsk) {
+            if (xdp->if_index > 0) {
+                /* Detach XDP program before deleting socket.
+                 * Try with original flags first, fall back to flags=0
+                 * (force detach) if that fails (e.g. lost capabilities).
+                 */
+                if (bpf_xdp_detach(xdp->if_index, xdp->xdp_flags, NULL) < 0) {
+                    bpf_xdp_detach(xdp->if_index, 0, NULL);
+                }
+            }
             xsk_socket__delete(xdp->xsk);
         }
         if (xdp->umem) {
