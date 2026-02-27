@@ -475,7 +475,10 @@ void MasterDevice::readReg(
         ec_ioctl_slave_reg_t *data
         )
 {
-    int ret = backend->request(EC_CMD_SLAVE_REG_READ, data, sizeof(*data));
+    int ret = backend->requestTrailingData(EC_CMD_SLAVE_REG_READ,
+            data, sizeof(*data),
+            NULL, 0,
+            data->data, data->size);
     if (ret < 0) {
         errno = -ret;
         stringstream err;
@@ -490,7 +493,10 @@ void MasterDevice::writeReg(
         ec_ioctl_slave_reg_t *data
         )
 {
-    int ret = backend->request(EC_CMD_SLAVE_REG_WRITE, data, sizeof(*data));
+    int ret = backend->requestTrailingData(EC_CMD_SLAVE_REG_WRITE,
+            data, sizeof(*data),
+            data->data, data->size,
+            NULL, 0);
     if (ret < 0) {
         errno = -ret;
         stringstream err;
@@ -505,7 +511,10 @@ void MasterDevice::readFoe(
         ec_ioctl_slave_foe_t *data
         )
 {
-    int ret = backend->request(EC_CMD_SLAVE_FOE_READ, data, sizeof(*data));
+    int ret = backend->requestTrailingData(EC_CMD_SLAVE_FOE_READ,
+            data, sizeof(*data),
+            NULL, 0,
+            data->buffer, data->buffer_size);
     if (ret < 0) {
         errno = -ret;
         stringstream err;
@@ -520,7 +529,10 @@ void MasterDevice::writeFoe(
         ec_ioctl_slave_foe_t *data
         )
 {
-    int ret = backend->request(EC_CMD_SLAVE_FOE_WRITE, data, sizeof(*data));
+    int ret = backend->requestTrailingData(EC_CMD_SLAVE_FOE_WRITE,
+            data, sizeof(*data),
+            data->buffer, data->buffer_size,
+            NULL, 0);
     if (ret < 0) {
         errno = -ret;
         stringstream err;
@@ -624,7 +636,10 @@ void MasterDevice::requestState(
 
 void MasterDevice::readSoe(ec_ioctl_slave_soe_read_t *data)
 {
-    int ret = backend->request(EC_CMD_SLAVE_SOE_READ, data, sizeof(*data));
+    int ret = backend->requestTrailingData(EC_CMD_SLAVE_SOE_READ,
+            data, sizeof(*data),
+            NULL, 0,
+            data->data, data->mem_size);
     if (ret < 0) {
         errno = -ret;
         if (errno == EIO && data->error_code) {
@@ -641,7 +656,10 @@ void MasterDevice::readSoe(ec_ioctl_slave_soe_read_t *data)
 
 void MasterDevice::writeSoe(ec_ioctl_slave_soe_write_t *data)
 {
-    int ret = backend->request(EC_CMD_SLAVE_SOE_WRITE, data, sizeof(*data));
+    int ret = backend->requestTrailingData(EC_CMD_SLAVE_SOE_WRITE,
+            data, sizeof(*data),
+            data->data, data->data_size,
+            NULL, 0);
     if (ret < 0) {
         errno = -ret;
         if (errno == EIO && data->error_code) {

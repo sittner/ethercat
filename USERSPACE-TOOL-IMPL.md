@@ -535,13 +535,15 @@ server skeleton, master registry) and the following read-only commands:
 - [x] IPC: `EC_CMD_DOMAIN_DATA` (requires pointer-based trailing data transfer)
 - [x] IPC: `EC_CMD_SLAVE_SDO_UPLOAD` (with trailing data response)
 - [x] IPC: `EC_CMD_SLAVE_SDO_DOWNLOAD` (with trailing data request)
-- [ ] IPC: `EC_CMD_SLAVE_SII_READ`, `EC_CMD_SLAVE_SII_WRITE` (trailing data)
-- [ ] IPC: `EC_CMD_SLAVE_REG_READ`, `EC_CMD_SLAVE_REG_WRITE` (trailing data)
-- [ ] IPC: `EC_CMD_SLAVE_FOE_READ`, `EC_CMD_SLAVE_FOE_WRITE` (trailing data)
-- [ ] IPC: `EC_CMD_SLAVE_SOE_READ`, `EC_CMD_SLAVE_SOE_WRITE` (trailing data)
+- [x] IPC: `EC_CMD_SLAVE_SII_READ`, `EC_CMD_SLAVE_SII_WRITE` (trailing data)
+- [x] IPC: `EC_CMD_SLAVE_REG_READ`, `EC_CMD_SLAVE_REG_WRITE` (trailing data)
+- [x] IPC: `EC_CMD_SLAVE_FOE_READ`, `EC_CMD_SLAVE_FOE_WRITE` (trailing data)
+- [x] IPC: `EC_CMD_SLAVE_SOE_READ`, `EC_CMD_SLAVE_SOE_WRITE` (trailing data)
 - [ ] Test: `ethercat upload`, `ethercat download`
 - [ ] Test: `ethercat states`, `ethercat debug`, `ethercat rescan`
 - [ ] Test: `ethercat alias`, `ethercat sii_read`, `ethercat sii_write`
+- [x] Test: SDO upload/download (confirmed working)
+- [x] Test: SII read/write (confirmed working)
 - [ ] Test: `ethercat reg_read`, `ethercat reg_write`
 - [ ] Test: `ethercat foe_read`, `ethercat foe_write`
 - [ ] Test: `ethercat soe_read`, `ethercat soe_write`
