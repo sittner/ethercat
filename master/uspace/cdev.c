@@ -334,11 +334,9 @@ static int dispatch_slave(int fd, ec_master_t *master,
     const ec_slave_t *slave;
     int i;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
-    else if (req_size > 0)
-        memcpy(&io, req, req_size);
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (ec_sem_down_interruptible(&master->master_sem))
         return send_response(fd, -EINTR, NULL, 0);
@@ -409,9 +407,9 @@ static int dispatch_slave_sync(int fd, ec_master_t *master,
     const ec_slave_t *slave;
     const ec_sync_t *sync;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (ec_sem_down_interruptible(&master->master_sem))
         return send_response(fd, -EINTR, NULL, 0);
@@ -447,9 +445,9 @@ static int dispatch_slave_sync_pdo(int fd, ec_master_t *master,
     const ec_sync_t *sync;
     const ec_pdo_t *pdo;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (ec_sem_down_interruptible(&master->master_sem))
         return send_response(fd, -EINTR, NULL, 0);
@@ -490,9 +488,9 @@ static int dispatch_slave_sync_pdo_entry(int fd, ec_master_t *master,
     const ec_pdo_t *pdo;
     const ec_pdo_entry_t *entry;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (ec_sem_down_interruptible(&master->master_sem))
         return send_response(fd, -EINTR, NULL, 0);
@@ -538,9 +536,9 @@ static int dispatch_domain(int fd, ec_master_t *master,
     const ec_domain_t *domain;
     unsigned int dev_idx;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (ec_sem_down_interruptible(&master->master_sem))
         return send_response(fd, -EINTR, NULL, 0);
@@ -573,9 +571,9 @@ static int dispatch_domain_fmmu(int fd, ec_master_t *master,
     const ec_domain_t *domain;
     const ec_fmmu_config_t *fmmu;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (ec_sem_down_interruptible(&master->master_sem))
         return send_response(fd, -EINTR, NULL, 0);
@@ -607,11 +605,12 @@ static int dispatch_domain_fmmu(int fd, ec_master_t *master,
 static int dispatch_master_debug(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    uint32_t level = 0;
+    uint32_t level;
     int ret;
 
-    if (req_size >= sizeof(uint32_t))
-        memcpy(&level, req, sizeof(uint32_t));
+    if (req_size != sizeof(uint32_t))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&level, req, sizeof(uint32_t));
 
     ret = ec_master_debug_level(master, (unsigned int)level);
     return send_response(fd, ret, NULL, 0);
@@ -636,9 +635,9 @@ static int dispatch_slave_state(int fd, ec_master_t *master,
     ec_ioctl_slave_state_t io;
     ec_slave_t *slave;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (ec_sem_down_interruptible(&master->master_sem))
         return send_response(fd, -EINTR, NULL, 0);
@@ -665,9 +664,9 @@ static int dispatch_slave_sdo(int fd, ec_master_t *master,
     const ec_slave_t *slave;
     const ec_sdo_t *sdo;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (ec_sem_down_interruptible(&master->master_sem))
         return send_response(fd, -EINTR, NULL, 0);
@@ -701,9 +700,9 @@ static int dispatch_slave_sdo_entry(int fd, ec_master_t *master,
     const ec_sdo_t *sdo;
     const ec_sdo_entry_t *entry;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (ec_sem_down_interruptible(&master->master_sem))
         return send_response(fd, -EINTR, NULL, 0);
@@ -759,9 +758,9 @@ static int dispatch_config(int fd, ec_master_t *master,
     const ec_slave_config_t *sc;
     uint8_t i;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (ec_sem_down_interruptible(&master->master_sem))
         return send_response(fd, -EINTR, NULL, 0);
@@ -808,9 +807,9 @@ static int dispatch_config_pdo(int fd, ec_master_t *master,
     const ec_slave_config_t *sc;
     const ec_pdo_t *pdo;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (io.sync_index >= EC_MAX_SYNC_MANAGERS)
         return send_response(fd, -EINVAL, NULL, 0);
@@ -848,9 +847,9 @@ static int dispatch_config_pdo_entry(int fd, ec_master_t *master,
     const ec_pdo_t *pdo;
     const ec_pdo_entry_t *entry;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (io.sync_index >= EC_MAX_SYNC_MANAGERS)
         return send_response(fd, -EINVAL, NULL, 0);
@@ -895,9 +894,9 @@ static int dispatch_config_sdo(int fd, ec_master_t *master,
     const ec_sdo_request_t *sdo_req;
     uint32_t copy_size;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (ec_sem_down_interruptible(&master->master_sem))
         return send_response(fd, -EINTR, NULL, 0);
@@ -935,9 +934,9 @@ static int dispatch_config_idn(int fd, ec_master_t *master,
     const ec_soe_request_t *idn_req;
     uint32_t copy_size;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (ec_sem_down_interruptible(&master->master_sem))
         return send_response(fd, -EINTR, NULL, 0);
@@ -975,9 +974,9 @@ static int dispatch_config_flag(int fd, ec_master_t *master,
     const ec_flag_t *flag;
     size_t key_len;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (ec_sem_down_interruptible(&master->master_sem))
         return send_response(fd, -EINTR, NULL, 0);
@@ -1014,9 +1013,9 @@ static int dispatch_eoe_handler(int fd, ec_master_t *master,
     ec_ioctl_eoe_handler_t io;
     const ec_eoe_t *eoe;
 
-    memset(&io, 0, sizeof(io));
-    if (req_size >= sizeof(io))
-        memcpy(&io, req, sizeof(io));
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
 
     if (ec_sem_down_interruptible(&master->master_sem))
         return send_response(fd, -EINTR, NULL, 0);
