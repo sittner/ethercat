@@ -26,6 +26,7 @@ lib_LTLIBRARIES = libethercat.la
 
 libethercat_la_SOURCES = \
 	common.c \
+	shared.c \
 	domain.c \
 	master.c \
 	reg_request.c \
