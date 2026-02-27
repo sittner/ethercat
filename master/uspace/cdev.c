@@ -1328,6 +1328,354 @@ static int dispatch_slave_sii_write(int fd, ec_master_t *master,
             NULL, 0);
 }
 
+/** EC_CMD_SLAVE_REG_READ — read slave registers. */
+static int dispatch_slave_reg_read(int fd, ec_master_t *master,
+        const uint8_t *req, uint32_t req_size)
+{
+    ec_ioctl_slave_reg_t io;
+    ec_slave_t *slave;
+    ec_reg_request_t request;
+    int ret;
+
+    if (req_size < sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
+
+    if (!io.size)
+        return send_response(fd, 0, NULL, 0);
+
+    ret = ec_reg_request_init(&request, io.size);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
+
+    ret = ecrt_reg_request_read(&request, io.address, io.size);
+    if (ret) {
+        ec_reg_request_clear(&request);
+        return send_response(fd, ret, NULL, 0);
+    }
+
+    if (ec_sem_down_interruptible(&master->master_sem)) {
+        ec_reg_request_clear(&request);
+        return send_response(fd, -EINTR, NULL, 0);
+    }
+
+    if (!(slave = ec_master_find_slave(master, 0, io.slave_position))) {
+        ec_sem_up(&master->master_sem);
+        EC_MASTER_ERR(master, "Slave %u does not exist!\n",
+                io.slave_position);
+        ec_reg_request_clear(&request);
+        return send_response(fd, -EINVAL, NULL, 0);
+    }
+
+    /* Schedule request. */
+    list_add_tail(&request.list, &slave->reg_requests);
+    ec_sem_up(&master->master_sem);
+
+    /* Wait for processing through FSM. */
+    if (ec_wq_wait_interruptible(master->request_queue,
+                request.state != EC_INT_REQUEST_QUEUED)) {
+        ec_sem_down(&master->master_sem);
+        if (request.state == EC_INT_REQUEST_QUEUED) {
+            list_del(&request.list);
+            ec_sem_up(&master->master_sem);
+            ec_reg_request_clear(&request);
+            return send_response(fd, -EINTR, NULL, 0);
+        }
+        ec_sem_up(&master->master_sem);
+    }
+
+    /* Wait until master FSM has finished processing. */
+    ec_wq_wait(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
+
+    if (request.state == EC_INT_REQUEST_SUCCESS) {
+        ret = send_response_with_trailing(fd, 0,
+                &io, sizeof(io),
+                request.data, io.size);
+        ec_reg_request_clear(&request);
+        return ret;
+    }
+    ec_reg_request_clear(&request);
+    return send_response(fd, -EIO, NULL, 0);
+}
+
+/** EC_CMD_SLAVE_REG_WRITE — write slave registers. */
+static int dispatch_slave_reg_write(int fd, ec_master_t *master,
+        const uint8_t *req, uint32_t req_size)
+{
+    ec_ioctl_slave_reg_t io;
+    ec_slave_t *slave;
+    ec_reg_request_t request;
+    int ret;
+
+    if (req_size < sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
+
+    if (!io.size)
+        return send_response(fd, 0, NULL, 0);
+
+    if (req_size < sizeof(io) + io.size)
+        return send_response(fd, -EINVAL, NULL, 0);
+
+    ret = ec_reg_request_init(&request, io.size);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
+
+    memcpy(request.data, req + sizeof(io), io.size);
+
+    ret = ecrt_reg_request_write(&request, io.address, io.size);
+    if (ret) {
+        ec_reg_request_clear(&request);
+        return send_response(fd, ret, NULL, 0);
+    }
+
+    if (ec_sem_down_interruptible(&master->master_sem)) {
+        ec_reg_request_clear(&request);
+        return send_response(fd, -EINTR, NULL, 0);
+    }
+
+    if (io.emergency) {
+        request.ring_position = io.slave_position;
+        /* Schedule emergency register request. */
+        list_add_tail(&request.list, &master->emerg_reg_requests);
+    } else {
+        if (!(slave = ec_master_find_slave(master, 0, io.slave_position))) {
+            ec_sem_up(&master->master_sem);
+            EC_MASTER_ERR(master, "Slave %u does not exist!\n",
+                    io.slave_position);
+            ec_reg_request_clear(&request);
+            return send_response(fd, -EINVAL, NULL, 0);
+        }
+        /* Schedule request. */
+        list_add_tail(&request.list, &slave->reg_requests);
+    }
+    ec_sem_up(&master->master_sem);
+
+    /* Wait for processing through FSM. */
+    if (ec_wq_wait_interruptible(master->request_queue,
+                request.state != EC_INT_REQUEST_QUEUED)) {
+        ec_sem_down(&master->master_sem);
+        if (request.state == EC_INT_REQUEST_QUEUED) {
+            list_del(&request.list);
+            ec_sem_up(&master->master_sem);
+            ec_reg_request_clear(&request);
+            return send_response(fd, -EINTR, NULL, 0);
+        }
+        ec_sem_up(&master->master_sem);
+    }
+
+    /* Wait until master FSM has finished processing. */
+    ec_wq_wait(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
+
+    ret = request.state == EC_INT_REQUEST_SUCCESS ? 0 : -EIO;
+    ec_reg_request_clear(&request);
+    return send_response(fd, ret, NULL, 0);
+}
+
+/** EC_CMD_SLAVE_FOE_READ — read a file from a slave via FoE. */
+static int dispatch_slave_foe_read(int fd, ec_master_t *master,
+        const uint8_t *req, uint32_t req_size)
+{
+    ec_ioctl_slave_foe_t io;
+    ec_foe_request_t request;
+    ec_slave_t *slave;
+    int ret;
+
+    if (req_size < sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
+
+    ec_foe_request_init(&request, io.file_name);
+    ret = ec_foe_request_alloc(&request, 10000); // FIXME
+    if (ret) {
+        ec_foe_request_clear(&request);
+        return send_response(fd, ret, NULL, 0);
+    }
+
+    ec_foe_request_read(&request);
+
+    if (ec_sem_down_interruptible(&master->master_sem)) {
+        ec_foe_request_clear(&request);
+        return send_response(fd, -EINTR, NULL, 0);
+    }
+
+    if (!(slave = ec_master_find_slave(master, 0, io.slave_position))) {
+        ec_sem_up(&master->master_sem);
+        EC_MASTER_ERR(master, "Slave %u does not exist!\n",
+                io.slave_position);
+        ec_foe_request_clear(&request);
+        return send_response(fd, -EINVAL, NULL, 0);
+    }
+
+    EC_SLAVE_DBG(slave, 1, "Scheduling FoE read request.\n");
+
+    /* Schedule request. */
+    list_add_tail(&request.list, &slave->foe_requests);
+    ec_sem_up(&master->master_sem);
+
+    /* Wait for processing through FSM. */
+    if (ec_wq_wait_interruptible(master->request_queue,
+                request.state != EC_INT_REQUEST_QUEUED)) {
+        ec_sem_down(&master->master_sem);
+        if (request.state == EC_INT_REQUEST_QUEUED) {
+            list_del(&request.list);
+            ec_sem_up(&master->master_sem);
+            ec_foe_request_clear(&request);
+            return send_response(fd, -EINTR, NULL, 0);
+        }
+        /* Request already processing: interrupt not possible. */
+        ec_sem_up(&master->master_sem);
+    }
+
+    /* Wait until master FSM has finished processing. */
+    ec_wq_wait(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
+
+    io.result = request.result;
+    io.error_code = request.error_code;
+
+    if (request.state != EC_INT_REQUEST_SUCCESS) {
+        io.data_size = 0;
+        ec_foe_request_clear(&request);
+        return send_response(fd, -EIO, &io, sizeof(io));
+    }
+
+    io.data_size = (uint32_t)request.data_size;
+    ret = send_response_with_trailing(fd, 0,
+            &io, sizeof(io),
+            request.buffer, io.data_size);
+    ec_foe_request_clear(&request);
+    return ret;
+}
+
+/** EC_CMD_SLAVE_FOE_WRITE — write a file to a slave via FoE. */
+static int dispatch_slave_foe_write(int fd, ec_master_t *master,
+        const uint8_t *req, uint32_t req_size)
+{
+    ec_ioctl_slave_foe_t io;
+    ec_foe_request_t request;
+    ec_slave_t *slave;
+    int ret;
+
+    if (req_size < sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
+
+    if (req_size < sizeof(io) + io.buffer_size)
+        return send_response(fd, -EINVAL, NULL, 0);
+
+    ec_foe_request_init(&request, io.file_name);
+    ret = ec_foe_request_alloc(&request, io.buffer_size);
+    if (ret) {
+        ec_foe_request_clear(&request);
+        return send_response(fd, ret, NULL, 0);
+    }
+
+    memcpy(request.buffer, req + sizeof(io), io.buffer_size);
+    request.data_size = io.buffer_size;
+    ec_foe_request_write(&request);
+
+    if (ec_sem_down_interruptible(&master->master_sem)) {
+        ec_foe_request_clear(&request);
+        return send_response(fd, -EINTR, NULL, 0);
+    }
+
+    if (!(slave = ec_master_find_slave(master, 0, io.slave_position))) {
+        ec_sem_up(&master->master_sem);
+        EC_MASTER_ERR(master, "Slave %u does not exist!\n",
+                io.slave_position);
+        ec_foe_request_clear(&request);
+        return send_response(fd, -EINVAL, NULL, 0);
+    }
+
+    EC_SLAVE_DBG(slave, 1, "Scheduling FoE write request.\n");
+
+    /* Schedule FoE write request. */
+    list_add_tail(&request.list, &slave->foe_requests);
+    ec_sem_up(&master->master_sem);
+
+    /* Wait for processing through FSM. */
+    if (ec_wq_wait_interruptible(master->request_queue,
+                request.state != EC_INT_REQUEST_QUEUED)) {
+        ec_sem_down(&master->master_sem);
+        if (request.state == EC_INT_REQUEST_QUEUED) {
+            list_del(&request.list);
+            ec_sem_up(&master->master_sem);
+            ec_foe_request_clear(&request);
+            return send_response(fd, -EINTR, NULL, 0);
+        }
+        ec_sem_up(&master->master_sem);
+    }
+
+    /* Wait until master FSM has finished processing. */
+    ec_wq_wait(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
+
+    io.result = request.result;
+    io.error_code = request.error_code;
+
+    ret = request.state == EC_INT_REQUEST_SUCCESS ? 0 : -EIO;
+    ec_foe_request_clear(&request);
+    return send_response(fd, ret, &io, sizeof(io));
+}
+
+/** EC_CMD_SLAVE_SOE_READ — read an SoE IDN from a slave. */
+static int dispatch_slave_soe_read(int fd, ec_master_t *master,
+        const uint8_t *req, uint32_t req_size)
+{
+    ec_ioctl_slave_soe_read_t io;
+    uint8_t *data;
+    size_t result_size = 0;
+    int retval;
+
+    if (req_size < sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
+
+    if (!io.mem_size)
+        return send_response(fd, -EINVAL, NULL, 0);
+
+    data = malloc(io.mem_size);
+    if (!data) {
+        EC_MASTER_ERR(master, "Failed to allocate %u bytes of IDN data.\n",
+                io.mem_size);
+        return send_response(fd, -ENOMEM, NULL, 0);
+    }
+
+    retval = ecrt_master_read_idn(master, io.slave_position,
+            io.drive_no, io.idn, data, io.mem_size, &result_size,
+            &io.error_code);
+    io.data_size = (uint32_t)result_size;
+    if (retval) {
+        free(data);
+        return send_response(fd, retval, &io, sizeof(io));
+    }
+
+    retval = send_response_with_trailing(fd, 0,
+            &io, sizeof(io),
+            data, io.data_size);
+    free(data);
+    return retval;
+}
+
+/** EC_CMD_SLAVE_SOE_WRITE — write an SoE IDN to a slave. */
+static int dispatch_slave_soe_write(int fd, ec_master_t *master,
+        const uint8_t *req, uint32_t req_size)
+{
+    ec_ioctl_slave_soe_write_t io;
+    int retval;
+
+    if (req_size < sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
+
+    if (req_size < sizeof(io) + io.data_size)
+        return send_response(fd, -EINVAL, NULL, 0);
+
+    retval = ecrt_master_write_idn(master, io.slave_position,
+            io.drive_no, io.idn, req + sizeof(io), io.data_size,
+            &io.error_code);
+    return send_response(fd, retval, &io, sizeof(io));
+}
+
 /****************************************************************************/
 /* Poll-based event loop                                                       */
 /****************************************************************************/
@@ -1465,28 +1813,22 @@ static int handle_client_request(int fd, uint8_t **payload,
             dispatch_slave_sii_write(fd, master, *payload, req.data_size);
             break;
         case EC_CMD_SLAVE_REG_READ:
-            /* Register read requires pointer-based data transfer. */
-            send_response(fd, -ENOSYS, NULL, 0);
+            dispatch_slave_reg_read(fd, master, *payload, req.data_size);
             break;
         case EC_CMD_SLAVE_REG_WRITE:
-            /* Register write requires pointer-based data transfer. */
-            send_response(fd, -ENOSYS, NULL, 0);
+            dispatch_slave_reg_write(fd, master, *payload, req.data_size);
             break;
         case EC_CMD_SLAVE_FOE_READ:
-            /* FoE read requires pointer-based data transfer. */
-            send_response(fd, -ENOSYS, NULL, 0);
+            dispatch_slave_foe_read(fd, master, *payload, req.data_size);
             break;
         case EC_CMD_SLAVE_FOE_WRITE:
-            /* FoE write requires pointer-based data transfer. */
-            send_response(fd, -ENOSYS, NULL, 0);
+            dispatch_slave_foe_write(fd, master, *payload, req.data_size);
             break;
         case EC_CMD_SLAVE_SOE_READ:
-            /* SoE read requires pointer-based data transfer. */
-            send_response(fd, -ENOSYS, NULL, 0);
+            dispatch_slave_soe_read(fd, master, *payload, req.data_size);
             break;
         case EC_CMD_SLAVE_SOE_WRITE:
-            /* SoE write requires pointer-based data transfer. */
-            send_response(fd, -ENOSYS, NULL, 0);
+            dispatch_slave_soe_write(fd, master, *payload, req.data_size);
             break;
 #ifdef EC_EOE
         case EC_CMD_SLAVE_EOE_IP_PARAM:
