@@ -550,8 +550,8 @@ server skeleton, master registry) and the following read-only commands:
 ### Phase 3: EoE Commands (if needed)
 
 - [x] IPC: `EC_CMD_EOE_HANDLER` (implemented behind `#ifdef EC_EOE`)
-- [x] IPC: `EC_CMD_SLAVE_EOE_IP_PARAM` (stub, returns -ENOSYS)
-- [x] IPC: `EC_CMD_CONFIG_EOE_IP_PARAM` (stub, returns -ENOSYS)
+- [ ] IPC: `EC_CMD_SLAVE_EOE_IP_PARAM`
+- [ ] IPC: `EC_CMD_CONFIG_EOE_IP_PARAM`
 - [ ] Test: `ethercat eoe`, `ethercat ip` *(requires EoE-capable slave)*
 
 ## Items to Watch
