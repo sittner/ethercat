@@ -273,7 +273,10 @@ void MasterDevice::getData(ec_ioctl_domain_data_t *data,
     data->data_size = dataSize;
     data->target = mem;
 
-    int ret = backend->request(EC_CMD_DOMAIN_DATA, data, sizeof(*data));
+    int ret = backend->requestTrailingData(EC_CMD_DOMAIN_DATA,
+            data, sizeof(*data),
+            NULL, 0,
+            mem, dataSize);
     if (ret < 0) {
         errno = -ret;
         stringstream err;
@@ -550,8 +553,10 @@ void MasterDevice::rescan()
 
 void MasterDevice::sdoDownload(ec_ioctl_slave_sdo_download_t *data)
 {
-    int ret = backend->request(EC_CMD_SLAVE_SDO_DOWNLOAD,
-            data, sizeof(*data));
+    int ret = backend->requestTrailingData(EC_CMD_SLAVE_SDO_DOWNLOAD,
+            data, sizeof(*data),
+            data->data, data->data_size,
+            NULL, 0);
     if (ret < 0) {
         errno = -ret;
         if (errno == EIO && data->abort_code) {
@@ -568,8 +573,10 @@ void MasterDevice::sdoDownload(ec_ioctl_slave_sdo_download_t *data)
 
 void MasterDevice::sdoUpload(ec_ioctl_slave_sdo_upload_t *data)
 {
-    int ret = backend->request(EC_CMD_SLAVE_SDO_UPLOAD,
-            data, sizeof(*data));
+    int ret = backend->requestTrailingData(EC_CMD_SLAVE_SDO_UPLOAD,
+            data, sizeof(*data),
+            NULL, 0,
+            data->target, data->target_size);
     if (ret < 0) {
         errno = -ret;
         if (errno == EIO && data->abort_code) {

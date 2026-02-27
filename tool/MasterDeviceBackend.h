@@ -60,6 +60,26 @@ class MasterDeviceBackend
         virtual int request(unsigned int cmd, void *data,
                 size_t size, uint32_t arg = 0) = 0;
 
+        /** Issue a command with separate trailing data buffer.
+         *
+         * For commands that carry pointer-based data (SDO upload/download,
+         * domain data, SII, register, FoE, SoE), the struct and the
+         * trailing blob are sent/received separately.
+         *
+         * \param cmd             ec_tool_cmd value.
+         * \param data            Pointer to the ioctl struct.
+         * \param size            Size of the struct.
+         * \param trailingIn      Data to append after the struct on send (NULL if none).
+         * \param trailingInSize  Size of trailingIn.
+         * \param trailingOut     Buffer to receive trailing data after the struct (NULL if none).
+         * \param trailingOutSize Size of trailingOut buffer.
+         * \return 0 on success, -errno on failure.
+         */
+        virtual int requestTrailingData(unsigned int cmd, void *data,
+                size_t size,
+                const void *trailingIn, size_t trailingInSize,
+                void *trailingOut, size_t trailingOutSize) = 0;
+
         /** Factory: create the backend appropriate for this build.
          *
          * \param socketPath  Socket path for the userspace backend.
