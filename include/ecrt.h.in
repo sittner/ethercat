@@ -668,11 +668,19 @@ EC_PUBLIC_API unsigned int ecrt_version_magic(void);
 #endif
 
 /** Log callback type.
- *  \param level  Log level (EC_LOG_ERR, EC_LOG_INFO, etc.)
- *  \param fmt    printf-style format string
- *  \param ap     va_list arguments
+ *
+ *  Called by the library to report diagnostic messages. The callback
+ *  receives a syslog(3) level value — use constants from <syslog.h>
+ *  (LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG, etc.) to interpret it.
+ *
+ *  \param level  Syslog level from <syslog.h>.
+ *  \param fmt    printf-style format string.
+ *  \param ap     va_list arguments.
  */
+#ifndef EC_LOG_CB_T_DEFINED
+#define EC_LOG_CB_T_DEFINED
 typedef void (*ec_log_cb_t)(int level, const char *fmt, va_list ap);
+#endif
 
 /** Initialize the userspace master library. Must be called once before
  *  any other ecrt_* function.

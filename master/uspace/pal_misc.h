@@ -36,6 +36,33 @@
 #include "pal_list.h"
 #include "pal_alloc.h"
 
+/****************************************************************************/
+/* Log levels - map to syslog(3) values */
+/****************************************************************************/
+
+#include <syslog.h>
+
+#define EC_LOG_EMERG    LOG_EMERG
+#define EC_LOG_ALERT    LOG_ALERT
+#define EC_LOG_CRIT     LOG_CRIT
+#define EC_LOG_ERR      LOG_ERR
+#define EC_LOG_WARNING  LOG_WARNING
+#define EC_LOG_NOTICE   LOG_NOTICE
+#define EC_LOG_INFO     LOG_INFO
+#define EC_LOG_DEBUG    LOG_DEBUG
+
+/****************************************************************************/
+/* Log callback type */
+/****************************************************************************/
+
+#include <stdarg.h>
+
+#ifndef EC_LOG_CB_T_DEFINED
+#define EC_LOG_CB_T_DEFINED
+/** Log callback type (forward declaration; also defined in ecrt.h). */
+typedef void (*ec_log_cb_t)(int level, const char *fmt, va_list ap);
+#endif
+
 /* Error pointer macros */
 #define ERR_PTR(err)        ((void *)((long)(err)))
 #define PTR_ERR(ptr)        ((long)(ptr))
