@@ -81,18 +81,39 @@ int ecrt_lib_init(ec_log_cb_t log_cb, const char *socket_path)
 
 /****************************************************************************/
 
-/** Common startup helper: opens transports and initializes master.
- *
- * Assumes master->pal.transport (and optionally master->pal.backup_transport)
- * are set. Opened transports are closed on error or by ecrt_release_master().
- *
- * \return master on success, NULL on error (master is freed on error).
- */
-static ec_master_t *ecrt_startup_master_common(ec_master_t *master,
-        unsigned int index, const char *interface,
-        const char *backup_interface, unsigned int debug_level, int run_on_cpu)
+/****************************************************************************/
+
+ec_master_t *ecrt_startup_master(unsigned int index,
+        ec_transport_t *transport,
+        const char *interface,
+        ec_transport_t *backup_transport,
+        const char *backup_interface,
+        unsigned int debug_level,
+        int run_on_cpu)
 {
+    ec_master_t *master;
     int ret;
+
+    if (!transport) {
+        ec_log(EC_LOG_ERR, "Main transport must not be NULL\n");
+        return NULL;
+    }
+
+    if (!interface) {
+        ec_log(EC_LOG_ERR, "Interface name must not be NULL\n");
+        return NULL;
+    }
+
+    master = malloc(sizeof(ec_master_t));
+    if (!master) {
+        ec_log(EC_LOG_ERR, "Failed to allocate master context\n");
+        return NULL;
+    }
+    memset(master, 0, sizeof(ec_master_t));
+
+    /* Borrow transport pointers — caller owns them, library opens/closes */
+    master->pal.transport = transport;
+    master->pal.backup_transport = backup_transport;
 
     /* Open main transport */
     ret = ec_transport_open(master->pal.transport, interface);
@@ -197,43 +218,6 @@ out_close_main:
 out_free:
     free(master);
     return NULL;
-}
-
-/****************************************************************************/
-
-ec_master_t *ecrt_startup_master(unsigned int index,
-        ec_transport_t *transport,
-        const char *interface,
-        ec_transport_t *backup_transport,
-        const char *backup_interface,
-        unsigned int debug_level,
-        int run_on_cpu)
-{
-    ec_master_t *master;
-
-    if (!transport) {
-        ec_log(EC_LOG_ERR, "Main transport must not be NULL\n");
-        return NULL;
-    }
-
-    if (!interface) {
-        ec_log(EC_LOG_ERR, "Interface name must not be NULL\n");
-        return NULL;
-    }
-
-    master = malloc(sizeof(ec_master_t));
-    if (!master) {
-        ec_log(EC_LOG_ERR, "Failed to allocate master context\n");
-        return NULL;
-    }
-    memset(master, 0, sizeof(ec_master_t));
-
-    /* Borrow transport pointers — caller owns them, library opens/closes */
-    master->pal.transport = transport;
-    master->pal.backup_transport = backup_transport;
-
-    return ecrt_startup_master_common(master, index, interface,
-            backup_interface, debug_level, run_on_cpu);
 }
 
 /****************************************************************************/
