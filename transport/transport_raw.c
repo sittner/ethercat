@@ -37,7 +37,7 @@
 #include <linux/if_packet.h>
 #include <arpa/inet.h>
 
-#include "ec_transport.h"
+#include "ectp.h"
 
 /****************************************************************************/
 

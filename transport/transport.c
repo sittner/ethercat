@@ -29,7 +29,7 @@
 #include <errno.h>
 #include <stdio.h>
 
-#include "ec_transport.h"
+#include "ectp.h"
 
 /****************************************************************************/
 
@@ -39,7 +39,7 @@ static const struct {
     const ec_transport_ops_t *ops;
 } transport_registry[] = {
     { EC_TRANSPORT_RAW,        &ec_transport_raw_ops },
-#ifdef EC_USPACE_HAVE_XDP
+#ifdef HAVE_XDP
     { EC_TRANSPORT_XDP_SKB,    &ec_transport_xdp_skb_ops },
     { EC_TRANSPORT_XDP_NATIVE, &ec_transport_xdp_native_ops },
 #endif
@@ -67,6 +67,7 @@ ec_transport_t *ec_transport_create(ec_transport_type_t type)
     }
 
     if (!ops) {
+        fprintf(stderr, "Transport type %d not available\n", (int)type);
         return NULL;
     }
 
@@ -335,6 +336,24 @@ void ec_transport_print_available(void)
             needs_separator = 1;
         }
     }
+}
+
+/****************************************************************************/
+
+/**
+ * Create a transport instance by name.
+ */
+ec_transport_t *ec_transport_create_by_name(const char *name)
+{
+    int type;
+
+    type = ec_transport_find_by_name(name);
+    if (type < 0) {
+        fprintf(stderr, "Unknown transport name: %s\n", name ? name : "(null)");
+        return NULL;
+    }
+
+    return ec_transport_create((ec_transport_type_t)type);
 }
 
 /****************************************************************************/

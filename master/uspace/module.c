@@ -83,14 +83,13 @@ int ecrt_lib_init(ec_log_cb_t log_cb, const char *socket_path)
 
 /** Common startup helper: initializes master from an already-assigned transport.
  *
- * Assumes master->pal.transport, master->pal.transport_owned,
- * master->pal.interface_name, and optionally master->pal.backup_transport
- * and master->pal.backup_interface_name are already set.
+ * Assumes master->pal.transport and optionally master->pal.backup_transport
+ * are already set (borrowed pointers from caller).
  *
  * \return master on success, NULL on error (master is freed on error).
  */
 static ec_master_t *ecrt_startup_master_common(ec_master_t *master,
-        unsigned int index, unsigned int debug_level, unsigned int run_on_cpu)
+        unsigned int index, unsigned int debug_level, int run_on_cpu)
 {
     int ret;
 
@@ -98,7 +97,7 @@ static ec_master_t *ecrt_startup_master_common(ec_master_t *master,
     ret = ec_transport_get_mac(master->pal.transport, master->pal.main_mac);
     if (ret < 0) {
         ec_log(EC_LOG_ERR, "Failed to get MAC address: %d\n", ret);
-        goto out_free_interface;
+        goto out_free;
     }
 
     /* Get backup MAC address from backup transport (if any) */
@@ -107,21 +106,22 @@ static ec_master_t *ecrt_startup_master_common(ec_master_t *master,
                 master->pal.backup_mac);
         if (ret < 0) {
             ec_log(EC_LOG_ERR, "Failed to get backup MAC address: %d\n", ret);
-            goto out_free_interface;
+            goto out_free;
         }
     }
 
     /* Initialize master */
     ret = ec_master_init(master, index, master->pal.main_mac,
-            master->pal.backup_mac, debug_level, run_on_cpu);
+            master->pal.backup_mac, debug_level,
+            run_on_cpu < 0 ? 0xffffffff : (unsigned int)run_on_cpu);
     if (ret < 0) {
         ec_log(EC_LOG_ERR, "Failed to initialize master: %d\n", ret);
-        goto out_free_interface;
+        goto out_free;
     }
 
-    /* Store transport reference in device */
+    /* Store transport reference in device; interface name borrowed from transport */
     master->devices[EC_DEVICE_MAIN].pal.transport = master->pal.transport;
-    master->devices[EC_DEVICE_MAIN].name = master->pal.interface_name;
+    master->devices[EC_DEVICE_MAIN].name = master->pal.transport->interface;
 
     /* Open device */
     ret = ec_device_open(&master->devices[EC_DEVICE_MAIN]);
@@ -135,7 +135,7 @@ static ec_master_t *ecrt_startup_master_common(ec_master_t *master,
         master->devices[EC_DEVICE_BACKUP].pal.transport =
                 master->pal.backup_transport;
         master->devices[EC_DEVICE_BACKUP].name =
-                master->pal.backup_interface_name;
+                master->pal.backup_transport->interface;
         ret = ec_device_open(&master->devices[EC_DEVICE_BACKUP]);
         if (ret < 0) {
             ec_log(EC_LOG_ERR, "Failed to open backup device: %d\n", ret);
@@ -172,15 +172,7 @@ out_close_main_device:
     ec_device_close(&master->devices[EC_DEVICE_MAIN]);
 out_clear_master:
     ec_master_clear(master);
-out_free_interface:
-    if (master->pal.backup_interface_name) {
-        free(master->pal.backup_interface_name);
-        master->pal.backup_interface_name = NULL;
-    }
-    if (master->pal.interface_name) {
-        free(master->pal.interface_name);
-        master->pal.interface_name = NULL;
-    }
+out_free:
     free(master);
     return NULL;
 }
@@ -188,97 +180,17 @@ out_free_interface:
 /****************************************************************************/
 
 ec_master_t *ecrt_startup_master(unsigned int index,
-        ec_transport_type_t transport_type,
-        const char *interface,
-        const char *backup_interface,
-        unsigned int debug_level,
-        unsigned int run_on_cpu)
-{
-    ec_master_t *master;
-    int ret;
-
-    master = malloc(sizeof(ec_master_t));
-    if (!master) {
-        ec_log(EC_LOG_ERR, "Failed to allocate master context\n");
-        return NULL;
-    }
-    memset(master, 0, sizeof(ec_master_t));
-    master->pal.transport_owned = 1;
-
-    master->pal.interface_name = strdup(interface);
-    if (!master->pal.interface_name) {
-        ec_log(EC_LOG_ERR, "Failed to copy interface name\n");
-        free(master);
-        return NULL;
-    }
-
-    master->pal.transport = ec_transport_create(transport_type);
-    if (!master->pal.transport) {
-        ec_log(EC_LOG_ERR, "Failed to create transport\n");
-        free(master->pal.interface_name);
-        free(master);
-        return NULL;
-    }
-
-    ret = ec_transport_open(master->pal.transport, interface);
-    if (ret < 0) {
-        ec_log(EC_LOG_ERR, "Failed to open transport on %s: %d\n", interface, ret);
-        ec_transport_destroy(master->pal.transport);
-        free(master->pal.interface_name);
-        free(master);
-        return NULL;
-    }
-
-    /* Set up backup transport if backup_interface is specified */
-    if (backup_interface) {
-        master->pal.backup_interface_name = strdup(backup_interface);
-        if (!master->pal.backup_interface_name) {
-            ec_log(EC_LOG_ERR, "Failed to copy backup interface name\n");
-            ec_transport_close(master->pal.transport);
-            ec_transport_destroy(master->pal.transport);
-            free(master->pal.interface_name);
-            free(master);
-            return NULL;
-        }
-
-        master->pal.backup_transport = ec_transport_create(transport_type);
-        if (!master->pal.backup_transport) {
-            ec_log(EC_LOG_ERR, "Failed to create backup transport\n");
-            free(master->pal.backup_interface_name);
-            ec_transport_close(master->pal.transport);
-            ec_transport_destroy(master->pal.transport);
-            free(master->pal.interface_name);
-            free(master);
-            return NULL;
-        }
-
-        ret = ec_transport_open(master->pal.backup_transport, backup_interface);
-        if (ret < 0) {
-            ec_log(EC_LOG_ERR, "Failed to open backup transport on %s: %d\n",
-                    backup_interface, ret);
-            ec_transport_destroy(master->pal.backup_transport);
-            free(master->pal.backup_interface_name);
-            ec_transport_close(master->pal.transport);
-            ec_transport_destroy(master->pal.transport);
-            free(master->pal.interface_name);
-            free(master);
-            return NULL;
-        }
-    }
-
-    return ecrt_startup_master_common(master, index, debug_level, run_on_cpu);
-}
-
-/****************************************************************************/
-
-ec_master_t *ecrt_startup_master_custom(unsigned int index,
         ec_transport_t *transport,
-        const char *interface,
-        const char *backup_interface,
+        ec_transport_t *backup_transport,
         unsigned int debug_level,
-        unsigned int run_on_cpu)
+        int run_on_cpu)
 {
     ec_master_t *master;
+
+    if (!transport) {
+        ec_log(EC_LOG_ERR, "Main transport must not be NULL\n");
+        return NULL;
+    }
 
     master = malloc(sizeof(ec_master_t));
     if (!master) {
@@ -286,23 +198,10 @@ ec_master_t *ecrt_startup_master_custom(unsigned int index,
         return NULL;
     }
     memset(master, 0, sizeof(ec_master_t));
-    master->pal.transport_owned = 0;
+
+    /* Borrow transport pointers — caller owns them */
     master->pal.transport = transport;
-
-    master->pal.interface_name = strdup(interface);
-    if (!master->pal.interface_name) {
-        ec_log(EC_LOG_ERR, "Failed to copy interface name\n");
-        free(master);
-        return NULL;
-    }
-
-    /* TODO: backup_interface support for custom transport requires
-     * ec_transport_get_type() to determine the transport type for creating
-     * a second transport instance. Not yet implemented. */
-    if (backup_interface) {
-        ec_log(EC_LOG_WARNING,
-                "Backup interface not supported in custom transport mode\n");
-    }
+    master->pal.backup_transport = backup_transport;
 
     return ecrt_startup_master_common(master, index, debug_level, run_on_cpu);
 }
@@ -329,25 +228,7 @@ void ecrt_release_master(ec_master_t *master)
     ec_device_close(&master->devices[EC_DEVICE_MAIN]);
     ec_master_clear(master);
 
-    if (master->pal.backup_transport) {
-        ec_transport_close(master->pal.backup_transport);
-        ec_transport_destroy(master->pal.backup_transport);
-    }
-
-    if (master->pal.transport) {
-        ec_transport_close(master->pal.transport);
-        if (master->pal.transport_owned) {
-            ec_transport_destroy(master->pal.transport);
-        }
-    }
-
-    if (master->pal.backup_interface_name) {
-        free(master->pal.backup_interface_name);
-    }
-
-    if (master->pal.interface_name) {
-        free(master->pal.interface_name);
-    }
+    /* Transports are caller-owned; do not close or destroy them here. */
 
     free(master);
 }

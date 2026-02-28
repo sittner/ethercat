@@ -38,7 +38,7 @@
 #include <linux/if_link.h>
 #include <xdp/xsk.h>
 
-#include "ec_transport.h"
+#include "ectp.h"
 
 /****************************************************************************/
 

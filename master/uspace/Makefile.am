@@ -71,11 +71,11 @@ libethercat_la_SOURCES = \
 	module.c \
 	cdev.c \
 	$(top_srcdir)/lib/shared.c \
-	transport/transport.c \
-	transport/transport_raw.c
+	$(top_srcdir)/transport/transport.c \
+	$(top_srcdir)/transport/transport_raw.c
 
 if EC_USPACE_HAVE_XDP
-libethercat_la_SOURCES += transport/transport_xdp.c
+libethercat_la_SOURCES += $(top_srcdir)/transport/transport_xdp.c
 endif
 
 libethercat_la_CFLAGS = \
@@ -88,7 +88,7 @@ libethercat_la_CFLAGS = \
 	-I$(top_srcdir)/include
 
 if EC_USPACE_HAVE_XDP
-libethercat_la_CFLAGS += -DEC_USPACE_HAVE_XDP
+libethercat_la_CFLAGS += -DHAVE_XDP
 endif
 
 #

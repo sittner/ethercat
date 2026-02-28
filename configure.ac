@@ -1445,18 +1445,13 @@ if test "x$enable_uspace_master" = "xyes"; then
     AC_CHECK_LIB([xdp], [xsk_socket__create], [have_xdp=yes], [have_xdp=no])
 
     if test "x$have_xdp" = "xyes"; then
-        AC_DEFINE([EC_USPACE_HAVE_XDP], [1], [XDP transport support available])
-        EC_USPACE_HAVE_XDP_DEFINE='#define EC_USPACE_HAVE_XDP 1'
-    else
-        EC_USPACE_HAVE_XDP_DEFINE=''
+        AC_DEFINE([HAVE_XDP], [1], [XDP transport support available])
     fi
 else
     EC_USPACE_MASTER_DEFINE=''
-    EC_USPACE_HAVE_XDP_DEFINE=''
 fi
 
 AC_SUBST(EC_USPACE_MASTER_DEFINE)
-AC_SUBST(EC_USPACE_HAVE_XDP_DEFINE)
 
 AM_CONDITIONAL([ENABLE_USPACE_MASTER], [test "x$enable_uspace_master" = "xyes"])
 AM_CONDITIONAL([EC_USPACE_HAVE_XDP], [test "x$have_xdp" = "xyes"])
