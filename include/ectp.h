@@ -24,8 +24,8 @@
  * EtherCAT transport layer interface for userspace implementations.
  */
 
-#ifndef __EC_TRANSPORT_H__
-#define __EC_TRANSPORT_H__
+#ifndef __ECTP_H__
+#define __ECTP_H__
 
 #include <stddef.h>
 #include <stdint.h>
@@ -43,10 +43,8 @@
 /** Transport type enumeration values */
 enum ec_transport_type {
     EC_TRANSPORT_RAW = 0,   /**< AF_PACKET raw socket */
-#ifdef EC_USPACE_HAVE_XDP
     EC_TRANSPORT_XDP_SKB,   /**< AF_XDP Generic SKB mode (universal compatibility) */
     EC_TRANSPORT_XDP_NATIVE,   /**< AF_XDP Native driver mode with copy */
-#endif
 };
 
 typedef enum ec_transport_type ec_transport_type_t;
@@ -107,12 +105,27 @@ struct ec_transport {
 /****************************************************************************/
 
 /**
+ * Create a transport instance by name.
+ *
+ * Convenience wrapper that calls ec_transport_find_by_name() then
+ * ec_transport_create().
+ *
+ * @param name Transport name (e.g., "raw", "xdp-skb", "xdp-native")
+ * @param interface Network interface name (e.g., "eth0"), or NULL
+ * @return Transport instance or NULL on error
+ */
+ec_transport_t *ec_transport_create_by_name(const char *name,
+        const char *interface);
+
+/**
  * Create a transport instance.
  * 
  * @param type Transport type
+ * @param interface Network interface name (e.g., "eth0"), or NULL
  * @return Transport instance or NULL on error
  */
-ec_transport_t *ec_transport_create(ec_transport_type_t type);
+ec_transport_t *ec_transport_create(ec_transport_type_t type,
+        const char *interface);
 
 /**
  * Destroy a transport instance.
@@ -122,13 +135,12 @@ ec_transport_t *ec_transport_create(ec_transport_type_t type);
 void ec_transport_destroy(ec_transport_t *transport);
 
 /**
- * Open transport on network interface.
+ * Open transport on the interface stored in transport->interface.
  * 
- * @param transport Transport instance
- * @param interface Network interface name (e.g., "eth0")
+ * @param transport Transport instance (must have interface set at create time)
  * @return 0 on success, negative error code on failure
  */
-int ec_transport_open(ec_transport_t *transport, const char *interface);
+int ec_transport_open(ec_transport_t *transport);
 
 /**
  * Close transport.
@@ -236,13 +248,6 @@ void ec_transport_print_available(void);
 
 /****************************************************************************/
 
-/* Transport operation tables (implemented by each transport) */
-extern const ec_transport_ops_t ec_transport_raw_ops;
-#ifdef EC_USPACE_HAVE_XDP
-extern const ec_transport_ops_t ec_transport_xdp_skb_ops;
-extern const ec_transport_ops_t ec_transport_xdp_native_ops;
-#endif
-
 /****************************************************************************/
 
-#endif /* __EC_TRANSPORT_H__ */
+#endif /* __ECTP_H__ */

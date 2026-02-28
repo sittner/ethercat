@@ -48,73 +48,40 @@ Application → libethercat.so (master core + PAL + transport)
  */
 EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb);
 
-/** Start a userspace master with built-in transport.
- *  Creates transport(s), opens interface(s), initializes master,
- *  and enters idle phase (slave scanning starts immediately).
+/** Start a userspace master.
+ *  The caller creates transports with ec_transport_create() or
+ *  ec_transport_create_by_name(), then passes them here. This function opens
+ *  them on the specified interfaces, initializes the master, and enters idle
+ *  phase (slave scanning starts immediately).
  *
  *  Internally calls:
  *    malloc(sizeof(ec_master_t))
- *    ec_transport_create(transport_type)          — for main interface
- *    ec_transport_open(transport, interface)
+ *    ec_transport_open(transport)           — interface read from transport->interface
  *    ec_transport_get_mac(transport, main_mac)    — MAC is copied
- *    if backup_interface != NULL:
- *      ec_transport_create(transport_type)        — for backup interface (same type)
- *      ec_transport_open(backup_transport, backup_interface)
+ *    if backup_transport != NULL:
+ *      ec_transport_open(backup_transport)
  *      ec_transport_get_mac(backup_transport, backup_mac)
  *    ec_master_init(master, index, ..., debug_level, run_on_cpu)
- *    assign transports to device PALs
+ *    assign transports to device PALs (interface name read from transport->interface)
  *    ec_device_open(&master->devices[EC_DEVICE_MAIN])
- *    if backup_interface != NULL:
+ *    if backup_transport != NULL:
  *      ec_device_open(&master->devices[EC_DEVICE_BACKUP])
  *    ec_master_enter_idle_phase(master)
  *
- *  Both transports are library-owned and will be destroyed by
- *  ecrt_release_master().
- *
- *  \param index        Master index (0-based). Stored in ec_master_t by
- *                      ec_master_init().
- *  \param transport_type  Transport type for both main and backup interfaces.
- *  \param interface    Main network interface name.
- *  \param backup_interface  Backup network interface name, or NULL for none.
- *  \param debug_level  Debug verbosity level. Stored in ec_master_t by
- *                      ec_master_init().
- *  \param run_on_cpu   CPU affinity for master threads, or 0xffffffff for
- *                      no binding. Stored in ec_master_t by ec_master_init().
+ *  \param index        Master index (0-based).
+ *  \param transport    Main transport (created with interface, not yet opened).
+ *  \param backup_transport  Backup transport (created with interface, not yet
+ *                      opened), or NULL.
+ *  \param debug_level  Debug verbosity level.
+ *  \param run_on_cpu   CPU affinity for master threads, or -1 for no binding.
  *  \return Pointer to master, or NULL on error.
  */
 EC_PUBLIC_API ec_master_t *ecrt_startup_master(
         unsigned int index,
-        ec_transport_type_t transport_type,
-        const char *interface,
-        const char *backup_interface,   /* NULL = no backup */
+        ec_transport_t *transport,          /* main transport, required */
+        ec_transport_t *backup_transport,   /* backup transport, or NULL */
         unsigned int debug_level,
-        unsigned int run_on_cpu         /* 0xffffffff = no binding */
-        );
-
-/** Start a userspace master with caller-provided transport.
- *  Same as ecrt_startup_master() but the main transport is supplied by the
- *  caller. The backup interface (if non-NULL) triggers an internally created
- *  transport of the same type as the caller's transport for the backup device.
- *
- *  Main transport is caller-owned — ecrt_release_master() will NOT destroy it.
- *  Backup transport (if created) is library-owned and will be destroyed.
- *
- *  \param index        Master index (0-based).
- *  \param transport    Caller-provided main transport (already opened).
- *  \param interface    Main network interface name.
- *  \param backup_interface  Backup network interface name, or NULL for none.
- *  \param debug_level  Debug verbosity level.
- *  \param run_on_cpu   CPU affinity for master threads, or 0xffffffff for
- *                      no binding.
- *  \return Pointer to master, or NULL on error.
- */
-EC_PUBLIC_API ec_master_t *ecrt_startup_master_custom(
-        unsigned int index,
-        ec_transport_t *transport,
-        const char *interface,
-        const char *backup_interface,   /* NULL = no backup */
-        unsigned int debug_level,
-        unsigned int run_on_cpu         /* 0xffffffff = no binding */
+        int run_on_cpu                      /* -1 = no binding */
         );
 
 /** Cleanup the userspace master library.
@@ -139,12 +106,10 @@ EC_PUBLIC_API void ecrt_lib_cleanup(void);
  *    if backup device was opened:
  *      ec_device_close(&master->devices[EC_DEVICE_BACKUP])
  *    ec_master_clear(master)
- *    ec_transport_close(transport)                — always (main)
- *    ec_transport_destroy(transport)              — only if library-owned
- *    if backup_transport != NULL:
- *      ec_transport_close(backup_transport)       — always
- *      ec_transport_destroy(backup_transport)     — always (library-owned)
+ *    ec_transport_close(backup_transport)   — if backup was opened
+ *    ec_transport_close(transport)          — always
  *    free(master)
+ *    NOTE: transports are closed but NOT destroyed — caller must destroy them.
  */
 EC_PUBLIC_API void ecrt_release_master(ec_master_t *master);
 ```
@@ -179,20 +144,25 @@ int main() {
 **Userspace master mode:**
 ```c
 int main() {
-    ecrt_lib_init();
+    ecrt_lib_init(NULL, EC_IPC_DEFAULT_SOCKET_PATH);
+
+    /* Caller creates transport with interface name baked in */
+    ec_transport_t *t = ec_transport_create(EC_TRANSPORT_RAW, "eth0");
+
     ec_master_t *master = ecrt_startup_master(
             0,               /* index */
-            EC_TRANSPORT_RAW,
-            "eth0",          /* main interface */
-            NULL,            /* no backup */
+            t,               /* main transport */
+            NULL,            /* no backup transport */
             1,               /* debug_level */
-            0xffffffff       /* no CPU binding */
+            -1               /* no CPU binding */
             );
 
     /* FROM HERE: identical to kernel mode */
     ec_domain_t *domain = ecrt_master_create_domain(master);
     /* ... configure slaves, activate, cyclic loop ... */
-    ecrt_release_master(master);
+
+    ecrt_release_master(master); /* closes transport */
+    ec_transport_destroy(t);     /* caller destroys transport */
 
     ecrt_lib_cleanup();
 }
@@ -214,32 +184,35 @@ is never included by application code. **No type renames needed.**
 
 ### Transport Ownership
 
-`ecrt_startup_master()` and `ecrt_startup_master_custom()` differ in transport
-ownership. The flag `transport_owned` in `ec_master_pal_t` tracks this:
+The caller is responsible only for the **lifetime** of transports: create
+(`ec_transport_create()`) and destroy (`ec_transport_destroy()`). The library
+manages the **connection state**: `ecrt_startup_master()` opens the transports
+and `ecrt_release_master()` closes them.
 
-- `ecrt_startup_master()` → library-owned (`transport_owned = 1`) → `ecrt_release_master()` destroys transport
-- `ecrt_startup_master_custom()` → caller-owned (`transport_owned = 0`) → `ecrt_release_master()` does NOT destroy transport
+```
+Caller:   ec_transport_create()
+Library:    └─ ecrt_startup_master()  → ec_transport_open()
+Library:    └─ ecrt_release_master()  → ec_transport_close()
+Caller:   ec_transport_destroy()
+```
 
-The backup transport (stored in `ec_master_pal_t.backup_transport`) is always
-library-owned when present — `ecrt_release_master()` always destroys it.
+`ecrt_release_master()` closes transports but does **not** destroy them —
+that is the caller's responsibility.
 
 ### Backup Device Support
 
-When `backup_interface != NULL`, `ecrt_startup_master()` creates a second
-transport instance of the **same type** as the main transport. Both transports
-use the same `transport_type` to ensure consistency and redundancy quality.
+The caller creates a second transport and passes it along with its interface
+name to `ecrt_startup_master()`. The library opens both transports and
+closes both in `ecrt_release_master()`.
 
-The `ec_master_pal_t` struct tracks both transports:
+The `ec_master_pal_t` struct stores borrowed transport pointers:
 
 ```c
 typedef struct {
-    struct ec_transport *transport;        /**< Main transport instance. */
-    struct ec_transport *backup_transport; /**< Backup transport instance (NULL if none). */
-    int transport_owned;
+    struct ec_transport *transport;        /**< Main transport (borrowed). */
+    struct ec_transport *backup_transport; /**< Backup transport (borrowed, NULL if none). */
     uint8_t main_mac[ETH_ALEN];
     uint8_t backup_mac[ETH_ALEN];
-    char *interface_name;
-    char *backup_interface_name;          /**< Backup interface name (NULL if none). */
 } ec_master_pal_t;
 ```
 
@@ -247,20 +220,12 @@ Note: `index`, `debug_level`, and `run_on_cpu` are passed directly to
 `ec_master_init()` and do not need to be stored in `ec_master_pal_t` — they
 are stored in `ec_master_t` itself by `ec_master_init()`.
 
-The backup transport is assigned to `master->devices[EC_DEVICE_BACKUP].pal.transport`.
+### MAC Address Lifetime
 
-### String and MAC Lifetime
-
-MAC addresses and interface name strings are owned by `ec_master_pal_t`
-(the PAL fields embedded in `ec_master_t`):
+MAC addresses are copied into `ec_master_pal_t` at startup:
 
 - `pal.main_mac[ETH_ALEN]` — MAC address copied from transport at startup
-- `pal.backup_mac[ETH_ALEN]` — backup MAC address copied from backup transport (zeroed if no backup)
-- `pal.interface_name` — interface name `strdup`'d in `ecrt_startup_master()` / `ecrt_startup_master_custom()`, freed in `ecrt_release_master()`
-- `pal.backup_interface_name` — backup interface name `strdup`'d when `backup_interface != NULL`, freed in `ecrt_release_master()`
-
-This fixes a latent bug in the current `main.c` where stack-local `main_mac`
-happens to outlive the master only because it's in `main()`'s stack frame.
+- `pal.backup_mac[ETH_ALEN]` — backup MAC address (zeroed if no backup)
 
 ### Master Allocation
 
@@ -271,15 +236,14 @@ application cannot know `sizeof(ec_master_t)` — the type is opaque.
 This is consistent with how the existing ioctl-based `lib/common.c` allocates
 masters.
 
-### `ecrt_startup_master_common()` Helper
+### Interface Name Access
 
-The internal `ecrt_startup_master_common()` function completes master
-initialization after the transport(s) and interface names are set up by the
-caller (`ecrt_startup_master()` or `ecrt_startup_master_custom()`). It uses
-the caller-provided `index`, `debug_level`, and `run_on_cpu` values when
-calling `ec_master_init()` — these are no longer hardcoded to `0`, `1`, `0`.
-
-## `ec_master` Standalone Tool
+The interface name is passed to `ec_transport_create()` at creation time and
+stored in `transport->interface`. `ecrt_startup_master()` calls
+`ec_transport_open(transport)` which reads the interface name from
+`transport->interface` and passes it to the ops `open()` call. After opening,
+`transport->interface` continues to hold the name; `devices[EC_DEVICE_MAIN].name`
+borrows this pointer.
 
 ### Multi-Master CLI Design
 
@@ -372,7 +336,7 @@ When enabled, implies:
 
 | Target | Source | Install |
 |--------|--------|---------|
-| `libethercat.so` | master core (`master/*.c`) + PAL (`master/uspace/pal*.c`) + transport (`master/uspace/transport/*.c`) + `master/uspace/module.c` + `master/uspace/device_uspace.c` | `libdir` |
+| `libethercat.so` | master core (`master/*.c`) + PAL (`master/uspace/pal*.c`) + transport (`transport/*.c`) + `master/uspace/module.c` + `master/uspace/device_uspace.c` | `libdir` |
 | `ec_master` | `master/uspace/main.c` linked against `libethercat.so` | `bindir` |
 
 ### Autotools Integration
@@ -388,12 +352,12 @@ When enabled, implies:
 
 | File | Purpose |
 |------|---------|
-| `master/uspace/module.c` | Library lifecycle: `ecrt_lib_init()`, `ecrt_startup_master()`, `ecrt_startup_master_custom()`, `ecrt_release_master()`, `ecrt_lib_cleanup()` |
+| `master/uspace/module.c` | Library lifecycle: `ecrt_lib_init()`, `ecrt_startup_master()`, `ecrt_release_master()`, `ecrt_lib_cleanup()` |
 | `master/uspace/device_uspace.c` | Device functions extracted from `main.c`: `ec_device_init()`, `ec_device_clear()`, `ec_device_tx_data()`, `ec_device_send()`, `ec_device_poll()`, `ec_device_open()`, `ec_device_close()` |
-| `master/uspace/transport/ec_transport.h` | Transport abstraction interface |
-| `master/uspace/transport/transport.c` | Transport registry and common helpers |
-| `master/uspace/transport/transport_raw.c` | Raw socket transport implementation |
-| `master/uspace/transport/transport_xdp.c` | XDP/AF_XDP transport implementation |
+| `include/ectp.h` | Transport abstraction interface (renamed from `ec_transport.h`) |
+| `transport/transport.c` | Transport registry and common helpers (moved from `master/uspace/transport/`) |
+| `transport/transport_raw.c` | Raw socket transport implementation (moved) |
+| `transport/transport_xdp.c` | XDP/AF_XDP transport implementation (moved) |
 | `master/uspace/Makefile.am` | Autotools build rules for library + binary |
 
 ### Modified Files (implemented)
@@ -401,7 +365,7 @@ When enabled, implies:
 | File | Change |
 |------|--------|
 | `include/ecrt.h` | New API functions and transport type/struct definitions under `#ifdef EC_USPACE_MASTER` |
-| `master/uspace/main.c` | Thin consumer of library API: arg parsing + signal handling + calls to `ecrt_lib_init`/`ecrt_startup_master`/`ecrt_release_master`/`ecrt_lib_cleanup` |
+| `master/uspace/main.c` | Creates/destroys transports; calls new `ecrt_startup_master` signature |
 | `configure.ac` | Add `--enable-uspace-master` option, conditionals, implied options, XDP detection |
 | `master/Makefile.am` | Conditional uspace subdirectory |
 
@@ -417,19 +381,24 @@ When enabled, implies:
 - [x] Extract device functions from `main.c` → `device_uspace.c`
 - [x] Implement `master/uspace/module.c`
 - [x] Fix MAC address pointer lifetime (copy in module.c)
-- [x] Fix interface name string lifetime (copy in module.c)
-- [x] Add transport ownership flag
+- [x] Remove transport ownership flag (caller always owns)
+- [x] Remove interface name strdup (read from transport->interface)
+- [x] Rename `include/ec_transport.h` → `include/ectp.h`
+- [x] Move transport files to top-level `transport/` directory
+- [x] Simplify `ecrt_startup_master` (transport pointer args, caller-owned)
+- [x] Remove `ecrt_startup_master_custom()` (superseded by new signature)
+- [x] Add `ec_transport_create_by_name()` convenience function
+- [x] Change `run_on_cpu` to `int`, use `-1` for no binding
+- [x] Remove `EC_USPACE_HAVE_XDP` from public headers; use `HAVE_XDP` internally
+- [x] Make `ec_transport_type` enum always complete (no `#ifdef` around values)
+- [x] `ec_transport_create()` logs error for unavailable types
 - [x] Modify `include/ecrt.h` with new API
-- [x] Refactor `master/uspace/main.c` to use library API
+- [x] Update `master/uspace/main.c` to use new API (create/destroy transports)
 - [x] Create `master/uspace/Makefile.am`
 - [x] Modify `configure.ac` (`--enable-uspace-master` + implied options)
 - [x] Modify `master/Makefile.am` (conditional subdirectory)
 - [x] Update `AC_CONFIG_FILES` list
 - [x] XDP/BPF library detection in configure
-- [x] Extend `ecrt_startup_master()` signature with index, backup_interface, debug_level, run_on_cpu
-- [x] Extend `ecrt_startup_master_custom()` signature similarly
-- [x] Add backup transport support to `ec_master_pal_t` and `ecrt_startup_master_common()`
-- [x] Add backup device setup/teardown in module.c
 - [x] Implement multi-master CLI parsing in main.c
 - [x] Implement daemonization (double-fork, setsid, PID file)
 - [x] Implement syslog support (log callback in ecrt_lib_init)

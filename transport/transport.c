@@ -29,7 +29,16 @@
 #include <errno.h>
 #include <stdio.h>
 
-#include "ec_transport.h"
+#include "ectp.h"
+
+/****************************************************************************/
+
+/* Forward declarations of transport ops (defined in individual transport files) */
+extern const ec_transport_ops_t ec_transport_raw_ops;
+#ifdef HAVE_XDP
+extern const ec_transport_ops_t ec_transport_xdp_skb_ops;
+extern const ec_transport_ops_t ec_transport_xdp_native_ops;
+#endif
 
 /****************************************************************************/
 
@@ -39,7 +48,7 @@ static const struct {
     const ec_transport_ops_t *ops;
 } transport_registry[] = {
     { EC_TRANSPORT_RAW,        &ec_transport_raw_ops },
-#ifdef EC_USPACE_HAVE_XDP
+#ifdef HAVE_XDP
     { EC_TRANSPORT_XDP_SKB,    &ec_transport_xdp_skb_ops },
     { EC_TRANSPORT_XDP_NATIVE, &ec_transport_xdp_native_ops },
 #endif
@@ -51,7 +60,8 @@ static const struct {
 /**
  * Create a transport instance.
  */
-ec_transport_t *ec_transport_create(ec_transport_type_t type)
+ec_transport_t *ec_transport_create(ec_transport_type_t type,
+        const char *interface)
 {
     ec_transport_t *transport;
     const ec_transport_ops_t *ops;
@@ -67,6 +77,7 @@ ec_transport_t *ec_transport_create(ec_transport_type_t type)
     }
 
     if (!ops) {
+        fprintf(stderr, "Transport type %d not available\n", (int)type);
         return NULL;
     }
 
@@ -77,6 +88,15 @@ ec_transport_t *ec_transport_create(ec_transport_type_t type)
 
     transport->ops = ops;
     transport->priv = NULL;
+
+    /* Store interface name at creation time (may be NULL) */
+    if (interface) {
+        strncpy(transport->interface, interface,
+                sizeof(transport->interface) - 1);
+        transport->interface[sizeof(transport->interface) - 1] = '\0';
+    } else {
+        transport->interface[0] = '\0';
+    }
 
     return transport;
 }
@@ -98,23 +118,19 @@ void ec_transport_destroy(ec_transport_t *transport)
 /****************************************************************************/
 
 /**
- * Open transport on network interface.
+ * Open transport on the interface stored in transport->interface.
  */
-int ec_transport_open(ec_transport_t *transport, const char *interface)
+int ec_transport_open(ec_transport_t *transport)
 {
     if (!transport || !transport->ops || !transport->ops->open) {
         return -EINVAL;
     }
 
-    if (!interface) {
+    if (!transport->interface[0]) {
         return -EINVAL;
     }
 
-    /* Store interface name */
-    strncpy(transport->interface, interface, sizeof(transport->interface) - 1);
-    transport->interface[sizeof(transport->interface) - 1] = '\0';
-
-    return transport->ops->open(transport, interface);
+    return transport->ops->open(transport, transport->interface);
 }
 
 /****************************************************************************/
@@ -335,6 +351,25 @@ void ec_transport_print_available(void)
             needs_separator = 1;
         }
     }
+}
+
+/****************************************************************************/
+
+/**
+ * Create a transport instance by name.
+ */
+ec_transport_t *ec_transport_create_by_name(const char *name,
+        const char *interface)
+{
+    int type;
+
+    type = ec_transport_find_by_name(name);
+    if (type < 0) {
+        fprintf(stderr, "Unknown transport name: %s\n", name ? name : "(null)");
+        return NULL;
+    }
+
+    return ec_transport_create((ec_transport_type_t)type, interface);
 }
 
 /****************************************************************************/

@@ -141,7 +141,6 @@
 #define __ECRT_H__
 
 @EC_USPACE_MASTER_DEFINE@
-@EC_USPACE_HAVE_XDP_DEFINE@
 #ifdef __KERNEL__
 #include <asm/byteorder.h>
 #include <linux/types.h>
@@ -257,13 +256,17 @@
 #endif
 
 #ifdef EC_USPACE_MASTER
-/* Transport types and structs — not opaque, so users can implement custom
- * transports via ecrt_startup_master_custom(). */
-#include "ec_transport.h"
+/* Transport types and structs — users can use ec_transport_create() /
+ * ec_transport_create_by_name() to create transports before calling
+ * ecrt_startup_master(). */
+#include "ectp.h"
 
-EC_PUBLIC_API ec_transport_t *ec_transport_create(ec_transport_type_t type);
+EC_PUBLIC_API ec_transport_t *ec_transport_create(ec_transport_type_t type,
+        const char *interface);
+EC_PUBLIC_API ec_transport_t *ec_transport_create_by_name(const char *name,
+        const char *interface);
 EC_PUBLIC_API void ec_transport_destroy(ec_transport_t *transport);
-EC_PUBLIC_API int ec_transport_open(ec_transport_t *transport, const char *interface);
+EC_PUBLIC_API int ec_transport_open(ec_transport_t *transport);
 EC_PUBLIC_API void ec_transport_close(ec_transport_t *transport);
 EC_PUBLIC_API int ec_transport_available(ec_transport_type_t type);
 EC_PUBLIC_API const char *ec_transport_get_name(ec_transport_type_t type);
@@ -681,46 +684,29 @@ typedef void (*ec_log_cb_t)(int level, const char *fmt, va_list ap);
  *  \return 0 on success, < 0 on error. */
 EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb, const char *socket_path);
 
-/** Start a userspace master with built-in transport. Creates transport,
- *  opens interface, initializes master, and enters idle phase.
- *  Transport is library-owned and destroyed by ecrt_release_master().
+/** Start a userspace master.
+ *  The caller creates transports with ec_transport_create() or
+ *  ec_transport_create_by_name(), supplying the interface name at creation
+ *  time. This function opens the transports, initializes the master, and
+ *  enters idle phase (slave scanning starts immediately).
+ *
+ *  The library owns the open/close lifecycle of the transports:
+ *  ecrt_startup_master() opens them and ecrt_release_master() closes them.
+ *  The caller is responsible only for creating and destroying them.
  *
  *  \param index Master index (0-based).
- *  \param transport_type Transport type for both main and backup interfaces.
- *  \param interface Main network interface name.
- *  \param backup_interface Backup network interface name, or NULL for none.
+ *  \param transport Main transport (created with interface, not yet opened).
+ *  \param backup_transport Backup transport (created with interface, not yet
+ *         opened), or NULL.
  *  \param debug_level Debug verbosity level.
- *  \param run_on_cpu CPU affinity for master threads, or 0xffffffff for
- *                    no binding.
+ *  \param run_on_cpu CPU affinity for master threads, or -1 for no binding.
  *  \return Pointer to master, or NULL on error. */
 EC_PUBLIC_API ec_master_t *ecrt_startup_master(
         unsigned int index, /**< Master index (0-based). */
-        ec_transport_type_t transport_type, /**< Transport type. */
-        const char *interface, /**< Main network interface name. */
-        const char *backup_interface, /**< Backup interface name, or NULL. */
+        ec_transport_t *transport, /**< Main transport (created, not yet opened). */
+        ec_transport_t *backup_transport, /**< Backup transport, or NULL. */
         unsigned int debug_level, /**< Debug verbosity level. */
-        unsigned int run_on_cpu /**< CPU affinity, or 0xffffffff for none. */
-        );
-
-/** Start a userspace master with caller-provided transport.
- *  Transport is caller-owned — ecrt_release_master() will NOT destroy it.
- *  Backup transport (if created) is library-owned and will be destroyed.
- *
- *  \param index Master index (0-based).
- *  \param transport Caller-provided main transport (already opened).
- *  \param interface Main network interface name.
- *  \param backup_interface Backup network interface name, or NULL for none.
- *  \param debug_level Debug verbosity level.
- *  \param run_on_cpu CPU affinity for master threads, or 0xffffffff for
- *                    no binding.
- *  \return Pointer to master, or NULL on error. */
-EC_PUBLIC_API ec_master_t *ecrt_startup_master_custom(
-        unsigned int index, /**< Master index (0-based). */
-        ec_transport_t *transport, /**< Caller-provided transport. */
-        const char *interface, /**< Main network interface name. */
-        const char *backup_interface, /**< Backup interface name, or NULL. */
-        unsigned int debug_level, /**< Debug verbosity level. */
-        unsigned int run_on_cpu /**< CPU affinity, or 0xffffffff for none. */
+        int run_on_cpu /**< CPU affinity, or -1 for no binding. */
         );
 
 /** Cleanup the userspace master library.

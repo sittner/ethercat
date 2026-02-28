@@ -104,13 +104,10 @@ typedef struct ec_master ec_master_t;
 
 /** Userspace-specific master fields. */
 typedef struct {
-    struct ec_transport *transport;        /**< Main transport instance. */
-    struct ec_transport *backup_transport; /**< Backup transport instance (NULL if none). */
-    int transport_owned;                   /**< 1 if library owns transport, 0 if caller owns. */
-    uint8_t main_mac[ETH_ALEN];           /**< Copied MAC address (owned). */
-    uint8_t backup_mac[ETH_ALEN];         /**< Copied backup MAC address (owned). */
-    char *interface_name;                  /**< Copied interface name (strdup, owned). */
-    char *backup_interface_name;           /**< Backup interface name (NULL if none). */
+    struct ec_transport *transport;        /**< Main transport (borrowed). */
+    struct ec_transport *backup_transport; /**< Backup transport (borrowed, NULL if none). */
+    uint8_t main_mac[ETH_ALEN];           /**< Copied MAC address. */
+    uint8_t backup_mac[ETH_ALEN];         /**< Copied backup MAC address. */
 } ec_master_pal_t;
 
 #endif /* __EC_USPACE_PAL_H__ */

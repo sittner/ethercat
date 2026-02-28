@@ -49,7 +49,7 @@ struct master_config {
     const char *interface;              /**< Main interface name. */
     const char *backup;                 /**< Backup interface name (NULL = none). */
     ec_transport_type_t transport;      /**< Transport type. */
-    unsigned int cpu;                   /**< CPU affinity (0xffffffff = no binding). */
+    int cpu;                            /**< CPU affinity (-1 = no binding). */
 };
 
 /****************************************************************************/
@@ -154,6 +154,8 @@ int main(int argc, char *argv[])
 {
     struct master_config configs[EC_MAX_MASTERS];
     ec_master_t *masters[EC_MAX_MASTERS];
+    ec_transport_t *transports[EC_MAX_MASTERS];
+    ec_transport_t *backup_transports[EC_MAX_MASTERS];
     int master_count = 0;
     int current_has_interface = 0;  /* whether current block has an interface */
     int ret = 0;
@@ -165,7 +167,7 @@ int main(int argc, char *argv[])
         .interface = NULL,
         .backup = NULL,
         .transport = EC_TRANSPORT_RAW,
-        .cpu = 0xffffffff,
+        .cpu = -1,
     };
 
     static struct option long_options[] = {
@@ -199,7 +201,7 @@ int main(int argc, char *argv[])
                 cur.interface = optarg;
                 cur.backup = NULL;
                 cur.transport = EC_TRANSPORT_RAW;
-                cur.cpu = 0xffffffff;
+                cur.cpu = -1;
                 current_has_interface = 1;
                 break;
             case 't':
@@ -233,7 +235,7 @@ int main(int argc, char *argv[])
                             "Error: -c requires a preceding -i\n");
                     return 1;
                 }
-                cur.cpu = (unsigned int)strtoul(optarg, NULL, 0);
+                cur.cpu = (int)strtol(optarg, NULL, 0);
                 break;
             case 'd':
                 g_debug_level = (unsigned int)strtoul(optarg, NULL, 0);
@@ -342,28 +344,56 @@ int main(int argc, char *argv[])
         goto out_cleanup_log;
     }
 
-    /* Start all masters */
+    for (i = 0; i < master_count; i++) {
+        transports[i] = NULL;
+        backup_transports[i] = NULL;
+        masters[i] = NULL;
+    }
+
+    /* Start all masters (transports[] and backup_transports[] are already NULL) */
     for (i = 0; i < master_count; i++) {
         ec_log(EC_LOG_INFO, "Starting EtherCAT master %d on interface %s"
                 " (transport: %s)\n",
                 i, configs[i].interface,
                 ec_transport_get_name(configs[i].transport));
+
+        /* Create main transport (not yet opened — ecrt_startup_master opens it) */
+        transports[i] = ec_transport_create(configs[i].transport,
+                configs[i].interface);
+        if (!transports[i]) {
+            ec_log(EC_LOG_ERR, "Failed to create transport for master %d\n", i);
+            goto out_release_masters;
+        }
+
+        /* Create backup transport if configured */
+        backup_transports[i] = NULL;
+        if (configs[i].backup) {
+            backup_transports[i] = ec_transport_create(configs[i].transport,
+                    configs[i].backup);
+            if (!backup_transports[i]) {
+                ec_log(EC_LOG_ERR,
+                        "Failed to create backup transport for master %d\n", i);
+                ec_transport_destroy(transports[i]);
+                transports[i] = NULL;
+                goto out_release_masters;
+            }
+        }
+
         masters[i] = ecrt_startup_master(
                 (unsigned int)i,
-                configs[i].transport,
-                configs[i].interface,
-                configs[i].backup,
+                transports[i],
+                backup_transports[i],
                 g_debug_level,
                 configs[i].cpu);
         if (!masters[i]) {
             ec_log(EC_LOG_ERR, "Failed to start EtherCAT master %d\n", i);
-            /* Release already-started masters */
-            while (--i >= 0) {
-                ecrt_release_master(masters[i]);
+            if (backup_transports[i]) {
+                ec_transport_destroy(backup_transports[i]);
+                backup_transports[i] = NULL;
             }
-            ecrt_lib_cleanup();
-            ret = 1;
-            goto out_cleanup_log;
+            ec_transport_destroy(transports[i]);
+            transports[i] = NULL;
+            goto out_release_masters;
         }
     }
 
@@ -375,16 +405,33 @@ int main(int argc, char *argv[])
     }
 
     ec_log(EC_LOG_INFO, "Shutting down EtherCAT master(s)\n");
+    ret = 0;
 
-    for (i = 0; i < master_count; i++) {
+    i = master_count;
+    goto cleanup_masters;
+
+out_release_masters:
+    ret = 1;
+    /* i already holds the index that failed; decrement to skip already-cleaned slot */
+
+cleanup_masters:
+    while (--i >= 0) {
         if (masters[i]) {
+            /* ecrt_release_master() closes the transports */
             ecrt_release_master(masters[i]);
+        }
+        /* destroy transports after close (or if master startup failed) */
+        if (backup_transports[i]) {
+            ec_transport_destroy(backup_transports[i]);
+        }
+        if (transports[i]) {
+            ec_transport_destroy(transports[i]);
         }
     }
     ecrt_lib_cleanup();
 
-    ec_log(EC_LOG_INFO, "EtherCAT master(s) stopped\n");
-    ret = 0;
+    if (!ret)
+        ec_log(EC_LOG_INFO, "EtherCAT master(s) stopped\n");
 
 out_cleanup_log:
     if (!g_foreground) {

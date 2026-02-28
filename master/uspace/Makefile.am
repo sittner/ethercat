@@ -71,11 +71,11 @@ libethercat_la_SOURCES = \
 	module.c \
 	cdev.c \
 	$(top_srcdir)/lib/shared.c \
-	transport/transport.c \
-	transport/transport_raw.c
+	$(top_srcdir)/transport/transport.c \
+	$(top_srcdir)/transport/transport_raw.c
 
-if EC_USPACE_HAVE_XDP
-libethercat_la_SOURCES += transport/transport_xdp.c
+if HAVE_XDP
+libethercat_la_SOURCES += $(top_srcdir)/transport/transport_xdp.c
 endif
 
 libethercat_la_CFLAGS = \
@@ -87,8 +87,8 @@ libethercat_la_CFLAGS = \
 	-I$(top_srcdir) \
 	-I$(top_srcdir)/include
 
-if EC_USPACE_HAVE_XDP
-libethercat_la_CFLAGS += -DEC_USPACE_HAVE_XDP
+if HAVE_XDP
+libethercat_la_CFLAGS += -DHAVE_XDP
 endif
 
 #
@@ -109,7 +109,7 @@ libethercat_la_LDFLAGS = -version-info 0:0:0 \
 
 libethercat_la_LIBADD = -lpthread
 
-if EC_USPACE_HAVE_XDP
+if HAVE_XDP
 libethercat_la_LIBADD += -lxdp
 endif
 
@@ -121,7 +121,8 @@ ec_master_CFLAGS = \
 	-DEC_USPACE_MASTER \
 	-D_GNU_SOURCE \
 	-I$(srcdir) \
-	-I$(top_srcdir)
+	-I$(top_srcdir) \
+	-I$(top_srcdir)/include
 
 ec_master_LDADD = libethercat.la
 
