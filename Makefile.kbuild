@@ -8,12 +8,12 @@ KBUILD = $(MAKE) -C "$(LINUX_SOURCE_DIR)" M="$(abs_builddir)" INSTALL_MOD_DIR="$
 
 modules:
 	@if test -n "$(LINUX_SOURCE_DIR)"; then \
-	  +$(KBUILD) modules; \
+	  $(KBUILD) modules; \
 	fi
 
 modules_install:
 	@if test -n "$(LINUX_SOURCE_DIR)"; then \
-	  +$(KBUILD) modules_install; \
+	  $(KBUILD) modules_install; \
 	fi
 
 
