@@ -85,9 +85,7 @@ int ecrt_lib_init(ec_log_cb_t log_cb, const char *socket_path)
 
 ec_master_t *ecrt_startup_master(unsigned int index,
         ec_transport_t *transport,
-        const char *interface,
         ec_transport_t *backup_transport,
-        const char *backup_interface,
         unsigned int debug_level,
         int run_on_cpu)
 {
@@ -99,8 +97,8 @@ ec_master_t *ecrt_startup_master(unsigned int index,
         return NULL;
     }
 
-    if (!interface) {
-        ec_log(EC_LOG_ERR, "Interface name must not be NULL\n");
+    if (!transport->interface[0]) {
+        ec_log(EC_LOG_ERR, "Main transport interface name must not be empty\n");
         return NULL;
     }
 
@@ -115,11 +113,11 @@ ec_master_t *ecrt_startup_master(unsigned int index,
     master->pal.transport = transport;
     master->pal.backup_transport = backup_transport;
 
-    /* Open main transport */
-    ret = ec_transport_open(master->pal.transport, interface);
+    /* Open main transport (interface stored in transport->interface) */
+    ret = ec_transport_open(master->pal.transport);
     if (ret < 0) {
         ec_log(EC_LOG_ERR, "Failed to open transport on %s: %d\n",
-                interface, ret);
+                master->pal.transport->interface, ret);
         goto out_free;
     }
 
@@ -132,10 +130,10 @@ ec_master_t *ecrt_startup_master(unsigned int index,
 
     /* Open backup transport and get its MAC (if present) */
     if (master->pal.backup_transport) {
-        ret = ec_transport_open(master->pal.backup_transport, backup_interface);
+        ret = ec_transport_open(master->pal.backup_transport);
         if (ret < 0) {
             ec_log(EC_LOG_ERR, "Failed to open backup transport on %s: %d\n",
-                    backup_interface, ret);
+                    master->pal.backup_transport->interface, ret);
             goto out_close_main;
         }
 

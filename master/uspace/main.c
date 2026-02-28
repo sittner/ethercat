@@ -358,7 +358,8 @@ int main(int argc, char *argv[])
                 ec_transport_get_name(configs[i].transport));
 
         /* Create main transport (not yet opened — ecrt_startup_master opens it) */
-        transports[i] = ec_transport_create(configs[i].transport);
+        transports[i] = ec_transport_create(configs[i].transport,
+                configs[i].interface);
         if (!transports[i]) {
             ec_log(EC_LOG_ERR, "Failed to create transport for master %d\n", i);
             goto out_release_masters;
@@ -367,7 +368,8 @@ int main(int argc, char *argv[])
         /* Create backup transport if configured */
         backup_transports[i] = NULL;
         if (configs[i].backup) {
-            backup_transports[i] = ec_transport_create(configs[i].transport);
+            backup_transports[i] = ec_transport_create(configs[i].transport,
+                    configs[i].backup);
             if (!backup_transports[i]) {
                 ec_log(EC_LOG_ERR,
                         "Failed to create backup transport for master %d\n", i);
@@ -380,9 +382,7 @@ int main(int argc, char *argv[])
         masters[i] = ecrt_startup_master(
                 (unsigned int)i,
                 transports[i],
-                configs[i].interface,
                 backup_transports[i],
-                configs[i].backup,
                 g_debug_level,
                 configs[i].cpu);
         if (!masters[i]) {

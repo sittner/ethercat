@@ -1454,7 +1454,7 @@ fi
 AC_SUBST(EC_USPACE_MASTER_DEFINE)
 
 AM_CONDITIONAL([ENABLE_USPACE_MASTER], [test "x$enable_uspace_master" = "xyes"])
-AM_CONDITIONAL([EC_USPACE_HAVE_XDP], [test "x$have_xdp" = "xyes"])
+AM_CONDITIONAL([HAVE_XDP], [test "x$have_xdp" = "xyes"])
 
 #-----------------------------------------------------------------------------
 

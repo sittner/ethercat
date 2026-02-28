@@ -60,7 +60,8 @@ static const struct {
 /**
  * Create a transport instance.
  */
-ec_transport_t *ec_transport_create(ec_transport_type_t type)
+ec_transport_t *ec_transport_create(ec_transport_type_t type,
+        const char *interface)
 {
     ec_transport_t *transport;
     const ec_transport_ops_t *ops;
@@ -88,6 +89,15 @@ ec_transport_t *ec_transport_create(ec_transport_type_t type)
     transport->ops = ops;
     transport->priv = NULL;
 
+    /* Store interface name at creation time (may be NULL) */
+    if (interface) {
+        strncpy(transport->interface, interface,
+                sizeof(transport->interface) - 1);
+        transport->interface[sizeof(transport->interface) - 1] = '\0';
+    } else {
+        transport->interface[0] = '\0';
+    }
+
     return transport;
 }
 
@@ -108,23 +118,19 @@ void ec_transport_destroy(ec_transport_t *transport)
 /****************************************************************************/
 
 /**
- * Open transport on network interface.
+ * Open transport on the interface stored in transport->interface.
  */
-int ec_transport_open(ec_transport_t *transport, const char *interface)
+int ec_transport_open(ec_transport_t *transport)
 {
     if (!transport || !transport->ops || !transport->ops->open) {
         return -EINVAL;
     }
 
-    if (!interface) {
+    if (!transport->interface[0]) {
         return -EINVAL;
     }
 
-    /* Store interface name */
-    strncpy(transport->interface, interface, sizeof(transport->interface) - 1);
-    transport->interface[sizeof(transport->interface) - 1] = '\0';
-
-    return transport->ops->open(transport, interface);
+    return transport->ops->open(transport, transport->interface);
 }
 
 /****************************************************************************/
@@ -352,7 +358,8 @@ void ec_transport_print_available(void)
 /**
  * Create a transport instance by name.
  */
-ec_transport_t *ec_transport_create_by_name(const char *name)
+ec_transport_t *ec_transport_create_by_name(const char *name,
+        const char *interface)
 {
     int type;
 
@@ -362,7 +369,7 @@ ec_transport_t *ec_transport_create_by_name(const char *name)
         return NULL;
     }
 
-    return ec_transport_create((ec_transport_type_t)type);
+    return ec_transport_create((ec_transport_type_t)type, interface);
 }
 
 /****************************************************************************/

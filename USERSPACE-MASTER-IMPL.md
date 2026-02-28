@@ -56,10 +56,10 @@ EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb);
  *
  *  Internally calls:
  *    malloc(sizeof(ec_master_t))
- *    ec_transport_open(transport, interface)
+ *    ec_transport_open(transport)           — interface read from transport->interface
  *    ec_transport_get_mac(transport, main_mac)    — MAC is copied
  *    if backup_transport != NULL:
- *      ec_transport_open(backup_transport, backup_interface)
+ *      ec_transport_open(backup_transport)
  *      ec_transport_get_mac(backup_transport, backup_mac)
  *    ec_master_init(master, index, ..., debug_level, run_on_cpu)
  *    assign transports to device PALs (interface name read from transport->interface)
@@ -69,10 +69,9 @@ EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb);
  *    ec_master_enter_idle_phase(master)
  *
  *  \param index        Master index (0-based).
- *  \param transport    Main transport (created, not yet opened).
- *  \param interface    Main network interface name.
- *  \param backup_transport  Backup transport (created, not yet opened), or NULL.
- *  \param backup_interface  Backup interface name, or NULL.
+ *  \param transport    Main transport (created with interface, not yet opened).
+ *  \param backup_transport  Backup transport (created with interface, not yet
+ *                      opened), or NULL.
  *  \param debug_level  Debug verbosity level.
  *  \param run_on_cpu   CPU affinity for master threads, or -1 for no binding.
  *  \return Pointer to master, or NULL on error.
@@ -80,9 +79,7 @@ EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb);
 EC_PUBLIC_API ec_master_t *ecrt_startup_master(
         unsigned int index,
         ec_transport_t *transport,          /* main transport, required */
-        const char *interface,              /* main interface name */
         ec_transport_t *backup_transport,   /* backup transport, or NULL */
-        const char *backup_interface,       /* backup interface name, or NULL */
         unsigned int debug_level,
         int run_on_cpu                      /* -1 = no binding */
         );
@@ -149,15 +146,13 @@ int main() {
 int main() {
     ecrt_lib_init(NULL, EC_IPC_DEFAULT_SOCKET_PATH);
 
-    /* Caller creates transport (not yet opened) */
-    ec_transport_t *t = ec_transport_create(EC_TRANSPORT_RAW);
+    /* Caller creates transport with interface name baked in */
+    ec_transport_t *t = ec_transport_create(EC_TRANSPORT_RAW, "eth0");
 
     ec_master_t *master = ecrt_startup_master(
             0,               /* index */
             t,               /* main transport */
-            "eth0",          /* main interface */
             NULL,            /* no backup transport */
-            NULL,            /* no backup interface */
             1,               /* debug_level */
             -1               /* no CPU binding */
             );
@@ -225,12 +220,6 @@ Note: `index`, `debug_level`, and `run_on_cpu` are passed directly to
 `ec_master_init()` and do not need to be stored in `ec_master_pal_t` — they
 are stored in `ec_master_t` itself by `ec_master_init()`.
 
-### Interface Name Access
-
-The interface names are passed as parameters to `ecrt_startup_master()` and
-forwarded to `ec_transport_open()`. After opening, `transport->interface` holds
-the name. The `devices[EC_DEVICE_MAIN].name` field borrows this pointer.
-
 ### MAC Address Lifetime
 
 MAC addresses are copied into `ec_master_pal_t` at startup:
@@ -247,16 +236,14 @@ application cannot know `sizeof(ec_master_t)` — the type is opaque.
 This is consistent with how the existing ioctl-based `lib/common.c` allocates
 masters.
 
-### `ecrt_startup_master_common()` Helper
+### Interface Name Access
 
-The internal `ecrt_startup_master_common()` function opens the transports,
-reads MAC addresses, and initializes the master. It takes `interface` and
-`backup_interface` name parameters and calls `ec_transport_open()` itself.
-The `run_on_cpu` parameter is `int` with `-1` meaning no binding; the value
-is converted to the internal `unsigned int 0xffffffff` sentinel when passed
-to `ec_master_init()`.
-
-## `ec_master` Standalone Tool
+The interface name is passed to `ec_transport_create()` at creation time and
+stored in `transport->interface`. `ecrt_startup_master()` calls
+`ec_transport_open(transport)` which reads the interface name from
+`transport->interface` and passes it to the ops `open()` call. After opening,
+`transport->interface` continues to hold the name; `devices[EC_DEVICE_MAIN].name`
+borrows this pointer.
 
 ### Multi-Master CLI Design
 
