@@ -33,6 +33,15 @@
 
 /****************************************************************************/
 
+/* Forward declarations of transport ops (defined in individual transport files) */
+extern const ec_transport_ops_t ec_transport_raw_ops;
+#ifdef HAVE_XDP
+extern const ec_transport_ops_t ec_transport_xdp_skb_ops;
+extern const ec_transport_ops_t ec_transport_xdp_native_ops;
+#endif
+
+/****************************************************************************/
+
 /** Transport registry - maps enum to ops */
 static const struct {
     ec_transport_type_t type;

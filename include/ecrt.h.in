@@ -682,22 +682,30 @@ typedef void (*ec_log_cb_t)(int level, const char *fmt, va_list ap);
  *  \return 0 on success, < 0 on error. */
 EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb, const char *socket_path);
 
-/** Start a userspace master with caller-provided transports.
- *  Transports are caller-owned — ecrt_release_master() will NOT close or
- *  destroy them. The caller must create transports with ec_transport_create()
- *  or ec_transport_create_by_name() and open them with ec_transport_open()
- *  before calling this function.
+/** Start a userspace master.
+ *  The caller creates transports with ec_transport_create() or
+ *  ec_transport_create_by_name() and passes them here. This function opens
+ *  the transports on the specified interfaces, initializes the master, and
+ *  enters idle phase (slave scanning starts immediately).
+ *
+ *  The library owns the open/close lifecycle of the transports:
+ *  ecrt_startup_master() opens them and ecrt_release_master() closes them.
+ *  The caller is responsible only for creating and destroying them.
  *
  *  \param index Master index (0-based).
- *  \param transport Main transport (required, already opened).
- *  \param backup_transport Backup transport (already opened), or NULL.
+ *  \param transport Main transport (created, not yet opened).
+ *  \param interface Main network interface name.
+ *  \param backup_transport Backup transport (created, not yet opened), or NULL.
+ *  \param backup_interface Backup network interface name, or NULL.
  *  \param debug_level Debug verbosity level.
  *  \param run_on_cpu CPU affinity for master threads, or -1 for no binding.
  *  \return Pointer to master, or NULL on error. */
 EC_PUBLIC_API ec_master_t *ecrt_startup_master(
         unsigned int index, /**< Master index (0-based). */
-        ec_transport_t *transport, /**< Main transport (required, already opened). */
+        ec_transport_t *transport, /**< Main transport (created, not yet opened). */
+        const char *interface, /**< Main network interface name. */
         ec_transport_t *backup_transport, /**< Backup transport, or NULL. */
+        const char *backup_interface, /**< Backup interface name, or NULL. */
         unsigned int debug_level, /**< Debug verbosity level. */
         int run_on_cpu /**< CPU affinity, or -1 for no binding. */
         );

@@ -48,16 +48,18 @@ Application → libethercat.so (master core + PAL + transport)
  */
 EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb);
 
-/** Start a userspace master with caller-provided transports.
- *  Transports are caller-owned — ecrt_release_master() will NOT close or
- *  destroy them. The caller must create transports with ec_transport_create()
- *  or ec_transport_create_by_name() and open them with ec_transport_open()
- *  before calling this function.
+/** Start a userspace master.
+ *  The caller creates transports with ec_transport_create() or
+ *  ec_transport_create_by_name(), then passes them here. This function opens
+ *  them on the specified interfaces, initializes the master, and enters idle
+ *  phase (slave scanning starts immediately).
  *
  *  Internally calls:
  *    malloc(sizeof(ec_master_t))
+ *    ec_transport_open(transport, interface)
  *    ec_transport_get_mac(transport, main_mac)    — MAC is copied
  *    if backup_transport != NULL:
+ *      ec_transport_open(backup_transport, backup_interface)
  *      ec_transport_get_mac(backup_transport, backup_mac)
  *    ec_master_init(master, index, ..., debug_level, run_on_cpu)
  *    assign transports to device PALs (interface name read from transport->interface)
@@ -67,8 +69,10 @@ EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb);
  *    ec_master_enter_idle_phase(master)
  *
  *  \param index        Master index (0-based).
- *  \param transport    Main transport (required, already opened).
- *  \param backup_transport  Backup transport (already opened), or NULL.
+ *  \param transport    Main transport (created, not yet opened).
+ *  \param interface    Main network interface name.
+ *  \param backup_transport  Backup transport (created, not yet opened), or NULL.
+ *  \param backup_interface  Backup interface name, or NULL.
  *  \param debug_level  Debug verbosity level.
  *  \param run_on_cpu   CPU affinity for master threads, or -1 for no binding.
  *  \return Pointer to master, or NULL on error.
@@ -76,7 +80,9 @@ EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb);
 EC_PUBLIC_API ec_master_t *ecrt_startup_master(
         unsigned int index,
         ec_transport_t *transport,          /* main transport, required */
+        const char *interface,              /* main interface name */
         ec_transport_t *backup_transport,   /* backup transport, or NULL */
+        const char *backup_interface,       /* backup interface name, or NULL */
         unsigned int debug_level,
         int run_on_cpu                      /* -1 = no binding */
         );
@@ -103,8 +109,10 @@ EC_PUBLIC_API void ecrt_lib_cleanup(void);
  *    if backup device was opened:
  *      ec_device_close(&master->devices[EC_DEVICE_BACKUP])
  *    ec_master_clear(master)
+ *    ec_transport_close(backup_transport)   — if backup was opened
+ *    ec_transport_close(transport)          — always
  *    free(master)
- *    NOTE: transports are NOT closed or destroyed — caller owns them.
+ *    NOTE: transports are closed but NOT destroyed — caller must destroy them.
  */
 EC_PUBLIC_API void ecrt_release_master(ec_master_t *master);
 ```
@@ -141,13 +149,15 @@ int main() {
 int main() {
     ecrt_lib_init(NULL, EC_IPC_DEFAULT_SOCKET_PATH);
 
+    /* Caller creates transport (not yet opened) */
     ec_transport_t *t = ec_transport_create(EC_TRANSPORT_RAW);
-    ec_transport_open(t, "eth0");
 
     ec_master_t *master = ecrt_startup_master(
             0,               /* index */
             t,               /* main transport */
-            NULL,            /* no backup */
+            "eth0",          /* main interface */
+            NULL,            /* no backup transport */
+            NULL,            /* no backup interface */
             1,               /* debug_level */
             -1               /* no CPU binding */
             );
@@ -155,10 +165,9 @@ int main() {
     /* FROM HERE: identical to kernel mode */
     ec_domain_t *domain = ecrt_master_create_domain(master);
     /* ... configure slaves, activate, cyclic loop ... */
-    ecrt_release_master(master);
 
-    ec_transport_close(t);
-    ec_transport_destroy(t);
+    ecrt_release_master(master); /* closes transport */
+    ec_transport_destroy(t);     /* caller destroys transport */
 
     ecrt_lib_cleanup();
 }
@@ -180,19 +189,26 @@ is never included by application code. **No type renames needed.**
 
 ### Transport Ownership
 
-Transports are **always caller-owned**. The caller creates them with
-`ec_transport_create()` or `ec_transport_create_by_name()`, opens them with
-`ec_transport_open()`, passes them to `ecrt_startup_master()`, and destroys
-them after `ecrt_release_master()` returns.
+The caller is responsible only for the **lifetime** of transports: create
+(`ec_transport_create()`) and destroy (`ec_transport_destroy()`). The library
+manages the **connection state**: `ecrt_startup_master()` opens the transports
+and `ecrt_release_master()` closes them.
 
-`ecrt_release_master()` closes devices and clears master state but does
-**not** call `ec_transport_close()` or `ec_transport_destroy()`.
+```
+Caller:   ec_transport_create()
+Library:    └─ ecrt_startup_master()  → ec_transport_open()
+Library:    └─ ecrt_release_master()  → ec_transport_close()
+Caller:   ec_transport_destroy()
+```
+
+`ecrt_release_master()` closes transports but does **not** destroy them —
+that is the caller's responsibility.
 
 ### Backup Device Support
 
-The caller creates a second transport for the backup interface and passes it
-as the `backup_transport` argument to `ecrt_startup_master()`. Both transports
-must already be opened when passed to the function.
+The caller creates a second transport and passes it along with its interface
+name to `ecrt_startup_master()`. The library opens both transports and
+closes both in `ecrt_release_master()`.
 
 The `ec_master_pal_t` struct stores borrowed transport pointers:
 
@@ -211,9 +227,9 @@ are stored in `ec_master_t` itself by `ec_master_init()`.
 
 ### Interface Name Access
 
-The interface name is read directly from `transport->interface` (set by
-`ec_transport_open()`). There is no need to duplicate the string in the
-master PAL.
+The interface names are passed as parameters to `ecrt_startup_master()` and
+forwarded to `ec_transport_open()`. After opening, `transport->interface` holds
+the name. The `devices[EC_DEVICE_MAIN].name` field borrows this pointer.
 
 ### MAC Address Lifetime
 
@@ -233,12 +249,12 @@ masters.
 
 ### `ecrt_startup_master_common()` Helper
 
-The internal `ecrt_startup_master_common()` function completes master
-initialization after the transport pointers are set in `ec_master_pal_t`.
-It reads the interface name from `transport->interface` directly (no string
-copy needed). The `run_on_cpu` parameter is `int` with `-1` meaning no
-binding; the value is converted to the internal `unsigned int 0xffffffff`
-sentinel when passed to `ec_master_init()`.
+The internal `ecrt_startup_master_common()` function opens the transports,
+reads MAC addresses, and initializes the master. It takes `interface` and
+`backup_interface` name parameters and calls `ec_transport_open()` itself.
+The `run_on_cpu` parameter is `int` with `-1` meaning no binding; the value
+is converted to the internal `unsigned int 0xffffffff` sentinel when passed
+to `ec_master_init()`.
 
 ## `ec_master` Standalone Tool
 

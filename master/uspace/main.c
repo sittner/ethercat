@@ -357,41 +357,20 @@ int main(int argc, char *argv[])
                 i, configs[i].interface,
                 ec_transport_get_name(configs[i].transport));
 
-        /* Create and open main transport */
+        /* Create main transport (not yet opened — ecrt_startup_master opens it) */
         transports[i] = ec_transport_create(configs[i].transport);
         if (!transports[i]) {
             ec_log(EC_LOG_ERR, "Failed to create transport for master %d\n", i);
             goto out_release_masters;
         }
-        ret = ec_transport_open(transports[i], configs[i].interface);
-        if (ret < 0) {
-            ec_log(EC_LOG_ERR, "Failed to open transport on %s: %d\n",
-                    configs[i].interface, ret);
-            ec_transport_destroy(transports[i]);
-            transports[i] = NULL;
-            goto out_release_masters;
-        }
 
-        /* Create and open backup transport if configured */
+        /* Create backup transport if configured */
         backup_transports[i] = NULL;
         if (configs[i].backup) {
             backup_transports[i] = ec_transport_create(configs[i].transport);
             if (!backup_transports[i]) {
                 ec_log(EC_LOG_ERR,
                         "Failed to create backup transport for master %d\n", i);
-                ec_transport_close(transports[i]);
-                ec_transport_destroy(transports[i]);
-                transports[i] = NULL;
-                goto out_release_masters;
-            }
-            ret = ec_transport_open(backup_transports[i], configs[i].backup);
-            if (ret < 0) {
-                ec_log(EC_LOG_ERR,
-                        "Failed to open backup transport on %s: %d\n",
-                        configs[i].backup, ret);
-                ec_transport_destroy(backup_transports[i]);
-                backup_transports[i] = NULL;
-                ec_transport_close(transports[i]);
                 ec_transport_destroy(transports[i]);
                 transports[i] = NULL;
                 goto out_release_masters;
@@ -401,17 +380,17 @@ int main(int argc, char *argv[])
         masters[i] = ecrt_startup_master(
                 (unsigned int)i,
                 transports[i],
+                configs[i].interface,
                 backup_transports[i],
+                configs[i].backup,
                 g_debug_level,
                 configs[i].cpu);
         if (!masters[i]) {
             ec_log(EC_LOG_ERR, "Failed to start EtherCAT master %d\n", i);
             if (backup_transports[i]) {
-                ec_transport_close(backup_transports[i]);
                 ec_transport_destroy(backup_transports[i]);
                 backup_transports[i] = NULL;
             }
-            ec_transport_close(transports[i]);
             ec_transport_destroy(transports[i]);
             transports[i] = NULL;
             goto out_release_masters;
@@ -438,14 +417,14 @@ out_release_masters:
 cleanup_masters:
     while (--i >= 0) {
         if (masters[i]) {
+            /* ecrt_release_master() closes the transports */
             ecrt_release_master(masters[i]);
         }
+        /* destroy transports after close (or if master startup failed) */
         if (backup_transports[i]) {
-            ec_transport_close(backup_transports[i]);
             ec_transport_destroy(backup_transports[i]);
         }
         if (transports[i]) {
-            ec_transport_close(transports[i]);
             ec_transport_destroy(transports[i]);
         }
     }

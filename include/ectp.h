@@ -245,13 +245,6 @@ void ec_transport_print_available(void);
 
 /****************************************************************************/
 
-/* Transport operation tables (implemented by each transport) */
-extern const ec_transport_ops_t ec_transport_raw_ops;
-#ifdef HAVE_XDP
-extern const ec_transport_ops_t ec_transport_xdp_skb_ops;
-extern const ec_transport_ops_t ec_transport_xdp_native_ops;
-#endif
-
 /****************************************************************************/
 
 #endif /* __ECTP_H__ */

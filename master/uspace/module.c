@@ -81,32 +81,48 @@ int ecrt_lib_init(ec_log_cb_t log_cb, const char *socket_path)
 
 /****************************************************************************/
 
-/** Common startup helper: initializes master from an already-assigned transport.
+/** Common startup helper: opens transports and initializes master.
  *
- * Assumes master->pal.transport and optionally master->pal.backup_transport
- * are already set (borrowed pointers from caller).
+ * Assumes master->pal.transport (and optionally master->pal.backup_transport)
+ * are set. Opened transports are closed on error or by ecrt_release_master().
  *
  * \return master on success, NULL on error (master is freed on error).
  */
 static ec_master_t *ecrt_startup_master_common(ec_master_t *master,
-        unsigned int index, unsigned int debug_level, int run_on_cpu)
+        unsigned int index, const char *interface,
+        const char *backup_interface, unsigned int debug_level, int run_on_cpu)
 {
     int ret;
+
+    /* Open main transport */
+    ret = ec_transport_open(master->pal.transport, interface);
+    if (ret < 0) {
+        ec_log(EC_LOG_ERR, "Failed to open transport on %s: %d\n",
+                interface, ret);
+        goto out_free;
+    }
 
     /* Get MAC address from transport */
     ret = ec_transport_get_mac(master->pal.transport, master->pal.main_mac);
     if (ret < 0) {
         ec_log(EC_LOG_ERR, "Failed to get MAC address: %d\n", ret);
-        goto out_free;
+        goto out_close_main;
     }
 
-    /* Get backup MAC address from backup transport (if any) */
+    /* Open backup transport and get its MAC (if present) */
     if (master->pal.backup_transport) {
+        ret = ec_transport_open(master->pal.backup_transport, backup_interface);
+        if (ret < 0) {
+            ec_log(EC_LOG_ERR, "Failed to open backup transport on %s: %d\n",
+                    backup_interface, ret);
+            goto out_close_main;
+        }
+
         ret = ec_transport_get_mac(master->pal.backup_transport,
                 master->pal.backup_mac);
         if (ret < 0) {
             ec_log(EC_LOG_ERR, "Failed to get backup MAC address: %d\n", ret);
-            goto out_free;
+            goto out_close_backup;
         }
     }
 
@@ -116,7 +132,7 @@ static ec_master_t *ecrt_startup_master_common(ec_master_t *master,
             run_on_cpu < 0 ? 0xffffffff : (unsigned int)run_on_cpu);
     if (ret < 0) {
         ec_log(EC_LOG_ERR, "Failed to initialize master: %d\n", ret);
-        goto out_free;
+        goto out_close_backup;
     }
 
     /* Store transport reference in device; interface name borrowed from transport */
@@ -172,6 +188,12 @@ out_close_main_device:
     ec_device_close(&master->devices[EC_DEVICE_MAIN]);
 out_clear_master:
     ec_master_clear(master);
+out_close_backup:
+    if (master->pal.backup_transport) {
+        ec_transport_close(master->pal.backup_transport);
+    }
+out_close_main:
+    ec_transport_close(master->pal.transport);
 out_free:
     free(master);
     return NULL;
@@ -181,7 +203,9 @@ out_free:
 
 ec_master_t *ecrt_startup_master(unsigned int index,
         ec_transport_t *transport,
+        const char *interface,
         ec_transport_t *backup_transport,
+        const char *backup_interface,
         unsigned int debug_level,
         int run_on_cpu)
 {
@@ -192,6 +216,11 @@ ec_master_t *ecrt_startup_master(unsigned int index,
         return NULL;
     }
 
+    if (!interface) {
+        ec_log(EC_LOG_ERR, "Interface name must not be NULL\n");
+        return NULL;
+    }
+
     master = malloc(sizeof(ec_master_t));
     if (!master) {
         ec_log(EC_LOG_ERR, "Failed to allocate master context\n");
@@ -199,11 +228,12 @@ ec_master_t *ecrt_startup_master(unsigned int index,
     }
     memset(master, 0, sizeof(ec_master_t));
 
-    /* Borrow transport pointers — caller owns them */
+    /* Borrow transport pointers — caller owns them, library opens/closes */
     master->pal.transport = transport;
     master->pal.backup_transport = backup_transport;
 
-    return ecrt_startup_master_common(master, index, debug_level, run_on_cpu);
+    return ecrt_startup_master_common(master, index, interface,
+            backup_interface, debug_level, run_on_cpu);
 }
 
 /****************************************************************************/
@@ -228,7 +258,14 @@ void ecrt_release_master(ec_master_t *master)
     ec_device_close(&master->devices[EC_DEVICE_MAIN]);
     ec_master_clear(master);
 
-    /* Transports are caller-owned; do not close or destroy them here. */
+    /* Close transports — caller still owns them and must call
+     * ec_transport_destroy() afterwards. */
+    if (master->pal.backup_transport) {
+        ec_transport_close(master->pal.backup_transport);
+    }
+    if (master->pal.transport) {
+        ec_transport_close(master->pal.transport);
+    }
 
     free(master);
 }
