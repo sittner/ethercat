@@ -45,6 +45,7 @@ enum ec_transport_type {
     EC_TRANSPORT_RAW = 0,   /**< AF_PACKET raw socket */
     EC_TRANSPORT_XDP_SKB,   /**< AF_XDP Generic SKB mode (universal compatibility) */
     EC_TRANSPORT_XDP_NATIVE,   /**< AF_XDP Native driver mode with copy */
+    EC_TRANSPORT_MACB_UIO,  /**< MACB/GEM direct register access via UIO or /dev/mem */
 };
 
 typedef enum ec_transport_type ec_transport_type_t;
