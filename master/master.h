@@ -227,6 +227,9 @@ struct ec_master {
                                  variable and the \a allow_scan flag. */
     ec_wait_queue_t scan_queue; /**< Queue for processes that wait for
                                     slave scanning. */
+    unsigned int initial_scan_done; /**< Nonzero after the first bus scan
+                                         attempt has completed (either slaves
+                                         found and scanned, or no slaves). */
 
     unsigned int config_busy; /**< State of slave configuration. */
     ec_semaphore_t config_sem; /**< Semaphore protecting the \a config_busy

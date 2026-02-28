@@ -377,6 +377,7 @@ void ec_fsm_master_state_broadcast(
             if (!count) {
                 // no slaves present -> finish state machine.
                 master->scan_busy = 0;
+                master->initial_scan_done = 1;
                 ec_wq_wake_interruptible(&master->scan_queue);
                 ec_fsm_master_restart(fsm);
                 return;
@@ -388,6 +389,7 @@ void ec_fsm_master_state_broadcast(
                 EC_MASTER_ERR(master, "Failed to allocate %u bytes"
                         " of slave memory!\n", size);
                 master->scan_busy = 0;
+                master->initial_scan_done = 1;
                 ec_wq_wake_interruptible(&master->scan_queue);
                 ec_fsm_master_restart(fsm);
                 return;
@@ -450,6 +452,13 @@ void ec_fsm_master_state_broadcast(
             fsm->state = ec_fsm_master_state_read_state;
         }
     } else {
+        /* The FSM runs in a single thread, so this check-then-set is safe.
+         * Only mark done and wake once; subsequent broadcast cycles without
+         * a rescan will see initial_scan_done already set and skip. */
+        if (!master->initial_scan_done) {
+            master->initial_scan_done = 1;
+            ec_wq_wake_interruptible(&master->scan_queue);
+        }
         ec_fsm_master_restart(fsm);
     }
 }
@@ -904,6 +913,7 @@ void ec_fsm_master_state_dc_measure_delays(
                 ec_datagram_state_str(datagram));
         master->scan_busy = 0;
         master->scan_index = master->slave_count;
+        master->initial_scan_done = 1;
         ec_wq_wake_interruptible(&master->scan_queue);
         ec_fsm_master_restart(fsm);
         return;
@@ -989,6 +999,7 @@ void ec_fsm_master_state_scan_slave(
 
     master->scan_busy = 0;
     master->scan_index = master->slave_count;
+    master->initial_scan_done = 1;
     ec_wq_wake_interruptible(&master->scan_queue);
 
     ec_master_calc_dc(master);

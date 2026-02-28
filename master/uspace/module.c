@@ -150,6 +150,15 @@ static ec_master_t *ecrt_startup_master_common(ec_master_t *master,
         goto out_close_backup_device;
     }
 
+    /* Wait for the initial bus scan to complete before returning to the
+     * caller. This ensures that when the application calls
+     * ecrt_master_slave_config(), slaves have been scanned and their SII
+     * data (including default PDO mappings) is available.
+     * ec_wq_wait_interruptible() always returns 0 in the userspace PAL. */
+    ec_wq_wait_interruptible(master->scan_queue, master->initial_scan_done);
+    EC_MASTER_DBG(master, 1, "Initial bus scan complete, %u slave(s) found.\n",
+            master->slave_count);
+
     /* Register master in global registry for IPC dispatch. */
     ec_master_registry_add(master);
 
