@@ -31,37 +31,17 @@
 
 #include <linux/kernel.h>
 
-/* Log level integers - must match KERN_* level numbering for token paste */
-#define EC_LOG_EMERG   0
-#define EC_LOG_ALERT   1
-#define EC_LOG_CRIT    2
-#define EC_LOG_ERR     3
-#define EC_LOG_WARNING 4
-#define EC_LOG_NOTICE  5
-#define EC_LOG_INFO    6
-#define EC_LOG_DEBUG   7
-
-/** Token-pasting helpers to map EC_LOG_* integer levels to KERN_* strings.
- *
- * Two-level expansion is required so that macro arguments (e.g. EC_LOG_ERR)
- * are fully expanded to their integer value before the token paste occurs.
- * _EC_KERN_LVL_PASTE performs the actual paste; _EC_KERN_LVL forces
- * expansion of its argument first, yielding e.g. _EC_KERN_LVL_3 -> KERN_ERR.
- */
-#define _EC_KERN_LVL_0 KERN_EMERG
-#define _EC_KERN_LVL_1 KERN_ALERT
-#define _EC_KERN_LVL_2 KERN_CRIT
-#define _EC_KERN_LVL_3 KERN_ERR
-#define _EC_KERN_LVL_4 KERN_WARNING
-#define _EC_KERN_LVL_5 KERN_NOTICE
-#define _EC_KERN_LVL_6 KERN_INFO
-#define _EC_KERN_LVL_7 KERN_DEBUG
-
-#define _EC_KERN_LVL_PASTE(level) _EC_KERN_LVL_##level
-#define _EC_KERN_LVL(level)       _EC_KERN_LVL_PASTE(level)
+#define EC_LOG_EMERG   KERN_EMERG
+#define EC_LOG_ALERT   KERN_ALERT
+#define EC_LOG_CRIT    KERN_CRIT
+#define EC_LOG_ERR     KERN_ERR
+#define EC_LOG_WARNING KERN_WARNING
+#define EC_LOG_NOTICE  KERN_NOTICE
+#define EC_LOG_INFO    KERN_INFO
+#define EC_LOG_DEBUG   KERN_DEBUG
 
 #define ec_log(level, fmt, args...) \
-    printk(_EC_KERN_LVL(level) fmt, ##args)
+    printk(level fmt, ##args)
 
 #define ec_log_ratelimit() printk_ratelimit()
 
