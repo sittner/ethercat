@@ -31,6 +31,16 @@
 
 #include <linux/kernel.h>
 
+/* Log level integers - must match KERN_* level numbering for token paste */
+#define EC_LOG_EMERG   0
+#define EC_LOG_ALERT   1
+#define EC_LOG_CRIT    2
+#define EC_LOG_ERR     3
+#define EC_LOG_WARNING 4
+#define EC_LOG_NOTICE  5
+#define EC_LOG_INFO    6
+#define EC_LOG_DEBUG   7
+
 /** Token-pasting helpers to map EC_LOG_* integer levels to KERN_* strings.
  *
  * Two-level expansion is required so that macro arguments (e.g. EC_LOG_ERR)
