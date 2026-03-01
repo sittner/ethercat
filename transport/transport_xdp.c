@@ -444,17 +444,14 @@ static void xdp_drain_deferred_refills(ec_transport_xdp_t *xdp)
         }
         xsk_ring_prod__submit(&xdp->fq, (uint32_t)ret);
 
-        /* Shift remaining entries */
+        /* Shift remaining entries using memmove */
         remaining = xdp->fq_refill_count - (uint32_t)ret;
-        for (i = 0; i < remaining; i++) {
-            xdp->fq_refill_pending[i] = xdp->fq_refill_pending[i + (uint32_t)ret];
+        if (remaining > 0) {
+            memmove(xdp->fq_refill_pending,
+                    &xdp->fq_refill_pending[(uint32_t)ret],
+                    remaining * sizeof(uint64_t));
         }
         xdp->fq_refill_count = remaining;
-    }
-
-    /* Wakeup kernel if needed (XDP_USE_NEED_WAKEUP) */
-    if (xsk_ring_prod__needs_wakeup(&xdp->fq)) {
-        (void)recvfrom(xsk_socket__fd(xdp->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
     }
 }
 
