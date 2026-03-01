@@ -46,6 +46,7 @@
 #define FRAME_SIZE XSK_UMEM__DEFAULT_FRAME_SIZE
 #define INVALID_UMEM_FRAME UINT64_MAX
 #define FQ_REFILL_MAX 64
+#define CQ_DRAIN_MAX 8
 
 /** Private data for XDP transport */
 typedef struct {
@@ -330,7 +331,7 @@ static uint8_t *xdp_get_tx_buffer(ec_transport_t *transport)
 
     /* Process completion queue to reclaim frames before allocating new one
      * This moves variable-time operation out of the TX critical path */
-    process_completion_queue(xdp, XSK_RING_CONS__DEFAULT_NUM_DESCS);
+    process_completion_queue(xdp, CQ_DRAIN_MAX);
 
     /* If we don't have a pre-allocated frame, try to get one */
     if (xdp->tx_frame_addr == INVALID_UMEM_FRAME) {
