@@ -45,6 +45,7 @@
 #define NUM_FRAMES 4096
 #define FRAME_SIZE XSK_UMEM__DEFAULT_FRAME_SIZE
 #define INVALID_UMEM_FRAME UINT64_MAX
+#define FQ_REFILL_MAX 64
 
 /** Private data for XDP transport */
 typedef struct {
@@ -63,6 +64,8 @@ typedef struct {
     int ioctl_sock;                    /**< Socket for ioctl operations (link state, etc.) */
     uint64_t tx_frame_addr;            /**< Pre-allocated TX frame for zero-copy */
     uint32_t xdp_flags;                /**< XDP flags used during open (needed for detach) */
+    uint64_t fq_refill_pending[FQ_REFILL_MAX]; /**< Frames awaiting FQ refill */
+    uint32_t fq_refill_count;          /**< Number of pending refill frames */
 } ec_transport_xdp_t;
 
 /****************************************************************************/
@@ -419,6 +422,45 @@ static int xdp_send(ec_transport_t *transport, size_t size)
 /****************************************************************************/
 
 /**
+ * Try to refill the fill queue with deferred frames.
+ */
+static void xdp_drain_deferred_refills(ec_transport_xdp_t *xdp)
+{
+    uint32_t idx_fq = 0;
+    uint32_t i;
+    uint32_t remaining;
+    int ret;
+
+    if (xdp->fq_refill_count == 0) {
+        return;
+    }
+
+    ret = xsk_ring_prod__reserve(&xdp->fq, xdp->fq_refill_count, &idx_fq);
+    if (ret > 0) {
+        /* May get fewer slots than requested */
+        for (i = 0; i < (uint32_t)ret; i++) {
+            *xsk_ring_prod__fill_addr(&xdp->fq, idx_fq++) =
+                xdp->fq_refill_pending[i];
+        }
+        xsk_ring_prod__submit(&xdp->fq, (uint32_t)ret);
+
+        /* Shift remaining entries */
+        remaining = xdp->fq_refill_count - (uint32_t)ret;
+        for (i = 0; i < remaining; i++) {
+            xdp->fq_refill_pending[i] = xdp->fq_refill_pending[i + (uint32_t)ret];
+        }
+        xdp->fq_refill_count = remaining;
+    }
+
+    /* Wakeup kernel if needed (XDP_USE_NEED_WAKEUP) */
+    if (xsk_ring_prod__needs_wakeup(&xdp->fq)) {
+        (void)recvfrom(xsk_socket__fd(xdp->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
+    }
+}
+
+/****************************************************************************/
+
+/**
  * Receive frame (non-blocking).
  */
 static int xdp_receive(ec_transport_t *transport, uint8_t *buffer, size_t max_size)
@@ -455,14 +497,27 @@ static int xdp_receive(ec_transport_t *transport, uint8_t *buffer, size_t max_si
     /* Release RX descriptor and refill */
     xsk_ring_cons__release(&xdp->rx, 1);
 
-    /* Refill fill queue */
+    /* Try to drain any previously deferred refills first */
+    xdp_drain_deferred_refills(xdp);
+
+    /* Refill fill queue with the frame we just consumed */
     ret = xsk_ring_prod__reserve(&xdp->fq, 1, &idx_fq);
     if (ret == 1) {
         *xsk_ring_prod__fill_addr(&xdp->fq, idx_fq) = addr;
         xsk_ring_prod__submit(&xdp->fq, 1);
     } else {
-        /* Fill queue full, free the frame */
-        xsk_free_umem_frame(xdp, addr);
+        /* FQ full — defer this frame for later refill */
+        if (xdp->fq_refill_count < FQ_REFILL_MAX) {
+            xdp->fq_refill_pending[xdp->fq_refill_count++] = addr;
+        } else {
+            /* Overflow — should not happen with proper sizing, last resort */
+            xsk_free_umem_frame(xdp, addr);
+        }
+    }
+
+    /* Wakeup kernel if needed (XDP_USE_NEED_WAKEUP) */
+    if (xsk_ring_prod__needs_wakeup(&xdp->fq)) {
+        (void)recvfrom(xsk_socket__fd(xdp->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
     }
 
     return (int)len;
