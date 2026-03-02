@@ -188,6 +188,17 @@ int ec_fsm_slave_exec(
     }
 
     if (fsm->config_running) {
+        if (fsm->datagram) {
+            // Subsequent call: copy received response from old datagram to
+            // new datagram so state functions can check the received response.
+            datagram->state = fsm->datagram->state;
+            datagram->working_counter = fsm->datagram->working_counter;
+            datagram->data_size = fsm->datagram->data_size;
+            memcpy(datagram->data, fsm->datagram->data,
+                    fsm->datagram->data_size);
+            datagram->time_sent = fsm->datagram->time_sent;
+            datagram->time_received = fsm->datagram->time_received;
+        }
         fsm->fsm_slave_config.datagram = datagram;
         fsm->fsm_change.datagram = datagram;
         fsm->fsm_coe_config.datagram = datagram;
