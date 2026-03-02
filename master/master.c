@@ -1333,7 +1333,9 @@ void ec_master_exec_slave_fsms(
     while (master->fsm_exec_count < EC_EXT_RING_SIZE / 2
             && count < master->slave_count) {
 
-        if (ec_fsm_slave_is_ready(&master->fsm_slave->fsm)) {
+        if (ec_fsm_slave_is_ready(&master->fsm_slave->fsm)
+                || master->fsm_slave->fsm.config_requested
+                || master->fsm_slave->fsm.config_running) {
             datagram = ec_master_get_external_datagram(master);
 
             if (ec_fsm_slave_exec(&master->fsm_slave->fsm, datagram)) {

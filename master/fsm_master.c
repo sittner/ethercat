@@ -61,6 +61,7 @@ void ec_fsm_master_state_broadcast(ec_fsm_master_t *);
 void ec_fsm_master_state_read_state(ec_fsm_master_t *);
 void ec_fsm_master_state_acknowledge(ec_fsm_master_t *);
 void ec_fsm_master_state_configure_slave(ec_fsm_master_t *);
+void ec_fsm_master_state_wait_config(ec_fsm_master_t *);
 void ec_fsm_master_state_clear_addresses(ec_fsm_master_t *);
 void ec_fsm_master_state_dc_measure_delays(ec_fsm_master_t *);
 void ec_fsm_master_state_scan_slave(ec_fsm_master_t *);
@@ -706,7 +707,8 @@ void ec_fsm_master_action_configure(
         )
 {
     ec_master_t *master = fsm->master;
-    ec_slave_t *slave = fsm->slave;
+    ec_slave_t *slave;
+    int any_needs_config = 0;
 
     if (master->config_changed) {
         master->config_changed = 0;
@@ -722,30 +724,34 @@ void ec_fsm_master_action_configure(
         return;
     }
 
-    // Does the slave have to be configured?
-    if ((slave->current_state != slave->requested_state
-                || slave->force_config) && !slave->error_flag) {
+    // Request configuration in parallel for all slaves that need it
+    for (slave = master->slaves;
+         slave < master->slaves + master->slave_count;
+         slave++) {
+        if ((slave->current_state != slave->requested_state
+                    || slave->force_config) && !slave->error_flag) {
+            if (master->debug_level) {
+                char old_state[EC_STATE_STRING_SIZE],
+                     new_state[EC_STATE_STRING_SIZE];
+                ec_state_string(slave->current_state, old_state, 0);
+                ec_state_string(slave->requested_state, new_state, 0);
+                EC_SLAVE_DBG(slave, 1,
+                        "Changing state from %s to %s%s.\n",
+                        old_state, new_state,
+                        slave->force_config ? " (forced)" : "");
+            }
+            ec_fsm_slave_request_config(&slave->fsm);
+            any_needs_config = 1;
+        }
+    }
 
-        // Start slave configuration
+    if (any_needs_config) {
         ec_sem_down(&master->config_sem);
         master->config_busy = 1;
         ec_sem_up(&master->config_sem);
 
-        if (master->debug_level) {
-            char old_state[EC_STATE_STRING_SIZE],
-                 new_state[EC_STATE_STRING_SIZE];
-            ec_state_string(slave->current_state, old_state, 0);
-            ec_state_string(slave->requested_state, new_state, 0);
-            EC_SLAVE_DBG(slave, 1, "Changing state from %s to %s%s.\n",
-                    old_state, new_state,
-                    slave->force_config ? " (forced)" : "");
-        }
-
         fsm->idle = 0;
-        fsm->state = ec_fsm_master_state_configure_slave;
-        ec_fsm_slave_config_start(&fsm->fsm_slave_config, slave);
-        fsm->state(fsm); // execute immediately
-        fsm->datagram->device_index = fsm->slave->device_index;
+        fsm->state = ec_fsm_master_state_wait_config;
         return;
     }
 
@@ -1050,6 +1056,50 @@ void ec_fsm_master_state_configure_slave(
 
     fsm->idle = 1;
     ec_fsm_master_action_next_slave_state(fsm);
+}
+
+/****************************************************************************/
+
+/** Master state: WAIT_CONFIG.
+ *
+ * Waits for all slaves that were requested to configure in parallel.
+ */
+void ec_fsm_master_state_wait_config(
+        ec_fsm_master_t *fsm /**< Master state machine. */
+        )
+{
+    ec_master_t *master = fsm->master;
+    ec_slave_t *slave;
+    int all_complete = 1;
+
+    for (slave = master->slaves;
+         slave < master->slaves + master->slave_count;
+         slave++) {
+        if (slave->fsm.config_requested || slave->fsm.config_running) {
+            all_complete = 0;
+            break;
+        }
+    }
+
+    if (all_complete) {
+        EC_MASTER_DBG(master, 1, "All slaves configured.\n");
+
+        // Reset force_config for all slaves
+        for (slave = master->slaves;
+             slave < master->slaves + master->slave_count;
+             slave++) {
+            slave->force_config = 0;
+        }
+
+        // Release config_busy
+        master->config_busy = 0;
+        ec_wq_wake_interruptible(&master->config_queue);
+
+        fsm->idle = 1;
+        ec_fsm_master_action_next_slave_state(fsm);
+    }
+    // Otherwise stay in this state; slave FSMs are executed by
+    // ec_master_exec_slave_fsms() in the main loop
 }
 
 /****************************************************************************/
