@@ -42,6 +42,9 @@
 #ifdef EC_EOE
 #include "fsm_eoe.h"
 #endif
+#include "fsm_slave_config.h"
+#include "fsm_change.h"
+#include "fsm_pdo.h"
 
 /****************************************************************************/
 
@@ -70,6 +73,18 @@ struct ec_fsm_slave {
 #ifdef EC_EOE
     ec_fsm_eoe_t fsm_eoe; /**< EoE state machine. */
 #endif
+
+    // Configuration state machine and sub-FSMs
+    ec_fsm_slave_config_t fsm_slave_config;
+    ec_fsm_change_t fsm_change;
+    ec_fsm_coe_t fsm_coe_config;
+    ec_fsm_soe_t fsm_soe_config;
+    ec_fsm_eoe_t fsm_eoe_config;
+    ec_fsm_pdo_t fsm_pdo;
+
+    // Configuration request flags
+    unsigned int config_requested:1;
+    unsigned int config_running:1;
 };
 
 /****************************************************************************/
@@ -80,6 +95,8 @@ void ec_fsm_slave_clear(ec_fsm_slave_t *);
 int ec_fsm_slave_exec(ec_fsm_slave_t *, ec_datagram_t *);
 void ec_fsm_slave_set_ready(ec_fsm_slave_t *);
 int ec_fsm_slave_is_ready(const ec_fsm_slave_t *);
+
+void ec_fsm_slave_request_config(ec_fsm_slave_t *);
 
 /****************************************************************************/
 

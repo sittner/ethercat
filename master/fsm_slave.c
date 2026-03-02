@@ -71,6 +71,24 @@ void ec_fsm_slave_init(
     fsm->eoe_request = NULL;
 #endif
 
+    // Initialize configuration flags
+    fsm->config_requested = 0;
+    fsm->config_running = 0;
+
+    // Initialize configuration sub-FSMs
+    // Datagram is NULL here; it will be set in ec_fsm_slave_exec() when
+    // configuration is actually started.
+    ec_fsm_change_init(&fsm->fsm_change, NULL);
+    ec_fsm_coe_init(&fsm->fsm_coe_config);
+    ec_fsm_soe_init(&fsm->fsm_soe_config);
+    ec_fsm_pdo_init(&fsm->fsm_pdo, &fsm->fsm_coe_config);
+    ec_fsm_eoe_init(&fsm->fsm_eoe_config);
+    // Datagram pointer (NULL) will be set in ec_fsm_slave_exec() before use.
+    ec_fsm_slave_config_init(&fsm->fsm_slave_config, NULL,
+                              &fsm->fsm_change, &fsm->fsm_coe_config,
+                              &fsm->fsm_soe_config, &fsm->fsm_pdo,
+                              &fsm->fsm_eoe_config);
+
     // Init sub-state-machines
     ec_fsm_coe_init(&fsm->fsm_coe);
     ec_fsm_foe_init(&fsm->fsm_foe);
@@ -124,6 +142,14 @@ void ec_fsm_slave_clear(
 #ifdef EC_EOE
     ec_fsm_eoe_clear(&fsm->fsm_eoe);
 #endif
+
+    // Clear configuration sub-FSMs
+    ec_fsm_slave_config_clear(&fsm->fsm_slave_config);
+    ec_fsm_change_clear(&fsm->fsm_change);
+    ec_fsm_coe_clear(&fsm->fsm_coe_config);
+    ec_fsm_soe_clear(&fsm->fsm_soe_config);
+    ec_fsm_pdo_clear(&fsm->fsm_pdo);
+    ec_fsm_eoe_clear(&fsm->fsm_eoe_config);
 }
 
 /****************************************************************************/
@@ -137,7 +163,30 @@ int ec_fsm_slave_exec(
         ec_datagram_t *datagram /**< New datagram to use. */
         )
 {
-    int datagram_used;
+    int datagram_used = 0;
+
+    // Handle configuration if requested
+    if (fsm->config_requested && !fsm->config_running) {
+        fsm->config_requested = 0;
+        fsm->config_running = 1;
+        fsm->fsm_slave_config.datagram = datagram;
+        ec_fsm_slave_config_start(&fsm->fsm_slave_config, fsm->slave);
+    }
+
+    if (fsm->config_running) {
+        fsm->fsm_slave_config.datagram = datagram;
+        if (ec_fsm_slave_config_exec(&fsm->fsm_slave_config)) {
+            datagram_used = 1;
+        }
+        if (!ec_fsm_slave_config_running(&fsm->fsm_slave_config)) {
+            fsm->config_running = 0;
+            EC_SLAVE_DBG(fsm->slave, 1, "Configuration finished.\n");
+        }
+        if (datagram_used) {
+            fsm->datagram = datagram;
+            return 1;
+        }
+    }
 
     fsm->state(fsm, datagram);
 
@@ -682,3 +731,16 @@ void ec_fsm_slave_state_eoe_request(
 
 /****************************************************************************/
 #endif
+
+/****************************************************************************/
+
+/** Request slave configuration.
+ */
+void ec_fsm_slave_request_config(
+        ec_fsm_slave_t *fsm /**< Slave state machine. */
+        )
+{
+    fsm->config_requested = 1;
+}
+
+/****************************************************************************/
