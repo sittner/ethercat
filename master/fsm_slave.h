@@ -57,7 +57,7 @@ struct ec_fsm_slave {
     struct list_head list; /**< Used for execution list. */
 
     void (*state)(ec_fsm_slave_t *, ec_datagram_t *); /**< State function. */
-    ec_datagram_t *datagram; /**< Previous state datagram. */
+    ec_datagram_t datagram; /**< Persistent datagram for this slave FSM. */
     ec_sdo_request_t *sdo_request; /**< SDO request to process. */
     ec_reg_request_t *reg_request; /**< Register request to process. */
     ec_foe_request_t *foe_request; /**< FoE request to process. */
@@ -94,7 +94,7 @@ struct ec_fsm_slave {
 void ec_fsm_slave_init(ec_fsm_slave_t *, ec_slave_t *);
 void ec_fsm_slave_clear(ec_fsm_slave_t *);
 
-int ec_fsm_slave_exec(ec_fsm_slave_t *, ec_datagram_t *);
+int ec_fsm_slave_exec(ec_fsm_slave_t *);
 void ec_fsm_slave_set_ready(ec_fsm_slave_t *);
 int ec_fsm_slave_is_ready(const ec_fsm_slave_t *);
 
