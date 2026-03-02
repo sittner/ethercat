@@ -169,6 +169,30 @@ void ec_datagram_zero(ec_datagram_t *datagram /**< EtherCAT datagram. */)
 
 /****************************************************************************/
 
+/** Copies the command setup from one datagram to another.
+ *
+ * Copies the command type, address, data size, payload data and device index
+ * from \a src to \a dst so that \a dst carries the same command as \a src.
+ * The destination datagram's \a data buffer must be large enough to hold
+ * \a src->data_size bytes.
+ *
+ * This is used to move a command that was written to an old ring datagram
+ * onto a new ring datagram after response checking has been performed.
+ */
+void ec_datagram_copy_command(
+        ec_datagram_t *dst, /**< Destination datagram. */
+        const ec_datagram_t *src /**< Source datagram. */
+        )
+{
+    dst->type = src->type;
+    memcpy(dst->address, src->address, EC_ADDR_LEN);
+    dst->data_size = src->data_size;
+    memcpy(dst->data, src->data, src->data_size);
+    dst->device_index = src->device_index;
+}
+
+/****************************************************************************/
+
 /** Initializes an EtherCAT APRD datagram.
  *
  * \return Return value of ec_datagram_prealloc().

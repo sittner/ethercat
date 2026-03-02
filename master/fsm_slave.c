@@ -226,11 +226,24 @@ void ec_fsm_slave_state_config(
         ec_datagram_t *datagram /**< Datagram to use. */
         )
 {
-    // Propagate datagram to sub-FSMs that store it
-    fsm->fsm_slave_config.datagram = datagram;
-    fsm->fsm_change.datagram = datagram;
+    if (!fsm->datagram) {
+        // First call after config start: no previous response to check.
+        // Propagate new datagram to sub-FSMs and execute immediately.
+        fsm->fsm_slave_config.datagram = datagram;
+        fsm->fsm_change.datagram = datagram;
+    }
+    // else: sub-FSMs still hold the previous cycle's datagram which
+    // carries the received response — do not overwrite before exec.
 
     if (ec_fsm_slave_config_exec(&fsm->fsm_slave_config)) {
+        // Still running. Exec read the old response and wrote the new
+        // command onto the sub-FSMs' datagram. If that is not the new
+        // ring datagram, copy the command over and update the pointers.
+        if (fsm->fsm_slave_config.datagram != datagram) {
+            ec_datagram_copy_command(datagram, fsm->fsm_slave_config.datagram);
+            fsm->fsm_slave_config.datagram = datagram;
+            fsm->fsm_change.datagram = datagram;
+        }
         return;  // still running, datagram was used
     }
 
