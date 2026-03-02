@@ -61,8 +61,7 @@ struct ec_fsm_slave_scan
 
 /****************************************************************************/
 
-void ec_fsm_slave_scan_init(ec_fsm_slave_scan_t *, ec_datagram_t *,
-        ec_fsm_slave_config_t *, ec_fsm_pdo_t *);
+void ec_fsm_slave_scan_init(ec_fsm_slave_scan_t *, ec_datagram_t *);
 void ec_fsm_slave_scan_clear(ec_fsm_slave_scan_t *);
 
 void ec_fsm_slave_scan_start(ec_fsm_slave_scan_t *, ec_slave_t *);

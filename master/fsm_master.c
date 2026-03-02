@@ -35,6 +35,7 @@
 
 #include "fsm_master.h"
 #include "fsm_foe.h"
+#include "fsm_slave.h"
 
 /****************************************************************************/
 
@@ -60,7 +61,6 @@ void ec_fsm_master_state_start(ec_fsm_master_t *);
 void ec_fsm_master_state_broadcast(ec_fsm_master_t *);
 void ec_fsm_master_state_read_state(ec_fsm_master_t *);
 void ec_fsm_master_state_acknowledge(ec_fsm_master_t *);
-void ec_fsm_master_state_configure_slave(ec_fsm_master_t *);
 void ec_fsm_master_state_clear_addresses(ec_fsm_master_t *);
 void ec_fsm_master_state_dc_measure_delays(ec_fsm_master_t *);
 void ec_fsm_master_state_scan_slave(ec_fsm_master_t *);
@@ -103,16 +103,8 @@ void ec_fsm_master_init(
     // init sub-state-machines
     ec_fsm_coe_init(&fsm->fsm_coe);
     ec_fsm_soe_init(&fsm->fsm_soe);
-    ec_fsm_pdo_init(&fsm->fsm_pdo, &fsm->fsm_coe);
-#ifdef EC_EOE
-    ec_fsm_eoe_init(&fsm->fsm_eoe);
-#endif
     ec_fsm_change_init(&fsm->fsm_change, fsm->datagram);
-    ec_fsm_slave_config_init(&fsm->fsm_slave_config, fsm->datagram,
-            &fsm->fsm_change, &fsm->fsm_coe, &fsm->fsm_soe, &fsm->fsm_pdo,
-            &fsm->fsm_eoe);
-    ec_fsm_slave_scan_init(&fsm->fsm_slave_scan, fsm->datagram,
-            &fsm->fsm_slave_config, &fsm->fsm_pdo);
+    ec_fsm_slave_scan_init(&fsm->fsm_slave_scan, fsm->datagram);
     ec_fsm_sii_init(&fsm->fsm_sii, fsm->datagram);
 }
 
@@ -127,12 +119,7 @@ void ec_fsm_master_clear(
     // clear sub-state machines
     ec_fsm_coe_clear(&fsm->fsm_coe);
     ec_fsm_soe_clear(&fsm->fsm_soe);
-    ec_fsm_pdo_clear(&fsm->fsm_pdo);
-#ifdef EC_EOE
-    ec_fsm_eoe_clear(&fsm->fsm_eoe);
-#endif
     ec_fsm_change_clear(&fsm->fsm_change);
-    ec_fsm_slave_config_clear(&fsm->fsm_slave_config);
     ec_fsm_slave_scan_clear(&fsm->fsm_slave_scan);
     ec_fsm_sii_clear(&fsm->fsm_sii);
 }
@@ -724,12 +711,9 @@ void ec_fsm_master_action_configure(
 
     // Does the slave have to be configured?
     if ((slave->current_state != slave->requested_state
-                || slave->force_config) && !slave->error_flag) {
-
-        // Start slave configuration
-        ec_sem_down(&master->config_sem);
-        master->config_busy = 1;
-        ec_sem_up(&master->config_sem);
+                || slave->force_config)
+            && !slave->error_flag
+            && !slave->fsm.config_running) {
 
         if (master->debug_level) {
             char old_state[EC_STATE_STRING_SIZE],
@@ -741,15 +725,15 @@ void ec_fsm_master_action_configure(
                     slave->force_config ? " (forced)" : "");
         }
 
-        fsm->idle = 0;
-        fsm->state = ec_fsm_master_state_configure_slave;
-        ec_fsm_slave_config_start(&fsm->fsm_slave_config, slave);
-        fsm->state(fsm); // execute immediately
-        fsm->datagram->device_index = fsm->slave->device_index;
-        return;
+        // Increment config_busy counter
+        ec_sem_down(&master->config_sem);
+        master->config_busy++;
+        ec_sem_up(&master->config_sem);
+
+        ec_fsm_slave_start_config(&slave->fsm);
     }
 
-    // process next slave
+    // Continue to next slave immediately — don't block
     ec_fsm_master_action_next_slave_state(fsm);
 }
 
@@ -1020,36 +1004,6 @@ void ec_fsm_master_state_scan_slave(
     } else {
         ec_fsm_master_restart(fsm);
     }
-}
-
-/****************************************************************************/
-
-/** Master state: CONFIGURE SLAVE.
- *
- * Starts configuring a slave.
- */
-void ec_fsm_master_state_configure_slave(
-        ec_fsm_master_t *fsm /**< Master state machine. */
-        )
-{
-    ec_master_t *master = fsm->master;
-
-    if (ec_fsm_slave_config_exec(&fsm->fsm_slave_config)) {
-        return;
-    }
-
-    fsm->slave->force_config = 0;
-
-    // configuration finished
-    master->config_busy = 0;
-    ec_wq_wake_interruptible(&master->config_queue);
-
-    if (!ec_fsm_slave_config_success(&fsm->fsm_slave_config)) {
-        // TODO: mark slave_config as failed.
-    }
-
-    fsm->idle = 1;
-    ec_fsm_master_action_next_slave_state(fsm);
 }
 
 /****************************************************************************/
