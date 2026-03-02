@@ -62,7 +62,6 @@ void ec_fsm_slave_init(
     INIT_LIST_HEAD(&fsm->list); // mark as unlisted
 
     fsm->state = ec_fsm_slave_state_idle;
-    fsm->datagram = NULL;
     fsm->sdo_request = NULL;
     fsm->reg_request = NULL;
     fsm->foe_request = NULL;
@@ -70,6 +69,13 @@ void ec_fsm_slave_init(
 #ifdef EC_EOE
     fsm->eoe_request = NULL;
 #endif
+
+    ec_datagram_init(&fsm->datagram);
+    snprintf(fsm->datagram.name, EC_DATAGRAM_NAME_SIZE,
+            "fsm-slave-%u", slave->ring_position);
+    if (ec_datagram_prealloc(&fsm->datagram, EC_MAX_DATA_SIZE)) {
+        EC_SLAVE_ERR(slave, "Failed to allocate FSM datagram.\n");
+    }
 
     // Init sub-state-machines
     ec_fsm_coe_init(&fsm->fsm_coe);
@@ -124,31 +130,26 @@ void ec_fsm_slave_clear(
 #ifdef EC_EOE
     ec_fsm_eoe_clear(&fsm->fsm_eoe);
 #endif
+
+    ec_datagram_clear(&fsm->datagram);
 }
 
 /****************************************************************************/
 
 /** Executes the current state of the state machine.
  *
- * \return 1 if \a datagram was used, else 0.
+ * \return 1 if the FSM's datagram was used, else 0.
  */
 int ec_fsm_slave_exec(
-        ec_fsm_slave_t *fsm, /**< Slave state machine. */
-        ec_datagram_t *datagram /**< New datagram to use. */
+        ec_fsm_slave_t *fsm /**< Slave state machine. */
         )
 {
     int datagram_used;
 
-    fsm->state(fsm, datagram);
+    fsm->state(fsm, &fsm->datagram);
 
     datagram_used = fsm->state != ec_fsm_slave_state_idle &&
         fsm->state != ec_fsm_slave_state_ready;
-
-    if (datagram_used) {
-        fsm->datagram = datagram;
-    } else {
-        fsm->datagram = NULL;
-    }
 
     return datagram_used;
 }
@@ -177,7 +178,10 @@ int ec_fsm_slave_is_ready(
         const ec_fsm_slave_t *fsm /**< Slave state machine. */
         )
 {
-    return fsm->state == ec_fsm_slave_state_ready;
+    return fsm->state == ec_fsm_slave_state_ready &&
+        fsm->datagram.data != NULL &&
+        fsm->datagram.state != EC_DATAGRAM_QUEUED &&
+        fsm->datagram.state != EC_DATAGRAM_SENT;
 }
 
 /*****************************************************************************
@@ -404,9 +408,9 @@ void ec_fsm_slave_state_reg_request(
         return;
     }
 
-    if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
+    if (fsm->datagram.state != EC_DATAGRAM_RECEIVED) {
         EC_SLAVE_ERR(slave, "Failed to receive register"
-                " request datagram: Datagram %s.\n", ec_datagram_state_str(fsm->datagram));
+                " request datagram: Datagram %s.\n", ec_datagram_state_str(&fsm->datagram));
         reg->state = EC_INT_REQUEST_FAILURE;
         ec_wq_wake_all(&slave->master->request_queue);
         fsm->reg_request = NULL;
@@ -414,9 +418,9 @@ void ec_fsm_slave_state_reg_request(
         return;
     }
 
-    if (fsm->datagram->working_counter == 1) {
+    if (fsm->datagram.working_counter == 1) {
         if (reg->dir == EC_DIR_INPUT) { // read request
-            memcpy(reg->data, fsm->datagram->data, reg->transfer_size);
+            memcpy(reg->data, fsm->datagram.data, reg->transfer_size);
         }
 
         reg->state = EC_INT_REQUEST_SUCCESS;
@@ -425,8 +429,8 @@ void ec_fsm_slave_state_reg_request(
         reg->state = EC_INT_REQUEST_FAILURE;
         EC_SLAVE_ERR(slave, "Register request failed"
                 " (datagram %s, working counter is %u).\n",
-                ec_datagram_state_str(fsm->datagram),
-                fsm->datagram->working_counter);
+                ec_datagram_state_str(&fsm->datagram),
+                fsm->datagram.working_counter);
     }
 
     ec_wq_wake_all(&slave->master->request_queue);

@@ -1277,32 +1277,14 @@ void ec_master_exec_slave_fsms(
         ec_master_t *master /**< EtherCAT master. */
         )
 {
-    ec_datagram_t *datagram;
     ec_fsm_slave_t *fsm, *next;
     unsigned int count = 0;
 
     list_for_each_entry_safe(fsm, next, &master->fsm_exec_list, list) {
-        if (!fsm->datagram) {
-            EC_MASTER_WARN(master, "Slave %u FSM has zero datagram."
-                    "This is a bug!\n", fsm->slave->ring_position);
-            list_del_init(&fsm->list);
-            master->fsm_exec_count--;
-            return;
-        }
-
-        if (fsm->datagram->state == EC_DATAGRAM_INIT ||
-                fsm->datagram->state == EC_DATAGRAM_QUEUED ||
-                fsm->datagram->state == EC_DATAGRAM_SENT) {
+        if (fsm->datagram.state == EC_DATAGRAM_QUEUED ||
+                fsm->datagram.state == EC_DATAGRAM_SENT) {
             // previous datagram was not sent or received yet.
             // wait until next thread execution
-            return;
-        }
-
-        datagram = ec_master_get_external_datagram(master);
-        if (!datagram) {
-            // no free datagrams at the moment
-            EC_MASTER_WARN(master, "No free datagram during"
-                    " slave FSM execution. This is a bug!\n");
             continue;
         }
 
@@ -1310,14 +1292,13 @@ void ec_master_exec_slave_fsms(
         EC_MASTER_DBG(master, 1, "Executing slave %u FSM.\n",
                 fsm->slave->ring_position);
 #endif
-        if (ec_fsm_slave_exec(fsm, datagram)) {
+        if (ec_fsm_slave_exec(fsm)) {
             // FSM consumed datagram
 #if DEBUG_INJECT
             EC_MASTER_DBG(master, 1, "FSM consumed datagram %s\n",
-                    datagram->name);
+                    fsm->datagram.name);
 #endif
-            master->ext_ring_idx_fsm =
-                (master->ext_ring_idx_fsm + 1) % EC_EXT_RING_SIZE;
+            ec_master_queue_datagram(master, &fsm->datagram);
         }
         else {
             // FSM finished
@@ -1334,18 +1315,18 @@ void ec_master_exec_slave_fsms(
             && count < master->slave_count) {
 
         if (ec_fsm_slave_is_ready(&master->fsm_slave->fsm)) {
-            datagram = ec_master_get_external_datagram(master);
 
-            if (ec_fsm_slave_exec(&master->fsm_slave->fsm, datagram)) {
-                master->ext_ring_idx_fsm =
-                    (master->ext_ring_idx_fsm + 1) % EC_EXT_RING_SIZE;
+            if (ec_fsm_slave_exec(&master->fsm_slave->fsm)) {
+                ec_master_queue_datagram(master,
+                        &master->fsm_slave->fsm.datagram);
                 list_add_tail(&master->fsm_slave->fsm.list,
                         &master->fsm_exec_list);
                 master->fsm_exec_count++;
 #if DEBUG_INJECT
                 EC_MASTER_DBG(master, 1, "New slave %u FSM"
                         " consumed datagram %s, now %u FSMs in list.\n",
-                        master->fsm_slave->ring_position, datagram->name,
+                        master->fsm_slave->ring_position,
+                        master->fsm_slave->fsm.datagram.name,
                         master->fsm_exec_count);
 #endif
             }
