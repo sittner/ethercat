@@ -1072,6 +1072,9 @@ void ec_fsm_master_state_wait_config(
     ec_slave_t *slave;
     int all_complete = 1;
 
+    // Master FSM datagram is not used during parallel config
+    fsm->idle = 1;
+
     for (slave = master->slaves;
          slave < master->slaves + master->slave_count;
          slave++) {
