@@ -82,12 +82,18 @@ void ec_fsm_slave_init(
     ec_fsm_coe_init(&fsm->fsm_coe_config);
     ec_fsm_soe_init(&fsm->fsm_soe_config);
     ec_fsm_pdo_init(&fsm->fsm_pdo, &fsm->fsm_coe_config);
+#ifdef EC_EOE
     ec_fsm_eoe_init(&fsm->fsm_eoe_config);
+#endif
     // Datagram pointer (NULL) will be set in ec_fsm_slave_exec() before use.
     ec_fsm_slave_config_init(&fsm->fsm_slave_config, NULL,
                               &fsm->fsm_change, &fsm->fsm_coe_config,
                               &fsm->fsm_soe_config, &fsm->fsm_pdo,
+#ifdef EC_EOE
                               &fsm->fsm_eoe_config);
+#else
+                              NULL);
+#endif
 
     // Init sub-state-machines
     ec_fsm_coe_init(&fsm->fsm_coe);
@@ -149,7 +155,9 @@ void ec_fsm_slave_clear(
     ec_fsm_coe_clear(&fsm->fsm_coe_config);
     ec_fsm_soe_clear(&fsm->fsm_soe_config);
     ec_fsm_pdo_clear(&fsm->fsm_pdo);
+#ifdef EC_EOE
     ec_fsm_eoe_clear(&fsm->fsm_eoe_config);
+#endif
 }
 
 /****************************************************************************/
@@ -170,11 +178,23 @@ int ec_fsm_slave_exec(
         fsm->config_requested = 0;
         fsm->config_running = 1;
         fsm->fsm_slave_config.datagram = datagram;
+        fsm->fsm_change.datagram = datagram;
+        fsm->fsm_coe_config.datagram = datagram;
+        fsm->fsm_soe_config.datagram = datagram;
+#ifdef EC_EOE
+        fsm->fsm_eoe_config.datagram = datagram;
+#endif
         ec_fsm_slave_config_start(&fsm->fsm_slave_config, fsm->slave);
     }
 
     if (fsm->config_running) {
         fsm->fsm_slave_config.datagram = datagram;
+        fsm->fsm_change.datagram = datagram;
+        fsm->fsm_coe_config.datagram = datagram;
+        fsm->fsm_soe_config.datagram = datagram;
+#ifdef EC_EOE
+        fsm->fsm_eoe_config.datagram = datagram;
+#endif
         if (ec_fsm_slave_config_exec(&fsm->fsm_slave_config)) {
             datagram_used = 1;
         }

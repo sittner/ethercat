@@ -79,7 +79,9 @@ struct ec_fsm_slave {
     ec_fsm_change_t fsm_change;
     ec_fsm_coe_t fsm_coe_config;
     ec_fsm_soe_t fsm_soe_config;
+#ifdef EC_EOE
     ec_fsm_eoe_t fsm_eoe_config;
+#endif
     ec_fsm_pdo_t fsm_pdo;
 
     // Configuration request flags
