@@ -198,7 +198,8 @@ int ec_fsm_slave_is_ready(
         const ec_fsm_slave_t *fsm /**< Slave state machine. */
         )
 {
-    return fsm->state == ec_fsm_slave_state_ready;
+    return fsm->state == ec_fsm_slave_state_ready
+        || fsm->config_running;
 }
 
 /****************************************************************************/
