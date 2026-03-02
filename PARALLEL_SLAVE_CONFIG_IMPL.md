@@ -2,7 +2,9 @@
 
 ## Overview
 
-This document describes how to implement **parallel slave configuration** for the IgH EtherCAT Master (stable-1.6) with **minimal changes** to upstream code. This is based on analysis of the `features/parallel-slave` patches from the uecasm patchset, adapted for the modern stable-1.6 codebase.
+This document describes how to implement **parallel slave configuration** for the IgH EtherCAT Master on the **parallel-slave-config branch (based on uspace dual-stack)** with **minimal changes** to upstream code. This is based on analysis of the `features/parallel-slave` patches from the uecasm patchset, adapted for this branch.
+
+> **Note:** This branch already includes some preparatory changes. In particular, Step 1 (converting `fsm_slave_config` to use external pointers) is **already complete** on this branch.
 
 ### Goal
 
@@ -56,71 +58,31 @@ fsm_master                           fsm_slave (per slave)
 
 ## Implementation Steps
 
-### Step 1: Modify `fsm_slave_config` to Use External Datagram
+### Step 1: Modify `fsm_slave_config` to Use External Datagram — ✅ ALREADY COMPLETE
 
 **Files:** `master/fsm_slave_config.h`, `master/fsm_slave_config.c`
 
-#### 1.1 Update Header (`fsm_slave_config.h`)
+This step is **already done** on this branch. The `ec_fsm_slave_config` struct already uses external pointers for all sub-FSMs, and the init function already accepts all required parameters:
 
 ```c
-// BEFORE: Embedded datagram
-struct ec_fsm_slave_config {
-    ec_datagram_t datagram;           // Embedded datagram
-    ec_fsm_change_t fsm_change;
-    ec_fsm_coe_t fsm_coe;
-    ec_fsm_pdo_t fsm_pdo;
-    // ...
-};
-
-// AFTER: External datagram pointer
+// Current state on branch (already complete):
 struct ec_fsm_slave_config {
     ec_datagram_t *datagram;          // Pointer to external datagram
     ec_fsm_change_t *fsm_change;      // Pointer to external FSM
     ec_fsm_coe_t *fsm_coe;            // Pointer to external FSM
+    ec_fsm_soe_t *fsm_soe;            // Pointer to external FSM
     ec_fsm_pdo_t *fsm_pdo;            // Pointer to external FSM
+    ec_fsm_eoe_t *fsm_eoe;            // Pointer to external FSM
     // ...
 };
 
-// Update function signatures
-void ec_fsm_slave_config_init(
-    ec_fsm_slave_config_t *fsm,
-    ec_datagram_t *datagram,          // Now required parameter
-    ec_fsm_change_t *fsm_change,
-    ec_fsm_coe_t *fsm_coe,
-    ec_fsm_pdo_t *fsm_pdo
-);
+// Current init signature (already in fsm_slave_config.h):
+void ec_fsm_slave_config_init(ec_fsm_slave_config_t *, ec_datagram_t *,
+        ec_fsm_change_t *, ec_fsm_coe_t *, ec_fsm_soe_t *, ec_fsm_pdo_t *,
+        ec_fsm_eoe_t *);
 ```
 
-#### 1.2 Update Implementation (`fsm_slave_config.c`)
-
-```c
-void ec_fsm_slave_config_init(
-    ec_fsm_slave_config_t *fsm,
-    ec_datagram_t *datagram,
-    ec_fsm_change_t *fsm_change,
-    ec_fsm_coe_t *fsm_coe,
-    ec_fsm_pdo_t *fsm_pdo
-)
-{
-    fsm->datagram = datagram;
-    fsm->fsm_change = fsm_change;
-    fsm->fsm_coe = fsm_coe;
-    fsm->fsm_pdo = fsm_pdo;
-    fsm->state = NULL;
-    fsm->slave = NULL;
-    // ... other initialization
-}
-
-// Update all state functions to use fsm->datagram instead of &fsm->datagram
-// Example:
-void ec_fsm_slave_config_state_start(ec_fsm_slave_config_t *fsm)
-{
-    ec_datagram_t *datagram = fsm->datagram;  // Use pointer
-    ec_slave_t *slave = fsm->slave;
-    
-    // ... rest of function unchanged, just use 'datagram' variable
-}
-```
+No changes to `master/fsm_slave_config.h` or `master/fsm_slave_config.c` are required for this step.
 
 ---
 
@@ -133,7 +95,10 @@ void ec_fsm_slave_config_state_start(ec_fsm_slave_config_t *fsm)
 ```c
 #include "fsm_slave_config.h"
 #include "fsm_change.h"
+#include "fsm_coe.h"
+#include "fsm_soe.h"
 #include "fsm_pdo.h"
+#include "fsm_eoe.h"
 
 struct ec_fsm_slave {
     ec_slave_t *slave;
@@ -152,6 +117,10 @@ struct ec_fsm_slave {
     ec_fsm_slave_config_t fsm_slave_config;
     ec_fsm_change_t fsm_change;
     ec_fsm_coe_t fsm_coe_config;      // Separate from request handling
+    ec_fsm_soe_t fsm_soe_config;      // Required by ec_fsm_slave_config_init
+#ifdef EC_EOE
+    ec_fsm_eoe_t fsm_eoe_config;      // Required by ec_fsm_slave_config_init
+#endif
     ec_fsm_pdo_t fsm_pdo;
     
     // ADD: Configuration request flag
@@ -191,12 +160,17 @@ void ec_fsm_slave_init(
     fsm->config_running = 0;
     
     // ADD: Initialize configuration sub-FSMs
-    ec_fsm_change_init(&fsm->fsm_change);
+    ec_fsm_change_init(&fsm->fsm_change, NULL);
     ec_fsm_coe_init(&fsm->fsm_coe_config);
+    ec_fsm_soe_init(&fsm->fsm_soe_config);
     ec_fsm_pdo_init(&fsm->fsm_pdo, &fsm->fsm_coe_config);
+#ifdef EC_EOE
+    ec_fsm_eoe_init(&fsm->fsm_eoe_config);
+#endif
     ec_fsm_slave_config_init(&fsm->fsm_slave_config, NULL,
                               &fsm->fsm_change, &fsm->fsm_coe_config,
-                              &fsm->fsm_pdo);
+                              &fsm->fsm_soe_config, &fsm->fsm_pdo,
+                              &fsm->fsm_eoe_config);
     
     // Existing initialization
     ec_fsm_coe_init(&fsm->fsm_coe);
@@ -213,7 +187,11 @@ void ec_fsm_slave_clear(ec_fsm_slave_t *fsm)
     ec_fsm_slave_config_clear(&fsm->fsm_slave_config);
     ec_fsm_change_clear(&fsm->fsm_change);
     ec_fsm_coe_clear(&fsm->fsm_coe_config);
+    ec_fsm_soe_clear(&fsm->fsm_soe_config);
     ec_fsm_pdo_clear(&fsm->fsm_pdo);
+#ifdef EC_EOE
+    ec_fsm_eoe_clear(&fsm->fsm_eoe_config);
+#endif
     
     // Existing cleanup
     ec_fsm_coe_clear(&fsm->fsm_coe);
@@ -258,6 +236,10 @@ int ec_fsm_slave_exec(
         if (ec_fsm_slave_config_exec(&fsm->fsm_slave_config)) {
             datagram_used = 1;
         }
+        // NOTE: ec_fsm_slave_config_running() is a private function declared
+        // only inside fsm_slave_config.c. To use it here, expose it in
+        // fsm_slave_config.h (Option A — recommended). See "Files Modified
+        // Summary" for details.
         if (!ec_fsm_slave_config_running(&fsm->fsm_slave_config)) {
             fsm->config_running = 0;
             // Configuration complete
@@ -308,8 +290,9 @@ void ec_fsm_master_action_configure(ec_fsm_master_t *fsm)
         
         if (!slave->config) continue;
         
-        // Check if slave needs configuration
-        if (ec_fsm_slave_config_needed(slave)) {
+        // Check if slave needs configuration using the actual condition
+        if ((slave->current_state != slave->requested_state
+                    || slave->force_config) && !slave->error_flag) {
             // CHANGED: Instead of running fsm_slave_config directly,
             // request the slave's own FSM to handle it
             ec_fsm_slave_request_config(&slave->fsm);
@@ -358,40 +341,51 @@ void ec_fsm_master_state_wait_config(ec_fsm_master_t *fsm)
 The existing `ec_master_exec_slave_fsms()` function already has the infrastructure for parallel execution. Verify it handles the new configuration states:
 
 ```c
+// NOTE: The actual implementation uses ec_master_get_external_datagram()
+// (defined in master.c) and the ext_datagram_ring with ext_ring_idx_fsm.
+// There is no separate ec_master_return_ext_datagram() function — when the
+// FSM does not consume the datagram, the ring index is simply not advanced.
+// The existing ec_master_exec_slave_fsms() already handles this correctly:
+
 void ec_master_exec_slave_fsms(ec_master_t *master)
 {
-    ec_slave_t *slave;
     ec_datagram_t *datagram;
+    ec_fsm_slave_t *fsm, *next;
     unsigned int count = 0;
-    
-    // This function already iterates through slaves and executes their FSMs
-    // using available datagrams from the ext_ring
-    
-    while (count < master->slave_count) {
-        slave = master->fsm_slave;
-        
-        // Check if this slave's FSM needs execution
-        // ADD: Include config_requested and config_running in the check
-        if (slave->fsm.config_requested || slave->fsm.config_running ||
-            ec_fsm_slave_is_ready(&slave->fsm)) {
-            
-            // Get an available datagram
-            datagram = ec_master_get_ext_datagram(master);
-            if (!datagram) {
-                break;  // No more datagrams available this cycle
-            }
-            
-            // Execute the slave FSM
-            if (ec_fsm_slave_exec(&slave->fsm, datagram)) {
-                // FSM used the datagram, add to execution list
-                list_add_tail(&slave->fsm.list, &master->fsm_exec_list);
+
+    // Process FSMs already in the execution list
+    list_for_each_entry_safe(fsm, next, &master->fsm_exec_list, list) {
+        // ... (existing code) ...
+        datagram = ec_master_get_external_datagram(master);
+        if (ec_fsm_slave_exec(fsm, datagram)) {
+            // FSM consumed datagram — advance ring index
+            master->ext_ring_idx_fsm =
+                (master->ext_ring_idx_fsm + 1) % EC_EXT_RING_SIZE;
+        } else {
+            // FSM finished — remove from list (datagram NOT advanced)
+            list_del_init(&fsm->list);
+            master->fsm_exec_count--;
+        }
+    }
+
+    // ADD: Include config_requested and config_running in the ready check
+    // so that slaves needing configuration also get scheduled here.
+    while (master->fsm_exec_count < EC_EXT_RING_SIZE / 2
+            && count < master->slave_count) {
+
+        if (ec_fsm_slave_is_ready(&master->fsm_slave->fsm)
+                || master->fsm_slave->fsm.config_requested
+                || master->fsm_slave->fsm.config_running) {
+            datagram = ec_master_get_external_datagram(master);
+            if (ec_fsm_slave_exec(&master->fsm_slave->fsm, datagram)) {
+                master->ext_ring_idx_fsm =
+                    (master->ext_ring_idx_fsm + 1) % EC_EXT_RING_SIZE;
+                list_add_tail(&master->fsm_slave->fsm.list,
+                        &master->fsm_exec_list);
                 master->fsm_exec_count++;
-            } else {
-                // FSM didn't need the datagram, return it
-                ec_master_return_ext_datagram(master, datagram);
             }
         }
-        
+
         // Move to next slave (circular)
         master->fsm_slave++;
         if (master->fsm_slave >= master->slaves + master->slave_count) {
@@ -467,12 +461,12 @@ The changes are isolated enough that a clean rollback is possible.
 
 | File | Type of Change |
 |------|----------------|
-| `master/fsm_slave_config.h` | Struct modification, function signatures |
-| `master/fsm_slave_config.c` | Use external datagram pointer |
+| `master/fsm_slave_config.h` | May need modification to expose `ec_fsm_slave_config_running()` (Option A — add declaration to header so `fsm_slave.c` can call it) |
+| `master/fsm_slave_config.c` | Use external datagram pointer (already complete on this branch) |
 | `master/fsm_slave.h` | Add config FSM and flags |
 | `master/fsm_slave.c` | Initialize config FSM, handle in exec |
 | `master/fsm_master.c` | Delegate config to slave FSM |
-| `master/master.c` | Verify parallel execution (minimal changes) |
+| `master/master.c` | Extend ready-check to include config_requested/config_running |
 
 **Estimated Lines Changed:** 500-800 lines
 
