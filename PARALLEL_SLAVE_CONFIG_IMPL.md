@@ -78,18 +78,18 @@ configuration:
 
 | Sub-FSM | Master FSM field | Used by `fsm_slave_config` | Also used by master for other purposes |
 |---------|-----------------|---------------------------|---------------------------------------|
-| `fsm_change` | `fsm->fsm_change` | Yes (state changes) | No |
+| `fsm_change` | `fsm->fsm_change` | Yes (state changes) | Yes (`ec_fsm_master_state_acknowledge()` for ACK_ERR handling) |
 | `fsm_coe` | `fsm->fsm_coe` | Yes (SDO config) | Yes (SDO dictionary, internal SDO requests) |
 | `fsm_soe` | `fsm->fsm_soe` | Yes (SoE config) | Yes (internal SoE requests) |
-| `fsm_pdo` | `fsm->fsm_pdo` | Yes (PDO config) | No |
-| `fsm_eoe` | `fsm->fsm_eoe` | Yes (EoE IP params) | No |
+| `fsm_pdo` | `fsm->fsm_pdo` | Yes (PDO config) | No (only proxied to `fsm_slave_config` and `fsm_slave_scan`) |
+| `fsm_eoe` | `fsm->fsm_eoe` | Yes (EoE IP params) | No (only proxied to `fsm_slave_config`) |
 
 The `ec_fsm_slave_config_t` struct holds **pointers** to these sub-FSMs (not
 embedded copies). The `ec_fsm_slave_config_init()` takes all of them as parameters.
 
 For parallel config, each slave needs its **own set** of these sub-FSMs. The
 master FSM must keep its own `fsm_coe` and `fsm_soe` for SDO dictionary fetching
-and internal request handling.
+and internal request handling, and its own `fsm_change` for ACK_ERR handling.
 
 ### Current Slave FSM (`ec_fsm_slave_t`)
 
@@ -227,6 +227,17 @@ void ec_fsm_slave_state_config(
         fsm->slave->error_flag = 1;
     }
 
+    // Decrement config_busy counter and wake waiters if all configs done
+    {
+        ec_master_t *master = fsm->slave->master;
+        ec_sem_down(&master->config_sem);
+        master->config_busy--;
+        ec_sem_up(&master->config_sem);
+        if (!master->config_busy) {
+            ec_wq_wake_interruptible(&master->config_queue);
+        }
+    }
+
     // Return to ready state (or idle, depending on whether requests are enabled)
     fsm->state = ec_fsm_slave_state_ready;
 }
@@ -274,6 +285,11 @@ void ec_fsm_master_action_configure(ec_fsm_master_t *fsm)
                     slave->force_config ? " (forced)" : "");
         }
 
+        // Increment config_busy counter
+        ec_sem_down(&master->config_sem);
+        master->config_busy++;
+        ec_sem_up(&master->config_sem);
+
         ec_fsm_slave_start_config(&slave->fsm);
     }
 
@@ -293,39 +309,44 @@ Currently `config_busy` is set to 1 when one slave starts configuring and
 cleared when it finishes. With parallel config, multiple slaves may be
 configuring simultaneously.
 
-Option A (simple): Don't use `config_busy` for per-slave configs at all. Just
-remove the `config_busy` set/clear from `ec_fsm_master_action_configure` and
-`ec_fsm_master_state_configure_slave`. If userspace code waits on `config_queue`,
-it now returns immediately (slaves configure asynchronously).
+**Use `config_busy` as a counter** (Option B):
+- `config_busy` is already `unsigned int` in `master.h`. Use it as a counter
+  instead of a 0/1 flag.
+- Increment in `ec_fsm_master_action_configure()` when kicking off a slave config.
+- Decrement in `ec_fsm_slave_state_config()` when config finishes (success or failure).
+- Wake `config_queue` when the counter reaches 0 (all parallel configs done).
+- `ec_fsm_slave_state_config()` accesses `master` via `fsm->slave->master`.
 
-Option B (tracking): Use a counter instead of a flag. Increment when starting
-a config, decrement when finishing. Wake `config_queue` when it reaches 0.
-This requires `ec_fsm_slave_state_config()` to signal the master when done.
+This preserves the existing semantics of `ec_master_enter_operation_phase()`,
+which waits on `config_busy` before transitioning IDLE→OPERATION:
 
-**Recommended: Option A** for initial implementation. The config_busy mechanism
-is primarily used during `ecrt_master_activate()` which waits for all slaves
-to reach their target state. The activate path can check all slaves directly
-instead of relying on config_busy.
+```c
+ec_sem_down(&master->config_sem);
+if (master->config_busy) {
+    ec_sem_up(&master->config_sem);
+    ret = ec_wq_wait_interruptible(master->config_queue,
+                !master->config_busy);
+    ...
+}
+```
+
+With a counter, `!master->config_busy` is true (nonzero becomes zero) only when
+ALL parallel configs have completed. Existing RT applications (LinuxCNC, etc.)
+continue to work correctly without behavioral changes.
 
 #### 5d. Keep Master FSM's Own Sub-FSMs for Non-Config Tasks
 
-The master FSM still needs its own `fsm_coe` and `fsm_soe` for:
-- SDO dictionary fetching (`ec_fsm_master_state_sdo_dictionary`)
-- Internal SDO requests (`ec_fsm_master_state_sdo_request`)
-- Internal SoE requests (`ec_fsm_master_state_soe_request`)
-
-These remain unchanged in `ec_fsm_master_t`. Only `fsm_slave_config` (and
-`fsm_change` if it was only used for config) can be removed from the master FSM.
+The master FSM still needs its own sub-FSMs for non-config tasks:
 
 **What to remove from `ec_fsm_master_t`:**
 - `fsm_slave_config` — moved to per-slave
-- `fsm_change` — moved to per-slave (verify it's not used elsewhere in master FSM)
+- `fsm_pdo` — moved to per-slave (only used as proxy to `fsm_slave_config` and `fsm_slave_scan`, never used directly by any master FSM state function)
+- `fsm_eoe` — moved to per-slave (only used as proxy to `fsm_slave_config`, never used directly by any master FSM state function)
 
 **What stays in `ec_fsm_master_t`:**
-- `fsm_coe` — used for SDO dictionary + internal SDO requests
-- `fsm_soe` — used for internal SoE requests
-- `fsm_pdo` — check if used outside config; if only used by config, remove
-- `fsm_eoe` — check if used outside config; if only used by config, remove
+- `fsm_coe` — used for SDO dictionary fetching (`ec_fsm_master_state_sdo_dictionary`) and internal SDO requests (`ec_fsm_master_state_sdo_request`)
+- `fsm_soe` — used for internal SoE requests (`ec_fsm_master_state_soe_request`)
+- `fsm_change` — used by `ec_fsm_master_state_acknowledge()` for ACK_ERR handling during the state poll loop. This is independent of slave configuration. The master's `fsm_change` continues to be initialized with `fsm->datagram` (the master's own datagram) in `ec_fsm_master_init()`, which is correct because the ACK path runs within the master FSM using the master's datagram, not the external ring. Each slave gets its own separate `fsm_change` instance for parallel config — no conflict.
 - `fsm_slave_scan` — still needed for scanning (uses master datagram)
 - `fsm_sii` — still needed for SII operations
 
@@ -461,13 +482,13 @@ because the ring is a single-producer (FSM thread) single-consumer (RT thread).
 | File | Changes |
 |------|---------|
 | `master/fsm_slave.h` | Add `config_running` field. Add `fsm_slave_config`, `fsm_change`, `fsm_pdo` sub-FSM instances. Add `ec_fsm_slave_start_config()` declaration. Add `#include "fsm_slave_config.h"`. |
-| `master/fsm_slave.c` | Init/clear new sub-FSMs. Add `ec_fsm_slave_start_config()`. Add `ec_fsm_slave_state_config()` state function. |
-| `master/fsm_master.h` | Remove `fsm_slave_config` and `fsm_change` from `ec_fsm_master_t` (keep `fsm_coe`, `fsm_soe`, `fsm_pdo`, `fsm_eoe` if used for non-config tasks; remove if only used by config). |
-| `master/fsm_master.c` | Change `ec_fsm_master_action_configure()` to kick off per-slave FSM non-blocking. Remove `ec_fsm_master_state_configure_slave()`. Update `ec_fsm_master_init()`/`ec_fsm_master_clear()` to remove sub-FSMs that moved to per-slave. Remove `config_busy` set/clear from config path. |
+| `master/fsm_slave.c` | Init/clear new sub-FSMs. Add `ec_fsm_slave_start_config()`. Add `ec_fsm_slave_state_config()` state function. `ec_fsm_slave_state_config()` must decrement `config_busy` counter via `fsm->slave->master` and wake `config_queue` when counter reaches 0. |
+| `master/fsm_master.h` | Remove `fsm_slave_config`, `fsm_pdo`, and `fsm_eoe` from `ec_fsm_master_t`. Keep `fsm_coe`, `fsm_soe`, `fsm_change`, `fsm_slave_scan`, `fsm_sii`. |
+| `master/fsm_master.c` | Change `ec_fsm_master_action_configure()` to kick off per-slave FSM non-blocking and increment `config_busy` counter. Remove `ec_fsm_master_state_configure_slave()`. Update `ec_fsm_master_init()`/`ec_fsm_master_clear()` to remove `fsm_slave_config`, `fsm_pdo`, `fsm_eoe` init/clear. Keep `fsm_change` init/clear (used for ACK). |
 | `master/fsm_slave_config.h` | No changes needed (already uses pointers to sub-FSMs). |
 | `master/fsm_slave_config.c` | No changes needed (already uses pointer-based sub-FSMs). Verify datagram propagation is correct. |
-| `master/fsm_slave_scan.h` | Possibly remove `fsm_slave_config` and `fsm_pdo` from constructor params. |
-| `master/fsm_slave_scan.c` | Set `fsm_slave_config` and `fsm_pdo` from slave being scanned in `_start()`. |
+| `master/fsm_slave_scan.h` | Remove `fsm_slave_config` and `fsm_pdo` from constructor params. |
+| `master/fsm_slave_scan.c` | Set `fsm_slave_config` and `fsm_pdo` from slave being scanned in `_start()`. Update `ec_fsm_slave_scan_init()` to no longer require these params. |
 | `master/master.h` | Increase `EC_EXT_RING_SIZE` from 32 to 64. |
 | `master/master.c` | Verify `ec_master_exec_slave_fsms()` handles config FSMs correctly (should work with existing round-robin logic). |
 | `master/fsm_change.c` | Verify datagram pointer is updated before each use (it stores datagram in struct). |
@@ -480,20 +501,24 @@ because the ring is a single-producer (FSM thread) single-consumer (RT thread).
    Add `config_running` flag.
    Add `ec_fsm_slave_start_config()` and `ec_fsm_slave_state_config()`.
 
-2. **Phase 2 — Master FSM decoupling:**
+2. **Phase 2 — Master FSM decoupling + ring size:**
    Change `ec_fsm_master_action_configure()` to kick off slave FSMs non-blocking.
+   Increment `config_busy` counter on config start.
    Remove `ec_fsm_master_state_configure_slave()`.
-   Remove `fsm_slave_config` and `fsm_change` from `ec_fsm_master_t`.
+   Remove `fsm_slave_config`, `fsm_pdo`, `fsm_eoe` from `ec_fsm_master_t`.
+   Keep `fsm_change` in `ec_fsm_master_t` (used for ACK_ERR handling).
    Update `ec_fsm_master_init()`/`ec_fsm_master_clear()`.
-   Handle `config_busy` (simplest: remove it from config path).
+   Increase `EC_EXT_RING_SIZE` from 32 to 64.
 
 3. **Phase 3 — Scan FSM update:**
    Update `ec_fsm_slave_scan_t` to use per-slave `fsm_slave_config` and `fsm_pdo`.
    Remove these from scan constructor params.
 
-4. **Phase 4 — Ring size and testing:**
-   Increase `EC_EXT_RING_SIZE` to 64.
-   Test with multiple slaves. Verify IDLE and OPERATION phase behavior.
+4. **Phase 4 — Testing:**
+   Test with multiple slaves.
+   Verify IDLE and OPERATION phase behavior.
+   Verify `ec_master_enter_operation_phase()` correctly waits for all parallel
+   configs to complete via `config_busy` counter.
 
 ## Critical Invariants (Checklist)
 
@@ -505,8 +530,12 @@ because the ring is a single-producer (FSM thread) single-consumer (RT thread).
 - [ ] `config_running` flag prevents duplicate config starts
 - [ ] Master FSM does not block waiting for any single slave config
 - [ ] Master FSM keeps its own `fsm_coe`/`fsm_soe` for SDO dictionary and internal requests
+- [ ] Master FSM keeps its own `fsm_change` for ACK_ERR handling (not shared with per-slave configs)
 - [ ] Scanning still works (uses per-slave `fsm_slave_config` instead of master's)
 - [ ] Ring size sufficient for max parallel configs + other requests (64)
+- [ ] `config_busy` counter incremented on config start, decremented on config finish
+- [ ] `config_queue` woken when `config_busy` reaches 0
+- [ ] `ec_master_enter_operation_phase()` correctly waits for all parallel configs
 
 ## Estimated Scope
 
