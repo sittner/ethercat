@@ -19,12 +19,22 @@
 #
 #-----------------------------------------------------------------------------
 
+if ENABLE_TTY
 include_HEADERS = \
 	$(builddir)/ecrt.h \
 	ectp.h \
 	ectty.h
+else
+include_HEADERS = \
+	$(builddir)/ecrt.h \
+	ectp.h
+endif
 
 EXTRA_DIST = ecrt.h.in
+
+if !ENABLE_TTY
+EXTRA_DIST += ectty.h
+endif
 
 DISTCLEANFILES = ecrt.h
 
