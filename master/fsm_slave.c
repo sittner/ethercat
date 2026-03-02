@@ -62,7 +62,6 @@ void ec_fsm_slave_init(
     INIT_LIST_HEAD(&fsm->list); // mark as unlisted
 
     fsm->state = ec_fsm_slave_state_idle;
-    fsm->datagram = NULL;
     fsm->sdo_request = NULL;
     fsm->reg_request = NULL;
     fsm->foe_request = NULL;
@@ -75,18 +74,21 @@ void ec_fsm_slave_init(
     fsm->config_requested = 0;
     fsm->config_running = 0;
 
-    // Initialize configuration sub-FSMs
-    // Datagram is NULL here; it will be set in ec_fsm_slave_exec() when
-    // configuration is actually started.
-    ec_fsm_change_init(&fsm->fsm_change, NULL);
+    // Initialize persistent datagram for this slave FSM
+    ec_datagram_init(&fsm->datagram);
+    snprintf(fsm->datagram.name, EC_DATAGRAM_NAME_SIZE,
+            "fsm-slave-%u", slave->ring_position);
+    ec_datagram_prealloc(&fsm->datagram, EC_MAX_DATA_SIZE);
+
+    // Initialize configuration sub-FSMs with persistent datagram
+    ec_fsm_change_init(&fsm->fsm_change, &fsm->datagram);
     ec_fsm_coe_init(&fsm->fsm_coe_config);
     ec_fsm_soe_init(&fsm->fsm_soe_config);
     ec_fsm_pdo_init(&fsm->fsm_pdo, &fsm->fsm_coe_config);
 #ifdef EC_EOE
     ec_fsm_eoe_init(&fsm->fsm_eoe_config);
 #endif
-    // Datagram pointer (NULL) will be set in ec_fsm_slave_exec() before use.
-    ec_fsm_slave_config_init(&fsm->fsm_slave_config, NULL,
+    ec_fsm_slave_config_init(&fsm->fsm_slave_config, &fsm->datagram,
                               &fsm->fsm_change, &fsm->fsm_coe_config,
                               &fsm->fsm_soe_config, &fsm->fsm_pdo,
 #ifdef EC_EOE
@@ -158,54 +160,32 @@ void ec_fsm_slave_clear(
 #ifdef EC_EOE
     ec_fsm_eoe_clear(&fsm->fsm_eoe_config);
 #endif
+
+    // Clear persistent datagram
+    ec_datagram_clear(&fsm->datagram);
 }
 
 /****************************************************************************/
 
 /** Executes the current state of the state machine.
  *
- * \return 1 if \a datagram was used, else 0.
+ * \return 1 if the FSM's datagram was used, else 0.
  */
 int ec_fsm_slave_exec(
-        ec_fsm_slave_t *fsm, /**< Slave state machine. */
-        ec_datagram_t *datagram /**< New datagram to use. */
+        ec_fsm_slave_t *fsm /**< Slave state machine. */
         )
 {
+    ec_datagram_t *datagram = &fsm->datagram;
     int datagram_used = 0;
 
     // Handle configuration if requested
     if (fsm->config_requested && !fsm->config_running) {
         fsm->config_requested = 0;
         fsm->config_running = 1;
-        fsm->fsm_slave_config.datagram = datagram;
-        fsm->fsm_change.datagram = datagram;
-        fsm->fsm_coe_config.datagram = datagram;
-        fsm->fsm_soe_config.datagram = datagram;
-#ifdef EC_EOE
-        fsm->fsm_eoe_config.datagram = datagram;
-#endif
         ec_fsm_slave_config_start(&fsm->fsm_slave_config, fsm->slave);
     }
 
     if (fsm->config_running) {
-        if (fsm->datagram) {
-            // Subsequent call: copy received response from old datagram to
-            // new datagram so state functions can check the received response.
-            datagram->state = fsm->datagram->state;
-            datagram->working_counter = fsm->datagram->working_counter;
-            datagram->data_size = fsm->datagram->data_size;
-            memcpy(datagram->data, fsm->datagram->data,
-                    fsm->datagram->data_size);
-            datagram->time_sent = fsm->datagram->time_sent;
-            datagram->time_received = fsm->datagram->time_received;
-        }
-        fsm->fsm_slave_config.datagram = datagram;
-        fsm->fsm_change.datagram = datagram;
-        fsm->fsm_coe_config.datagram = datagram;
-        fsm->fsm_soe_config.datagram = datagram;
-#ifdef EC_EOE
-        fsm->fsm_eoe_config.datagram = datagram;
-#endif
         if (ec_fsm_slave_config_exec(&fsm->fsm_slave_config)) {
             datagram_used = 1;
         }
@@ -214,7 +194,6 @@ int ec_fsm_slave_exec(
             EC_SLAVE_DBG(fsm->slave, 1, "Configuration finished.\n");
         }
         if (datagram_used) {
-            fsm->datagram = datagram;
             return 1;
         }
     }
@@ -223,12 +202,6 @@ int ec_fsm_slave_exec(
 
     datagram_used = fsm->state != ec_fsm_slave_state_idle &&
         fsm->state != ec_fsm_slave_state_ready;
-
-    if (datagram_used) {
-        fsm->datagram = datagram;
-    } else {
-        fsm->datagram = NULL;
-    }
 
     return datagram_used;
 }
@@ -257,7 +230,9 @@ int ec_fsm_slave_is_ready(
         const ec_fsm_slave_t *fsm /**< Slave state machine. */
         )
 {
-    return fsm->state == ec_fsm_slave_state_ready;
+    return fsm->state == ec_fsm_slave_state_ready &&
+        fsm->datagram.state != EC_DATAGRAM_QUEUED &&
+        fsm->datagram.state != EC_DATAGRAM_SENT;
 }
 
 /*****************************************************************************
@@ -484,9 +459,9 @@ void ec_fsm_slave_state_reg_request(
         return;
     }
 
-    if (fsm->datagram->state != EC_DATAGRAM_RECEIVED) {
+    if (fsm->datagram.state != EC_DATAGRAM_RECEIVED) {
         EC_SLAVE_ERR(slave, "Failed to receive register"
-                " request datagram: Datagram %s.\n", ec_datagram_state_str(fsm->datagram));
+                " request datagram: Datagram %s.\n", ec_datagram_state_str(&fsm->datagram));
         reg->state = EC_INT_REQUEST_FAILURE;
         ec_wq_wake_all(&slave->master->request_queue);
         fsm->reg_request = NULL;
@@ -494,9 +469,9 @@ void ec_fsm_slave_state_reg_request(
         return;
     }
 
-    if (fsm->datagram->working_counter == 1) {
+    if (fsm->datagram.working_counter == 1) {
         if (reg->dir == EC_DIR_INPUT) { // read request
-            memcpy(reg->data, fsm->datagram->data, reg->transfer_size);
+            memcpy(reg->data, fsm->datagram.data, reg->transfer_size);
         }
 
         reg->state = EC_INT_REQUEST_SUCCESS;
@@ -505,8 +480,8 @@ void ec_fsm_slave_state_reg_request(
         reg->state = EC_INT_REQUEST_FAILURE;
         EC_SLAVE_ERR(slave, "Register request failed"
                 " (datagram %s, working counter is %u).\n",
-                ec_datagram_state_str(fsm->datagram),
-                fsm->datagram->working_counter);
+                ec_datagram_state_str(&fsm->datagram),
+                fsm->datagram.working_counter);
     }
 
     ec_wq_wake_all(&slave->master->request_queue);
