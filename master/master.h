@@ -99,7 +99,7 @@
  *
  * The external datagram ring is used for slave FSMs.
  */
-#define EC_EXT_RING_SIZE 32
+#define EC_EXT_RING_SIZE 64
 
 /** Maximum number of masters.
  */

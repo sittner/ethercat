@@ -31,6 +31,7 @@
 #include "mailbox.h"
 #include "slave_config.h"
 
+#include "fsm_slave.h"
 #include "fsm_slave_scan.h"
 
 /****************************************************************************/
@@ -76,15 +77,12 @@ void ec_fsm_slave_scan_state_error(ec_fsm_slave_scan_t *);
  */
 void ec_fsm_slave_scan_init(
         ec_fsm_slave_scan_t *fsm, /**< Slave scanning state machine. */
-        ec_datagram_t *datagram, /**< Datagram to use. */
-        ec_fsm_slave_config_t *fsm_slave_config, /**< Slave configuration
-                                                  state machine to use. */
-        ec_fsm_pdo_t *fsm_pdo /**< PDO configuration machine to use. */
+        ec_datagram_t *datagram /**< Datagram to use. */
         )
 {
     fsm->datagram = datagram;
-    fsm->fsm_slave_config = fsm_slave_config;
-    fsm->fsm_pdo = fsm_pdo;
+    fsm->fsm_slave_config = NULL;
+    fsm->fsm_pdo = NULL;
 
     // init sub state machines
     ec_fsm_sii_init(&fsm->fsm_sii, fsm->datagram);
@@ -112,6 +110,11 @@ void ec_fsm_slave_scan_start(
         )
 {
     fsm->slave = slave;
+    fsm->fsm_slave_config = &slave->fsm.fsm_slave_config;
+    fsm->fsm_pdo = &slave->fsm.fsm_pdo;
+    // Propagate master datagram to per-slave sub-FSMs for scanning
+    slave->fsm.fsm_slave_config.datagram = fsm->datagram;
+    slave->fsm.fsm_change.datagram = fsm->datagram;
     fsm->state = ec_fsm_slave_scan_state_start;
 }
 
