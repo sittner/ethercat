@@ -48,6 +48,7 @@ void ec_fsm_slave_state_soe_request(ec_fsm_slave_t *, ec_datagram_t *);
 int ec_fsm_slave_action_process_eoe(ec_fsm_slave_t *, ec_datagram_t *);
 void ec_fsm_slave_state_eoe_request(ec_fsm_slave_t *, ec_datagram_t *);
 #endif
+void ec_fsm_slave_state_config(ec_fsm_slave_t *, ec_datagram_t *);
 
 /****************************************************************************/
 
@@ -78,6 +79,21 @@ void ec_fsm_slave_init(
 #ifdef EC_EOE
     ec_fsm_eoe_init(&fsm->fsm_eoe);
 #endif
+
+    fsm->config_running = 0;
+
+    // Init config sub-FSMs
+    ec_fsm_change_init(&fsm->fsm_change, NULL);  // datagram set each cycle
+    ec_fsm_pdo_init(&fsm->fsm_pdo, &fsm->fsm_coe);
+    ec_fsm_slave_config_init(&fsm->fsm_slave_config, NULL,
+            &fsm->fsm_change, &fsm->fsm_coe, &fsm->fsm_soe,
+            &fsm->fsm_pdo,
+#ifdef EC_EOE
+            &fsm->fsm_eoe
+#else
+            NULL
+#endif
+            );
 }
 
 /****************************************************************************/
@@ -124,6 +140,11 @@ void ec_fsm_slave_clear(
 #ifdef EC_EOE
     ec_fsm_eoe_clear(&fsm->fsm_eoe);
 #endif
+
+    // clear config sub-state machines
+    ec_fsm_slave_config_clear(&fsm->fsm_slave_config);
+    ec_fsm_pdo_clear(&fsm->fsm_pdo);
+    ec_fsm_change_clear(&fsm->fsm_change);
 }
 
 /****************************************************************************/
@@ -178,6 +199,61 @@ int ec_fsm_slave_is_ready(
         )
 {
     return fsm->state == ec_fsm_slave_state_ready;
+}
+
+/****************************************************************************/
+
+/** Start slave configuration.
+ */
+void ec_fsm_slave_start_config(
+        ec_fsm_slave_t *fsm /**< Slave state machine. */
+        )
+{
+    fsm->config_running = 1;
+    ec_fsm_slave_config_start(&fsm->fsm_slave_config, fsm->slave);
+    fsm->state = ec_fsm_slave_state_config;
+}
+
+/****************************************************************************/
+
+/** Slave state: CONFIG.
+ *
+ * Executes the slave configuration state machine.
+ */
+void ec_fsm_slave_state_config(
+        ec_fsm_slave_t *fsm, /**< Slave state machine. */
+        ec_datagram_t *datagram /**< Datagram to use. */
+        )
+{
+    // Propagate datagram to sub-FSMs that store it
+    fsm->fsm_slave_config.datagram = datagram;
+    fsm->fsm_change.datagram = datagram;
+
+    if (ec_fsm_slave_config_exec(&fsm->fsm_slave_config)) {
+        return;  // still running, datagram was used
+    }
+
+    // Configuration finished
+    fsm->slave->force_config = 0;
+    fsm->config_running = 0;
+
+    if (!ec_fsm_slave_config_success(&fsm->fsm_slave_config)) {
+        // Config failed
+        fsm->slave->error_flag = 1;
+    }
+
+    // Decrement config_busy counter and wake waiters if all configs done
+    {
+        ec_master_t *master = fsm->slave->master;
+        ec_sem_down(&master->config_sem);
+        master->config_busy--;
+        ec_sem_up(&master->config_sem);
+        if (!master->config_busy) {
+            ec_wq_wake_interruptible(&master->config_queue);
+        }
+    }
+
+    fsm->state = ec_fsm_slave_state_ready;
 }
 
 /*****************************************************************************
