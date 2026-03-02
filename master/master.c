@@ -1316,7 +1316,8 @@ void ec_master_exec_slave_fsms(
             && count < master->slave_count) {
 
         if (ec_fsm_slave_is_ready(&master->fsm_slave->fsm)
-                || master->fsm_slave->fsm.config_requested) {
+                || master->fsm_slave->fsm.config_requested
+                || master->fsm_slave->fsm.config_running) {
 
             if (ec_fsm_slave_exec(&master->fsm_slave->fsm)) {
                 ec_master_queue_datagram(master, &master->fsm_slave->fsm.datagram);
