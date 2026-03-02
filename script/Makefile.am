@@ -23,9 +23,11 @@
 #
 #------------------------------------------------------------------------------
 
+if !ENABLE_USPACE_MASTER
 sbin_SCRIPTS = ethercatctl
 
 dist_sysconf_DATA = ethercat.conf
+endif
 
 script_templates = \
 	ethercatctl.in \
@@ -43,8 +45,10 @@ CLEANFILES = \
 	init.d/ethercat \
 	ethercat
 
+if !ENABLE_USPACE_MASTER
 if HAVE_SYSTEMD
 systemdsystemunit_DATA = ethercat.service
+endif
 endif
 
 completionsdir = $(datadir)/bash-completion/completions
@@ -58,11 +62,13 @@ uninstall-hook:
 	cd $(DESTDIR)$(completionsdir); \
     rm ethercat
 
+if !ENABLE_USPACE_MASTER
 if HAVE_INITD
 initdir = $(sysconfdir)/init.d
 init_SCRIPTS = init.d/ethercat
 sysdir = $(sysconfdir)/sysconfig
 sys_DATA = ethercat
+endif
 endif
 
 # Any precious variable used inside script_templates should appear here

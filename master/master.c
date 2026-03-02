@@ -1286,7 +1286,7 @@ void ec_master_exec_slave_fsms(
                 fsm->datagram.state == EC_DATAGRAM_SENT) {
             // previous datagram was not sent or received yet.
             // wait until next thread execution
-            return;
+            continue;
         }
 
 #if DEBUG_INJECT
