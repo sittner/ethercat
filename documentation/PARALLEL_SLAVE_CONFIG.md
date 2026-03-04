@@ -272,7 +272,9 @@ typedef struct {
     ec_fsm_coe_t          fsm_coe;
     ec_fsm_soe_t          fsm_soe;
     ec_fsm_pdo_t          fsm_pdo;
+#ifdef EC_EOE
     ec_fsm_eoe_t          fsm_eoe;
+#endif
     ec_fsm_slave_config_t fsm_slave_config;
     int                   in_use;   // slot currently active
     struct list_head      list;     // link in config_exec_list
@@ -311,6 +313,11 @@ A new `ec_master_exec_config_slots()` helper (modelled after
    and there are slaves waiting in `config_pending_list` (a `struct list_head`
    in `ec_master_t`), dequeue the next slave, find a free slot, call
    `ec_fsm_slave_config_start()`, add to `config_exec_list`.
+   **The first `ec_fsm_slave_config_exec()` call for a newly admitted slot
+   happens in the same master cycle as admission** — mirroring the existing
+   behaviour of `ec_fsm_master_action_configure()` which calls `fsm->state(fsm)`
+   immediately after `ec_fsm_slave_config_start()`.  The first exec is not
+   deferred to the next cycle.
 
 3. **Completion signal**: when `config_exec_list` empties and `config_pending_list`
    is also empty, signal `config_queue` (see §4.6).
@@ -336,9 +343,12 @@ Config FSMs execute before runtime FSMs so they receive priority access to
 ### 4.5 Datagram allocation
 
 Config FSMs share `ext_datagram_ring` — they do **not** use dedicated
-datagrams.  Each call to `ec_fsm_slave_config_exec()` obtains a datagram from
-the ring via `ec_master_get_external_datagram()`, the same function used by
-runtime slave FSMs.
+datagrams.  The caller (`ec_master_exec_config_slots()`) obtains a datagram
+from the ring via `ec_master_get_external_datagram()` and **passes it as a
+parameter** to `ec_fsm_slave_config_exec(ec_fsm_slave_config_t *fsm, ec_datagram_t *datagram)`.
+This signature mirrors `ec_fsm_slave_exec()` (the runtime per-slave FSM) and
+means the config FSM never holds a stale datagram pointer between cycles (see
+D8).
 
 Config FSMs are called first in the master thread execution order (see §4.4),
 so they receive priority access to ring slots.  Runtime FSMs consume whatever
@@ -382,25 +392,39 @@ sub-FSMs directly.
 **Files:** `master/fsm_slave_config.h`, `master/fsm_slave_config.c`
 
 Changes:
-- Change the five sub-FSM `*` pointer members to value members (the `datagram`
-  field remains a pointer — it is borrowed from `ext_datagram_ring` at execution
-  time per D4):
+- Change the five sub-FSM `*` pointer members to value members; remove the
+  `datagram` pointer field entirely — the datagram is now passed as a parameter
+  to `ec_fsm_slave_config_exec()` each cycle (see D8):
   ```c
-  ec_datagram_t   *datagram;   // pointer — borrowed from ext_datagram_ring
   ec_fsm_change_t  fsm_change; // owned
   ec_fsm_coe_t     fsm_coe;    // owned
   ec_fsm_soe_t     fsm_soe;    // owned
   ec_fsm_pdo_t     fsm_pdo;    // owned
-  ec_fsm_eoe_t     fsm_eoe;    // owned
+#ifdef EC_EOE
+  ec_fsm_eoe_t     fsm_eoe;    // owned (conditional on EC_EOE)
+#endif
+  ```
+- Update `ec_fsm_slave_config_exec()` signature to
+  `ec_fsm_slave_config_exec(ec_fsm_slave_config_t *fsm, ec_datagram_t *datagram)`
+  (see D8).  At the top of `exec()`, propagate the datagram to all owned
+  sub-FSMs before dispatching to the current state handler (see D9):
+  ```c
+  fsm->fsm_change.datagram = datagram;
+  fsm->fsm_coe.datagram    = datagram;
+  fsm->fsm_soe.datagram    = datagram;
+  fsm->fsm_pdo.datagram    = datagram;
+  // fsm->fsm_eoe.datagram = datagram;  // inside #ifdef EC_EOE
   ```
 - Update `ec_fsm_slave_config_init()` signature: remove the five sub-FSM
   pointer parameters (`fsm_change`, `fsm_coe`, `fsm_soe`, `fsm_pdo`,
-  `fsm_eoe`); keep the `datagram` pointer parameter (the datagram is
-  borrowed, not owned).  Internally call `ec_fsm_change_init()`,
-  `ec_fsm_coe_init()`, `ec_fsm_soe_init()`, `ec_fsm_pdo_init()`,
-  `ec_fsm_eoe_init()` to initialize the now-owned sub-FSMs.
+  `fsm_eoe`) and the `datagram` pointer parameter — neither is needed since
+  sub-FSMs are now owned and the datagram is passed per call.  Internally
+  call `ec_fsm_change_init()`, `ec_fsm_coe_init()`, `ec_fsm_soe_init()`,
+  `ec_fsm_pdo_init()`, and (inside `#ifdef EC_EOE`) `ec_fsm_eoe_init()` to
+  initialize the now-owned sub-FSMs.
 - Update `ec_fsm_slave_config_clear()` to call the corresponding `_clear()`
-  functions on the now-owned sub-FSMs.
+  functions on the now-owned sub-FSMs (inside `#ifdef EC_EOE` for
+  `ec_fsm_eoe_clear()`).
 - Replace all `fsm->fsm_coe` pointer dereferences with `&fsm->fsm_coe`
   address-of expressions within `fsm_slave_config.c`.
 - Update callers in `master/fsm_master.c` and `master/fsm_slave_scan.c`:
@@ -414,16 +438,21 @@ safe, but embedding removes the dependency).
 
 ### Phase 2 — Create the config slot pool
 
-**Files:** `master/master.h`, `master/master.c`, `configure.ac`
+**Files:** `master/master.h`, `master/master.c`, `master/slave.h`,
+`master/slave.c`, `configure.ac`
 
 Changes:
 - Define `ec_config_slot_t` in `master/fsm_slave_config.h` (see §4.2); no
-  `ec_datagram_t` member — slots borrow datagrams from the ring.
+  `ec_datagram_t` member — slots borrow datagrams from the ring; wrap
+  `fsm_eoe` member in `#ifdef EC_EOE` / `#endif`.
 - Define `EC_MAX_PARALLEL_CONFIGS` (default 8) near `EC_EXT_RING_SIZE` in
   `master/master.h`.  Add `--with-max-parallel-configs=N` option to
   `configure.ac` so users can override it without editing source.
 - Add `config_slots[EC_MAX_PARALLEL_CONFIGS]`, `config_exec_list`,
   `config_exec_count`, and `config_pending_list` to `ec_master_t`.
+- Add `struct list_head config_list;` to `ec_slave_t` in `master/slave.h`
+  (see D10).  Initialize with `INIT_LIST_HEAD(&slave->config_list)` in
+  `ec_slave_init()` in `master/slave.c`.
 - In `ec_master_init()` (`master/master.c` ~line 176):
   - initialize each slot's sub-FSMs (call `ec_fsm_slave_config_init()` after
     Phase 1 changes).
@@ -440,9 +469,10 @@ Changes:
 - Add `ec_master_exec_config_slots()` helper to `master/master.c` (or
   `master/fsm_master.c`):
   ```
-  - iterate config_exec_list, call ec_fsm_slave_config_exec() per slot
-    (each call obtains a datagram from ext_datagram_ring via
-     ec_master_get_external_datagram())
+  - iterate config_exec_list; for each slot obtain a datagram from the ring
+    via `ec_master_get_external_datagram()` and call
+    `ec_fsm_slave_config_exec(slot, datagram)` (see D8); advance ring index
+    if still running
   - on completion: mark slot free, decrement config_exec_count
   - while config_exec_count < EC_MAX_PARALLEL_CONFIGS and config_pending_list
     is non-empty: dequeue next slave, find a free slot, call
@@ -568,14 +598,16 @@ during the configuration phase.
 
 | File | Changes |
 |------|---------|
-| `master/fsm_slave_config.h` | Define `ec_config_slot_t`; change pointer fields to value fields; update `ec_fsm_slave_config_init()` signature |
-| `master/fsm_slave_config.c` | Update init/clear; replace `fsm->fsm_coe` with `&fsm->fsm_coe` etc. throughout |
+| `master/fsm_slave_config.h` | Define `ec_config_slot_t`; change pointer fields to value fields; remove `datagram` field; update `ec_fsm_slave_config_init()` and `ec_fsm_slave_config_exec()` signatures; add `#ifdef EC_EOE` guard for `fsm_eoe` |
+| `master/fsm_slave_config.c` | Update init/clear; replace `fsm->fsm_coe` with `&fsm->fsm_coe` etc. throughout; add datagram propagation at top of `exec()` |
 | `master/fsm_slave_scan.h` | Optionally embed `ec_fsm_slave_config_t` instead of holding a pointer |
 | `master/fsm_slave_scan.c` | Update init/clear and all `fsm_slave_config` usages |
 | `master/fsm_master.h` | Add `config_slots` array, `config_exec_list`, `config_exec_count`; remove or demote single `fsm_slave_config` |
 | `master/fsm_master.c` | Rewrite `action_configure` and `state_configure_slave`; add `ec_master_exec_config_slots()` |
 | `master/master.h` | Add `EC_MAX_PARALLEL_CONFIGS`; add `config_pending_list`; replace `config_busy` with `config_exec_count` |
 | `master/master.c` | Update `ec_master_init()` / `ec_master_clear()`; update `ec_master_enter_operation_phase()`; call `ec_master_exec_config_slots()` from main loop before `ec_master_exec_slave_fsms()` |
+| `master/slave.h` | Add `struct list_head config_list;` to `ec_slave_t` |
+| `master/slave.c` | Initialize `config_list` with `INIT_LIST_HEAD()` in `ec_slave_init()` |
 | `configure.ac` | Add `--with-max-parallel-configs=N` option; pass `-DEC_MAX_PARALLEL_CONFIGS=N` via `CFLAGS` |
 
 ---
@@ -624,7 +656,9 @@ typedef struct {
     ec_fsm_coe_t          fsm_coe;
     ec_fsm_soe_t          fsm_soe;
     ec_fsm_pdo_t          fsm_pdo;
+#ifdef EC_EOE
     ec_fsm_eoe_t          fsm_eoe;
+#endif
     ec_fsm_slave_config_t fsm_slave_config;
     int                   in_use;
     struct list_head      list;
@@ -663,3 +697,63 @@ occurs.
 topologies: 4-slave, 32-slave).  Targeted FSM-layer unit tests should be added
 only if debugging requires them.  A full FSM test harness is a separate effort
 outside the scope of this feature.
+
+### D8: Datagram injection into `ec_fsm_slave_config_exec()`
+
+**Decision:** Change the function signature to:
+
+```c
+int ec_fsm_slave_config_exec(ec_fsm_slave_config_t *fsm, ec_datagram_t *datagram)
+```
+
+This mirrors `ec_fsm_slave_exec(ec_fsm_slave_t *fsm, ec_datagram_t *datagram)` —
+the runtime per-slave FSM.  The caller (`ec_master_exec_config_slots()`) obtains
+a datagram from `ext_datagram_ring` via `ec_master_get_external_datagram()` each
+cycle and passes it in.  The FSM never stores a datagram pointer across cycles,
+eliminating the stale-pointer bug that broke both prior implementation branches
+(`parallel-slave-config` and `parconf`).
+
+### D9: Datagram propagation to sub-FSMs
+
+**Decision:** At the top of `ec_fsm_slave_config_exec()`, before dispatching to
+the current state handler, propagate the incoming datagram pointer to all owned
+sub-FSMs:
+
+```c
+int ec_fsm_slave_config_exec(ec_fsm_slave_config_t *fsm, ec_datagram_t *datagram)
+{
+    fsm->fsm_change.datagram = datagram;
+    fsm->fsm_coe.datagram    = datagram;
+    fsm->fsm_soe.datagram    = datagram;
+    fsm->fsm_pdo.datagram    = datagram;
+#ifdef EC_EOE
+    fsm->fsm_eoe.datagram    = datagram;
+#endif
+
+    if (datagram->state == EC_DATAGRAM_SENT
+        || datagram->state == EC_DATAGRAM_QUEUED) {
+        return ec_fsm_slave_config_running(fsm);
+    }
+
+    fsm->state(fsm);
+    return ec_fsm_slave_config_running(fsm);
+}
+```
+
+This is safe after Phase 1 because the sub-FSMs are value members of
+`ec_fsm_slave_config_t`.  The explicit propagation step replaces the implicit
+assumption (in the old pointer-based design) that all sub-FSMs already share the
+same datagram.  It directly prevents the datagram-copy bugs that caused
+silent data corruption in the earlier parallel branches.
+
+### D10: Slave config queue `list_head`
+
+**Decision:** Add a dedicated `struct list_head config_list;` member to
+`ec_slave_t` (in `master/slave.h`) for queueing the slave in
+`master->config_pending_list`.  Initialize with
+`INIT_LIST_HEAD(&slave->config_list)` in `ec_slave_init()` (`master/slave.c`).
+
+Reusing `slave->fsm.list` (the existing runtime FSM list node) would create a
+conflict if a slave's runtime FSM is active at the same time as the slave is
+waiting in `config_pending_list`.  A dedicated field avoids this collision and
+adds only 16 bytes per slave (two pointers), which is negligible overhead.
