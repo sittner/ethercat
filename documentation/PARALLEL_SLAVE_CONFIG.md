@@ -390,7 +390,7 @@ is unchanged; only the condition predicate changes from `!config_busy` to
 sub-FSMs directly.
 
 **Files:** `master/fsm_slave_config.h`, `master/fsm_slave_config.c`,
-`master/fsm_change.h`, `master/fsm_change.c`
+`master/fsm_change.h`, `master/fsm_change.c`, `master/fsm_master.c`
 
 Changes:
 - **Prerequisite (see D11):** Change `ec_fsm_change_init()` (in
@@ -400,6 +400,12 @@ Changes:
   call sites of `ec_fsm_change_init()` (including the direct call in
   `ec_fsm_master_init()` in `master/fsm_master.c`) to omit the datagram
   argument.
+- **Master FSM call sites (see D12):** After removing the datagram from
+  `ec_fsm_change_init()`, add explicit `fsm->fsm_change.datagram = fsm->datagram;`
+  assignments in `master/fsm_master.c` before every direct call to
+  `ec_fsm_change_ack()` or `ec_fsm_change_start()` on the master FSM's own
+  `fsm_change` member.  This ensures the acknowledge/state-change path uses
+  a valid datagram after the init signature change.
 - Change the five sub-FSM `*` pointer members to value members; remove the
   `datagram` pointer field entirely — the datagram is now passed as a parameter
   to `ec_fsm_slave_config_exec()` each cycle (see D8):
@@ -429,7 +435,8 @@ Changes:
   sub-FSMs are now owned and the datagram is passed per call.  Internally
   call `ec_fsm_change_init()`, `ec_fsm_coe_init()`, `ec_fsm_soe_init()`,
   `ec_fsm_pdo_init()`, and (inside `#ifdef EC_EOE`) `ec_fsm_eoe_init()` to
-  initialize the now-owned sub-FSMs.
+  initialize the now-owned sub-FSMs.  Pass `&fsm->fsm_coe` (the owned CoE
+  member) as the argument to `ec_fsm_pdo_init()` — see D13.
 - Update `ec_fsm_slave_config_clear()` to call the corresponding `_clear()`
   functions on the now-owned sub-FSMs (inside `#ifdef EC_EOE` for
   `ec_fsm_eoe_clear()`).
@@ -618,6 +625,31 @@ order (see §4.4), giving them priority access to ring slots.  Runtime FSMs
 consume the remaining capacity.  The three-layer throttle (ring capacity,
 `EC_MAX_PARALLEL_CONFIGS` cap, frame-size limit) prevents ring exhaustion
 during the configuration phase.
+
+### 6.8 `config_pending_list` cleanup during draining
+
+When `config_draining` is set and the exec list drains (§6.4 step 3),
+`config_pending_list` must be properly emptied.  Each slave node was added
+via its `slave->config_list` `list_head`.  Clearing the list requires
+iterating with `list_for_each_entry_safe()` and calling
+`list_del_init(&slave->config_list)` on each entry — not just reinitializing
+the list head with `INIT_LIST_HEAD()`.  Reinitializing the head alone would
+orphan the slave nodes, leaving their `prev`/`next` pointers dangling.  On
+the next configuration round, `list_add_tail()` would corrupt the list,
+leading to a kernel crash.
+
+### 6.9 Reconfiguration path for failed slaves
+
+If a slave's configuration fails (slot marked failed per §6.5), the plan
+does not specify whether the failed slave is re-queued to
+`config_pending_list` for retry.  The current sequential code does not retry
+either (it logs a TODO at line 1048 of `fsm_master.c`).  For the initial
+implementation, a failed slave should **not** be re-queued automatically.
+It should remain in its current AL state with `slave->error_flag = 1`.
+Reconfiguration only occurs if the master FSM's next scan pass detects the
+slave needs configuration again (the existing `ec_fsm_master_action_configure()`
+logic).  Automatic retry could cause infinite reconfiguration loops if the
+slave has a persistent fault.
 
 ---
 
@@ -865,3 +897,71 @@ propagation step in `ec_fsm_slave_config_exec()` before any state handler runs.
 No changes to `ec_fsm_change_t` state handler signatures are required.
 `master/fsm_change.h` and `master/fsm_change.c` are therefore in scope for
 Phase 1 (see the Phase 1 prerequisite step and Section 7).
+
+### D12: Master FSM's direct usage of `ec_fsm_change_t` after Phase 1
+
+**Problem:** The master FSM (`ec_fsm_master_t`) directly uses its embedded
+`fsm_change` member outside of `ec_fsm_slave_config_t` — specifically for
+AL state acknowledgement in `ec_fsm_master_state_read_state()`
+(`master/fsm_master.c`, ~line 800):
+
+```c
+ec_fsm_change_ack(&fsm->fsm_change, slave);
+fsm->state(fsm); // execute immediately — dispatches to ec_fsm_change_state_start_code()
+```
+
+and in `ec_fsm_master_state_acknowledge()` (~line 824):
+
+```c
+ec_fsm_change_exec(&fsm->fsm_change);
+```
+
+The D9 datagram propagation (`fsm->fsm_change.datagram = datagram`) only
+runs inside `ec_fsm_slave_config_exec()`.  It does **not** cover the master
+FSM's direct `ec_fsm_change_ack()` / `ec_fsm_change_exec()` call path.
+
+After Phase 1 removes the `ec_datagram_t *` parameter from
+`ec_fsm_change_init()`, the master FSM's `fsm_change.datagram` will be
+uninitialized (or `NULL`) when the acknowledge path runs — causing a NULL
+pointer dereference in `ec_fsm_change_state_start_code()` which accesses
+`fsm->datagram` directly.
+
+**Decision:** In Phase 1, wherever `ec_fsm_master_t` calls
+`ec_fsm_change_ack()` or `ec_fsm_change_start()` on its own `fsm_change`
+member, add an explicit datagram assignment immediately before the call:
+
+```c
+fsm->fsm_change.datagram = fsm->datagram;
+ec_fsm_change_ack(&fsm->fsm_change, slave);
+```
+
+This mirrors the D9 pattern but for the master FSM's own usage path.
+The master FSM's `fsm->datagram` is always valid (set at init time from
+`master->fsm_datagram`), so the assignment is safe.
+
+**Scope:** `master/fsm_master.c` — two call sites:
+1. `ec_fsm_master_state_read_state()` before `ec_fsm_change_ack()`.
+2. Any direct `ec_fsm_change_start()` call (verify by grep; the
+   acknowledge path is the primary risk).
+
+### D13: `ec_fsm_pdo_init()` wiring within `ec_fsm_slave_config_t`
+
+**Problem:** `ec_fsm_pdo_init()` takes an `ec_fsm_coe_t *` parameter and
+stores it as `fsm->fsm_coe` (a pointer).  It also passes this pointer to
+`ec_fsm_pdo_entry_init()`.  When `ec_fsm_slave_config_t` owns its sub-FSMs
+as value members (Phase 1), the init call inside
+`ec_fsm_slave_config_init()` must pass the address of the **same struct's**
+CoE member:
+
+```c
+ec_fsm_pdo_init(&fsm->fsm_pdo, &fsm->fsm_coe);
+```
+
+If this is accidentally wired to a different `ec_fsm_coe_t` (e.g., a stale
+pointer from the old call site, or a copy-paste error), one slot's PDO FSM
+would corrupt another slot's CoE FSM — a silent data corruption bug.
+
+**Decision:** Phase 1 implementation must use `&fsm->fsm_coe` (the owned
+member) as the argument to `ec_fsm_pdo_init()` inside
+`ec_fsm_slave_config_init()`.  Code review for Phase 1 must verify this
+wiring explicitly.
