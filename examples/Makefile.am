@@ -26,6 +26,7 @@ SUBDIRS =
 if ENABLE_USERLIB
 SUBDIRS += \
 	dc_user \
+	dc_user_demo \
 	user
 endif
 
@@ -58,6 +59,7 @@ endif
 DIST_SUBDIRS = \
 	dc_rtai \
 	dc_user \
+	dc_user_demo \
 	mini \
 	rtai \
 	rtai_rtdm \
