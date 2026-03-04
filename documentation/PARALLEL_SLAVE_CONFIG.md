@@ -389,9 +389,17 @@ is unchanged; only the condition predicate changes from `!config_busy` to
 **Goal:** eliminate the six borrowed-pointer fields; the struct owns its
 sub-FSMs directly.
 
-**Files:** `master/fsm_slave_config.h`, `master/fsm_slave_config.c`
+**Files:** `master/fsm_slave_config.h`, `master/fsm_slave_config.c`,
+`master/fsm_change.h`, `master/fsm_change.c`
 
 Changes:
+- **Prerequisite (see D11):** Change `ec_fsm_change_init()` (in
+  `master/fsm_change.h` and `master/fsm_change.c`) to **remove its
+  `ec_datagram_t *` parameter**.  The datagram is no longer set at init time;
+  it is written each cycle via the D9 propagation step.  Update all existing
+  call sites of `ec_fsm_change_init()` (including the direct call in
+  `ec_fsm_master_init()` in `master/fsm_master.c`) to omit the datagram
+  argument.
 - Change the five sub-FSM `*` pointer members to value members; remove the
   `datagram` pointer field entirely — the datagram is now passed as a parameter
   to `ec_fsm_slave_config_exec()` each cycle (see D8):
@@ -430,11 +438,11 @@ Changes:
 - Update callers in `master/fsm_master.c` and `master/fsm_slave_scan.c`:
   remove the sub-FSM arguments from `ec_fsm_slave_config_init()` calls.
 
-**Note:** `ec_fsm_slave_scan_t` also receives a pointer to the shared
-`ec_fsm_slave_config_t`.  After Phase 1, the scan FSM should have its
-own embedded `ec_fsm_slave_config_t` (or continue borrowing a pointer —
-the scan and config FSMs are never active simultaneously so sharing is
-safe, but embedding removes the dependency).
+**Note:** `ec_fsm_slave_scan_t` borrows a pointer to the master FSM's
+embedded `ec_fsm_slave_config_t`.  After Phase 1, that embedded instance
+remains intact with its own sub-FSMs; the scan FSM can continue borrowing it
+safely provided scanning and parallel configuration are kept mutually
+exclusive (see D3 and §6.4).
 
 ### Phase 2 — Create the config slot pool
 
@@ -466,6 +474,8 @@ Changes:
 **Files:** `master/fsm_master.c`, `master/fsm_master.h`, `master/master.c`
 
 Changes:
+- Add `config_draining` flag to `ec_master_t` (unsigned int, 0/1): set when a
+  rescan is pending; cleared after the exec list drains.
 - Add `ec_master_exec_config_slots()` helper to `master/master.c` (or
   `master/fsm_master.c`):
   ```
@@ -474,16 +484,20 @@ Changes:
     `ec_fsm_slave_config_exec(slot, datagram)` (see D8); advance ring index
     if still running
   - on completion: mark slot free, decrement config_exec_count
-  - while config_exec_count < EC_MAX_PARALLEL_CONFIGS and config_pending_list
-    is non-empty: dequeue next slave, find a free slot, call
-    ec_fsm_slave_config_start(), add to config_exec_list,
+  - if NOT config_draining: while config_exec_count < EC_MAX_PARALLEL_CONFIGS
+    and config_pending_list is non-empty: dequeue next slave, find a free slot,
+    call ec_fsm_slave_config_start(), add to config_exec_list,
     increment config_exec_count
-  - if config_exec_list empty and config_pending_list empty: wake config_queue
+  - if config_exec_list empty and config_pending_list empty:
+      clear config_draining; wake config_queue
   ```
 - Modify `ec_fsm_master_action_configure()` (line 704):
   - Instead of immediately starting a single config and switching to
     `ec_fsm_master_state_configure_slave`, append the slave to
     `config_pending_list` and let `ec_master_exec_config_slots()` dispatch it.
+  - When `config_changed` is detected: set `config_draining = 1`; do not
+    clear `config_pending_list` or start scanning until `config_exec_count == 0`
+    (enforcing the mutual exclusion described in D3 and §6.4).
 - Replace `ec_fsm_master_state_configure_slave()` (line 1031) with calls to
   `ec_master_exec_config_slots()` from the master's main execution loop.
 - Call `ec_master_exec_config_slots()` from `ec_master_exec()` /
@@ -556,13 +570,26 @@ parallel config starts only after DC compensation completes.
 The current code checks `master->config_changed` at the top of
 `ec_fsm_master_action_configure()` and aborts the current slave scan if set
 (lines 713–723 of `fsm_master.c`).  With multiple slaves in flight, a
-`config_changed` event must:
-1. Stop admitting new slaves to the config pool.
-2. Wait for already-active slots to complete (or abort them).
-3. Re-start the DC compensation pass and then re-scan from slave 0.
+`config_changed` event must be handled through an explicit draining sequence.
 
-The abort path is complex; a safe first implementation can simply wait for
-all active slots to finish before reacting to `config_changed`.
+**Scanning and parallel configuration are mutually exclusive phases.**  The
+scan FSM must not run while any config slot is active; the config slot pool
+must not admit new slaves while a rescan is pending.  The required sequence:
+
+1. When `config_changed` is detected, set `config_draining = 1` in
+   `ec_master_t`.  New slaves are no longer admitted to `config_pending_list`
+   (the admit loop in `ec_master_exec_config_slots()` checks this flag).
+2. Wait for `config_exec_count == 0`: all active slots run to completion
+   normally; the master thread keeps calling `ec_master_exec_config_slots()`
+   until the exec list drains.
+3. Once `config_exec_count == 0`, clear `config_draining`, clear
+   `config_pending_list`, and let the scan FSM proceed from slave 0.
+4. After scanning completes, re-run the DC compensation pass
+   (`ec_master_enter_write_system_times()`) and then re-populate
+   `config_pending_list` for the new topology.
+
+A safe first implementation can simply wait for all active slots to finish
+before reacting to `config_changed`; slot abortion is not required.
 
 ### 6.5 Error handling
 
@@ -598,14 +625,16 @@ during the configuration phase.
 
 | File | Changes |
 |------|---------|
+| `master/fsm_change.h` | Remove `ec_datagram_t *` parameter from `ec_fsm_change_init()` declaration |
+| `master/fsm_change.c` | Update `ec_fsm_change_init()` to remove datagram parameter; datagram is refreshed each cycle via D9 propagation in `ec_fsm_slave_config_exec()` |
 | `master/fsm_slave_config.h` | Define `ec_config_slot_t`; change pointer fields to value fields; remove `datagram` field; update `ec_fsm_slave_config_init()` and `ec_fsm_slave_config_exec()` signatures; add `#ifdef EC_EOE` guard for `fsm_eoe` |
 | `master/fsm_slave_config.c` | Update init/clear; replace `fsm->fsm_coe` with `&fsm->fsm_coe` etc. throughout; add datagram propagation at top of `exec()` |
 | `master/fsm_slave_scan.h` | Optionally embed `ec_fsm_slave_config_t` instead of holding a pointer |
 | `master/fsm_slave_scan.c` | Update init/clear and all `fsm_slave_config` usages |
 | `master/fsm_master.h` | Add `config_slots` array, `config_exec_list`, `config_exec_count`; remove or demote single `fsm_slave_config` |
 | `master/fsm_master.c` | Rewrite `action_configure` and `state_configure_slave`; add `ec_master_exec_config_slots()` |
-| `master/master.h` | Add `EC_MAX_PARALLEL_CONFIGS`; add `config_pending_list`; replace `config_busy` with `config_exec_count` |
-| `master/master.c` | Update `ec_master_init()` / `ec_master_clear()`; update `ec_master_enter_operation_phase()`; call `ec_master_exec_config_slots()` from main loop before `ec_master_exec_slave_fsms()` |
+| `master/master.h` | Add `EC_MAX_PARALLEL_CONFIGS`; add `config_pending_list`; replace `config_busy` with `config_exec_count`; add `config_draining` flag |
+| `master/master.c` | Update `ec_master_init()` / `ec_master_clear()`; update `ec_master_enter_operation_phase()`; call `ec_master_exec_config_slots()` from main loop before `ec_master_exec_slave_fsms()`; implement `config_draining` logic in `ec_master_exec_config_slots()` |
 | `master/slave.h` | Add `struct list_head config_list;` to `ec_slave_t` |
 | `master/slave.c` | Initialize `config_list` with `INIT_LIST_HEAD()` in `ec_slave_init()` |
 | `configure.ac` | Add `--with-max-parallel-configs=N` option; pass `-DEC_MAX_PARALLEL_CONFIGS=N` via `CFLAGS` |
@@ -631,13 +660,30 @@ override it at build time via the `./configure` option
 `--with-max-parallel-configs=N`, which injects `-DEC_MAX_PARALLEL_CONFIGS=N`
 into `CFLAGS`.  No runtime configurability is provided.
 
-### D3: Shared scan FSM
+### D3: Shared scan FSM and mutual exclusion with configuration
 
 **Decision:** Keep pointer sharing.  `ec_fsm_slave_scan_t` continues to borrow
-a pointer to the single `ec_fsm_slave_config_t` in `ec_fsm_master_t`.
-Scanning and configuration never overlap, so sharing is safe.  Phase 1 only
-needs to update the `ec_fsm_slave_config_init()` call site for the new
-signature; no structural change to the scan FSM is required.
+a pointer to the single `ec_fsm_slave_config_t` in `ec_fsm_master_t`.  After
+Phase 1 makes `ec_fsm_slave_config_t` self-contained (owning its own sub-FSMs),
+the master FSM's embedded `ec_fsm_slave_config_t` remains intact with its own
+sub-FSMs; the config slot pool uses separate instances.  The scan FSM therefore
+always has a valid, independent `ec_fsm_slave_config_t` to borrow.
+
+**Mutual exclusion requirement:** In the current sequential model "scanning and
+configuration never overlap" is guaranteed implicitly.  With parallel
+configuration this guarantee must be **explicitly enforced**:
+
+- A bus rescan (`config_changed` or slave count change) can be triggered while
+  config slots are still active.  If the scan FSM starts before all config
+  slots complete, the scan FSM's borrowed `ec_fsm_slave_config_t` could be
+  used concurrently with a slot that is (incorrectly) still referencing it.
+- **Scanning and parallel configuration must be mutually exclusive phases.**
+  When a rescan is pending, `ec_master_exec_config_slots()` must stop admitting
+  new slaves (`config_draining = 1`) and the scan FSM must not start until
+  `config_exec_count == 0` (see §6.4 and Phase 3).
+
+Phase 1 only needs to update the `ec_fsm_slave_config_init()` call site for
+the new signature; no structural change to the scan FSM is required.
 
 ### D4: Slot datagram allocation strategy
 
@@ -672,7 +718,7 @@ The resulting three-layer throttle is:
 
 ### D5: DC interaction during parallel WAIT_SAFEOP
 
-**Decision:** Safe, no special handling required.  The DC-related config states
+**Decision — data races:** The DC-related config states
 (`ec_fsm_slave_config_state_dc_sync_check`, `ec_fsm_slave_config_state_dc_start`,
 etc.) only **read** `master->app_time` and `master->dc_ref_time`.  These values
 are written exclusively by the application's RT thread
@@ -680,6 +726,36 @@ are written exclusively by the application's RT thread
 FSMs reading these fields concurrently causes no race condition.  Overlapping
 DC sync wait periods are a net win: instead of N × 5 000 ms worst case, the
 total wait is max(5 000 ms) across all slaves.
+
+**Decision — DC reference clock ordering:** There is a functional ordering
+constraint that data-race analysis alone does not capture.
+`ec_fsm_slave_config_state_dc_sync_check` computes `start_time` from
+`master->dc_ref_time`:
+
+```c
+diff = start_time - master->dc_ref_time;
+remainder = do_div(diff, cycle);
+start = start_time + cycle - remainder + sync0->shift_time;
+```
+
+If `master->dc_ref_time` is zero (or stale from a previous configuration
+round) when a non-reference DC slave evaluates this expression, its computed
+start time will be wrong, causing out-of-phase DC synchronisation.  The
+sequential model handles this implicitly: the reference clock slave (typically
+the first DC-capable slave, identified by `master->dc_ref_clock`) is always
+configured before the others.
+
+**Implementation:** When populating `config_pending_list`,
+`ec_master_exec_config_slots()` must place the DC reference clock slave
+(`master->dc_ref_clock`) **first** in the list.  Additionally, non-reference
+DC-capable slaves must not be admitted to a config slot until the reference
+clock slave has advanced past its DC configuration states (i.e., reached at
+least `ec_fsm_slave_config_state_wait_safeop`).  A safe first-pass
+implementation: configure the reference clock slave in a single slot until it
+completes its DC states, then release the remaining slaves for parallel
+admission.  If `master->dc_ref_time` is already non-zero when
+`config_pending_list` is built (e.g., after a partial rescan), the ordering
+constraint is relaxed and full parallelism can begin immediately.
 
 ### D6: Interaction with `master->fsm_slave` pointer
 
@@ -757,3 +833,35 @@ Reusing `slave->fsm.list` (the existing runtime FSM list node) would create a
 conflict if a slave's runtime FSM is active at the same time as the slave is
 waiting in `config_pending_list`.  A dedicated field avoids this collision and
 adds only 16 bytes per slave (two pointers), which is negligible overhead.
+
+### D11: Sub-FSM datagram binding — the two patterns
+
+The sub-FSMs used by `ec_fsm_slave_config_t` fall into two distinct groups
+depending on how they acquire a datagram:
+
+**Pattern A (init-time binding):** `ec_fsm_change_t` stores
+`ec_datagram_t *datagram` as a persistent field set once at `init()` time.
+Its `exec()` function accepts **no** datagram parameter; all state handlers
+read `fsm->datagram` directly.  `ec_fsm_change_init()` currently requires an
+`ec_datagram_t *` argument.
+
+**Pattern B (per-call injection):** `ec_fsm_coe_t`, `ec_fsm_soe_t`,
+`ec_fsm_pdo_t`, and `ec_fsm_eoe_t` accept a datagram on every `exec()` call
+via a state function pointer that carries `ec_datagram_t *datagram`.
+`fsm->datagram` records which datagram was used in the previous step (to allow
+`fsm->datagram->state` checks on the next call) but is refreshed at each exec.
+
+**Consequence for Phase 1:** The D9 propagation step
+(`fsm->fsm_change.datagram = datagram` at the top of
+`ec_fsm_slave_config_exec()`) adapts the Pattern A FSM to per-cycle datagram
+injection without modifying its state handler signatures.  However,
+`ec_fsm_change_init()` currently demands a datagram at construction time, which
+conflicts with the self-contained slot design (no datagram is available at
+slot-init time).
+
+**Decision:** Remove the `ec_datagram_t *` parameter from
+`ec_fsm_change_init()`.  The datagram is now written exclusively by the D9
+propagation step in `ec_fsm_slave_config_exec()` before any state handler runs.
+No changes to `ec_fsm_change_t` state handler signatures are required.
+`master/fsm_change.h` and `master/fsm_change.c` are therefore in scope for
+Phase 1 (see the Phase 1 prerequisite step and Section 7).
