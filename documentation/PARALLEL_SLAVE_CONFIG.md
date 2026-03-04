@@ -248,11 +248,13 @@ proven for runtime requests — to cover the *initial configuration* phase.
 
 ### 4.2 Self-contained config FSM instances
 
-Each parallel configuration slot requires its own independent set of resources:
+Each parallel configuration slot requires its own independent set of sub-FSMs.
+Datagrams are obtained from `ext_datagram_ring` at execution time (see §4.5),
+so no dedicated datagram is stored in the slot.
 
 | Resource | Current ownership | New ownership |
 |----------|-------------------|---------------|
-| `ec_datagram_t` | `ec_fsm_master_t::datagram` (single, shared) | one slot from `ext_datagram_ring` per active config |
+| `ec_datagram_t` | `ec_fsm_master_t::datagram` (single, shared) | borrowed from `ext_datagram_ring` per master cycle — not stored in slot |
 | `ec_fsm_change_t` | `ec_fsm_master_t::fsm_change` (shared) | per config-slot instance |
 | `ec_fsm_coe_t` | `ec_fsm_master_t::fsm_coe` (shared) | per config-slot instance |
 | `ec_fsm_soe_t` | `ec_fsm_master_t::fsm_soe` (shared) | per config-slot instance |
@@ -260,19 +262,20 @@ Each parallel configuration slot requires its own independent set of resources:
 | `ec_fsm_eoe_t` | `ec_fsm_master_t::fsm_eoe` (shared) | per config-slot instance |
 | `ec_fsm_slave_config_t` | `ec_fsm_master_t::fsm_slave_config` (single) | per config-slot instance |
 
-Define a compound *config slot* struct:
+Define a compound *config slot* struct (defined in `master/fsm_slave_config.h`
+to keep configuration-related types together; `master.h` already includes
+`fsm_slave_config.h` so the type is available where the pool array is declared):
 
 ```c
 typedef struct {
-    ec_datagram_t        datagram;
-    ec_fsm_change_t      fsm_change;
-    ec_fsm_coe_t         fsm_coe;
-    ec_fsm_soe_t         fsm_soe;
-    ec_fsm_pdo_t         fsm_pdo;
-    ec_fsm_eoe_t         fsm_eoe;
+    ec_fsm_change_t       fsm_change;
+    ec_fsm_coe_t          fsm_coe;
+    ec_fsm_soe_t          fsm_soe;
+    ec_fsm_pdo_t          fsm_pdo;
+    ec_fsm_eoe_t          fsm_eoe;
     ec_fsm_slave_config_t fsm_slave_config;
-    int                  in_use;   // slot currently active
-    struct list_head     list;     // link in config_exec_list
+    int                   in_use;   // slot currently active
+    struct list_head      list;     // link in config_exec_list
 } ec_config_slot_t;
 ```
 
@@ -281,19 +284,23 @@ typedef struct {
 Add to `ec_master_t` (or `ec_fsm_master_t`):
 
 ```c
-#define EC_MAX_PARALLEL_CONFIGS  16   // configurable; ≤ EC_EXT_RING_SIZE / 2
+#define EC_MAX_PARALLEL_CONFIGS  8   // default; overridable via ./configure
+                                     // (--with-max-parallel-configs=N passes
+                                     //  -DEC_MAX_PARALLEL_CONFIGS=N in CFLAGS)
 
 ec_config_slot_t  config_slots[EC_MAX_PARALLEL_CONFIGS];
 struct list_head  config_exec_list;  // slots currently executing
 unsigned int      config_exec_count;
 ```
 
-`EC_MAX_PARALLEL_CONFIGS` should default to 16, matching the existing
-`EC_EXT_RING_SIZE / 2` limit used by `ec_master_exec_slave_fsms()`.
+`EC_MAX_PARALLEL_CONFIGS` defaults to 8 and can be overridden at build time
+via the `./configure` option `--with-max-parallel-configs=N`, which injects
+`-DEC_MAX_PARALLEL_CONFIGS=N` into `CFLAGS`.  There is no runtime
+configurability.
 
 ### 4.4 Master FSM orchestration
 
-The master FSM (or a new `ec_master_exec_config_slots()` helper modelled after
+A new `ec_master_exec_config_slots()` helper (modelled after
 `ec_master_exec_slave_fsms()`) performs each master cycle:
 
 1. **Advance active slots**: iterate `config_exec_list`; for each slot call
@@ -301,21 +308,51 @@ The master FSM (or a new `ec_master_exec_config_slots()` helper modelled after
    counter, handle errors, signal that one more slave has completed.
 
 2. **Admit new slaves**: while `config_exec_count < EC_MAX_PARALLEL_CONFIGS`
-   and there are slaves waiting, find a free slot, call
-   `ec_fsm_slave_config_start()`, add to list.
+   and there are slaves waiting in `config_pending_list` (a `struct list_head`
+   in `ec_master_t`), dequeue the next slave, find a free slot, call
+   `ec_fsm_slave_config_start()`, add to `config_exec_list`.
 
-3. **Completion signal**: when `config_exec_list` empties and no more slaves
-   need configuration, signal `config_queue` (see §4.6).
+3. **Completion signal**: when `config_exec_list` empties and `config_pending_list`
+   is also empty, signal `config_queue` (see §4.6).
+
+When the master FSM discovers a slave needs configuration
+(`ec_fsm_master_action_configure()`), it appends the slave to
+`config_pending_list` rather than immediately starting the config FSM.
+`ec_master_exec_config_slots()` dequeues from this list when a free slot is
+available, keeping `master->fsm_slave` exclusively for the runtime FSM
+round-robin in `ec_master_exec_slave_fsms()`.
+
+The execution order in the master thread is:
+
+```c
+ec_fsm_master_exec(&master->fsm);          // master FSM (scan, etc.)
+ec_master_exec_config_slots(master);        // config FSMs first — priority
+ec_master_exec_slave_fsms(master);          // runtime FSMs get remaining ring slots
+```
+
+Config FSMs execute before runtime FSMs so they receive priority access to
+`ext_datagram_ring` slots.
 
 ### 4.5 Datagram allocation
 
-Each config slot owns a dedicated `ec_datagram_t` (allocated as part of the
-slot struct, not borrowed from `ext_datagram_ring`).  This avoids contention
-with the runtime slave FSMs that already use `ext_datagram_ring`.
+Config FSMs share `ext_datagram_ring` — they do **not** use dedicated
+datagrams.  Each call to `ec_fsm_slave_config_exec()` obtains a datagram from
+the ring via `ec_master_get_external_datagram()`, the same function used by
+runtime slave FSMs.
 
-Alternatively, slots may use `ext_datagram_ring` datagrams if memory is
-constrained, but this reduces the slots available for runtime requests during
-configuration.
+Config FSMs are called first in the master thread execution order (see §4.4),
+so they receive priority access to ring slots.  Runtime FSMs consume whatever
+ring capacity remains.
+
+This creates a natural three-layer throttle:
+
+1. **Ring capacity** — `EC_EXT_RING_SIZE = 32` total ring slots.
+2. **FSM exec cap** — `EC_MAX_PARALLEL_CONFIGS = 8` config FSMs admitted at once.
+3. **Frame size limit** — `max_queue_size` check in the injection path defers
+   datagrams that would overflow the current Ethernet frame to the next cycle.
+
+Because `ec_config_slot_t` does not contain a dedicated `ec_datagram_t` member,
+no extra static memory is required beyond the sub-FSM instances.
 
 ### 4.6 Synchronization changes
 
@@ -372,18 +409,21 @@ safe, but embedding removes the dependency).
 
 ### Phase 2 — Create the config slot pool
 
-**Files:** `master/master.h`, `master/master.c`
+**Files:** `master/master.h`, `master/master.c`, `configure.ac`
 
 Changes:
-- Define `ec_config_slot_t` (see §4.2).
-- Define `EC_MAX_PARALLEL_CONFIGS` (suggest `master/master.h`, near
-  `EC_EXT_RING_SIZE`).
+- Define `ec_config_slot_t` in `master/fsm_slave_config.h` (see §4.2); no
+  `ec_datagram_t` member — slots borrow datagrams from the ring.
+- Define `EC_MAX_PARALLEL_CONFIGS` (default 8) near `EC_EXT_RING_SIZE` in
+  `master/master.h`.  Add `--with-max-parallel-configs=N` option to
+  `configure.ac` so users can override it without editing source.
 - Add `config_slots[EC_MAX_PARALLEL_CONFIGS]`, `config_exec_list`,
-  `config_exec_count` to `ec_master_t`.
+  `config_exec_count`, and `config_pending_list` to `ec_master_t`.
 - In `ec_master_init()` (`master/master.c` ~line 176):
   - initialize each slot's sub-FSMs (call `ec_fsm_slave_config_init()` after
     Phase 1 changes).
   - `INIT_LIST_HEAD(&master->config_exec_list)`.
+  - `INIT_LIST_HEAD(&master->config_pending_list)`.
   - `master->config_exec_count = 0`.
 - In `ec_master_clear()`: call `ec_fsm_slave_config_clear()` on every slot.
 
@@ -396,22 +436,25 @@ Changes:
   `master/fsm_master.c`):
   ```
   - iterate config_exec_list, call ec_fsm_slave_config_exec() per slot
+    (each call obtains a datagram from ext_datagram_ring via
+     ec_master_get_external_datagram())
   - on completion: mark slot free, decrement config_exec_count
-  - while config_exec_count < EC_MAX_PARALLEL_CONFIGS and pending slaves exist:
-      find a free slot, call ec_fsm_slave_config_start(), add to list,
-      increment config_exec_count
-  - if list empty and no more pending slaves: wake config_queue
+  - while config_exec_count < EC_MAX_PARALLEL_CONFIGS and config_pending_list
+    is non-empty: dequeue next slave, find a free slot, call
+    ec_fsm_slave_config_start(), add to config_exec_list,
+    increment config_exec_count
+  - if config_exec_list empty and config_pending_list empty: wake config_queue
   ```
 - Modify `ec_fsm_master_action_configure()` (line 704):
   - Instead of immediately starting a single config and switching to
-    `ec_fsm_master_state_configure_slave`, enqueue the slave in a
-    "pending config" list and let `ec_master_exec_config_slots()` dispatch it.
+    `ec_fsm_master_state_configure_slave`, append the slave to
+    `config_pending_list` and let `ec_master_exec_config_slots()` dispatch it.
 - Replace `ec_fsm_master_state_configure_slave()` (line 1031) with calls to
   `ec_master_exec_config_slots()` from the master's main execution loop.
 - Call `ec_master_exec_config_slots()` from `ec_master_exec()` /
-  `ec_master_send_datagrams()` at the same point where
-  `ec_master_exec_slave_fsms()` is called (see `master/master.c` lines 1395,
-  1446).
+  `ec_master_send_datagrams()` **before** `ec_master_exec_slave_fsms()` so
+  config FSMs have priority over runtime FSMs for `ext_datagram_ring` slots
+  (see `master/master.c` lines 1395, 1446).
 
 ### Phase 4 — Adapt synchronization
 
@@ -452,7 +495,7 @@ Changes:
 ### 6.1 Datagram queue pressure
 
 Each active config slot adds at least one datagram per cycle to the EtherCAT
-frame.  With 16 parallel slots, up to 16 additional datagrams may be queued
+frame.  With 8 parallel slots, up to 8 additional datagrams may be queued
 simultaneously.  The master already enforces `max_queue_size`; verify that
 this limit is not exceeded.  Reduce `EC_MAX_PARALLEL_CONFIGS` if frame
 overflow occurs.
@@ -461,7 +504,7 @@ overflow occurs.
 
 Maximum Ethernet payload is ~1496 bytes after the EtherCAT header.  Each
 addressed datagram (FPRD/FPWR) has a 10-byte header plus data.  Typical
-mailbox transactions carry 6–128 bytes of data.  For 16 parallel mailbox
+mailbox transactions carry 6–128 bytes of data.  For 8 parallel mailbox
 polls the datagrams fit comfortably within a single frame; however monitor
 actual frame sizes in hardware tests.
 
@@ -495,21 +538,22 @@ is associated with that slave, not the entire configuration pass.
 ### 6.6 Memory usage
 
 Each `ec_config_slot_t` embeds:
-- `ec_datagram_t` (~100 bytes + data buffer)
 - `ec_fsm_change_t`, `ec_fsm_coe_t`, `ec_fsm_soe_t`, `ec_fsm_pdo_t`,
   `ec_fsm_eoe_t`, `ec_fsm_slave_config_t` (a few hundred bytes total)
 
-For 16 slots the additional static memory is on the order of a few kilobytes.
-Acceptable for both kernel and userspace builds.
+No dedicated `ec_datagram_t` is stored in the slot; datagrams are borrowed
+from `ext_datagram_ring` at execution time.  For 8 slots the additional
+static memory is on the order of a few kilobytes.  Acceptable for both
+kernel and userspace builds.
 
-### 6.7 Contention with runtime slave FSMs for `ext_datagram_ring`
+### 6.7 Interaction with runtime slave FSMs for `ext_datagram_ring`
 
-If config slots use `ext_datagram_ring` datagrams, they compete with
-`ec_master_exec_slave_fsms()` for ring slots.  The preferred approach (§4.5)
-is to give each config slot a *dedicated* `ec_datagram_t` so that the ring
-remains fully available for runtime requests.  The dedicated datagrams must
-be queued through the same `ec_master_queue_datagram()` path so they are
-included in sent frames.
+Config FSMs and runtime slave FSMs share `ext_datagram_ring` by design.  This
+is safe because config FSMs are called first in the master thread execution
+order (see §4.4), giving them priority access to ring slots.  Runtime FSMs
+consume the remaining capacity.  The three-layer throttle (ring capacity,
+`EC_MAX_PARALLEL_CONFIGS` cap, frame-size limit) prevents ring exhaustion
+during the configuration phase.
 
 ---
 
@@ -517,50 +561,98 @@ included in sent frames.
 
 | File | Changes |
 |------|---------|
-| `master/fsm_slave_config.h` | Change pointer fields to value fields; update `ec_fsm_slave_config_init()` signature |
+| `master/fsm_slave_config.h` | Define `ec_config_slot_t`; change pointer fields to value fields; update `ec_fsm_slave_config_init()` signature |
 | `master/fsm_slave_config.c` | Update init/clear; replace `fsm->fsm_coe` with `&fsm->fsm_coe` etc. throughout |
 | `master/fsm_slave_scan.h` | Optionally embed `ec_fsm_slave_config_t` instead of holding a pointer |
 | `master/fsm_slave_scan.c` | Update init/clear and all `fsm_slave_config` usages |
 | `master/fsm_master.h` | Add `config_slots` array, `config_exec_list`, `config_exec_count`; remove or demote single `fsm_slave_config` |
 | `master/fsm_master.c` | Rewrite `action_configure` and `state_configure_slave`; add `ec_master_exec_config_slots()` |
-| `master/master.h` | Add `ec_config_slot_t` typedef; add `EC_MAX_PARALLEL_CONFIGS`; replace `config_busy` with `config_exec_count` |
-| `master/master.c` | Update `ec_master_init()` / `ec_master_clear()`; update `ec_master_enter_operation_phase()`; call `ec_master_exec_config_slots()` from main loop |
+| `master/master.h` | Add `EC_MAX_PARALLEL_CONFIGS`; add `config_pending_list`; replace `config_busy` with `config_exec_count` |
+| `master/master.c` | Update `ec_master_init()` / `ec_master_clear()`; update `ec_master_enter_operation_phase()`; call `ec_master_exec_config_slots()` from main loop before `ec_master_exec_slave_fsms()` |
+| `configure.ac` | Add `--with-max-parallel-configs=N` option; pass `-DEC_MAX_PARALLEL_CONFIGS=N` via `CFLAGS` |
 
 ---
 
-## 8. Open Questions
+## 8. Resolved Decisions
 
-1. **Where to define `ec_config_slot_t`?** In `master/master.h` alongside the
-   master struct, or in a new `master/fsm_slave_config.h` extension?  The
-   latter keeps configuration-related types together.
+The following decisions resolve the questions that were open during the initial
+design phase.
 
-2. **Should `EC_MAX_PARALLEL_CONFIGS` be a compile-time constant or a
-   runtime-configurable parameter** (e.g. sysfs/ioctl attribute)?  A runtime
-   parameter allows tuning without recompile.
+### D1: Where to define `ec_config_slot_t`
 
-3. **Shared scan FSM**: `ec_fsm_slave_scan_t` currently borrows the single
-   shared `ec_fsm_slave_config_t`.  Since scanning and parallel config do not
-   overlap (scanning finishes before configuration begins), the existing single
-   instance in `ec_fsm_master_t` can continue to be used for scanning.  Phase 1
-   must not break the scan FSM's use of the config FSM.
+**Decision:** Define in `master/fsm_slave_config.h`.  This keeps all
+configuration-related types in one file.  `master.h` already includes
+`fsm_slave_config.h`, so `ec_config_slot_t` is visible wherever the pool
+array is declared in `ec_master_t`.
 
-4. **Slot datagram allocation strategy**: dedicated static `ec_datagram_t` per
-   slot (simpler, more memory) vs. sharing `ext_datagram_ring` (less memory,
-   more synchronization).  Recommend dedicated datagrams for Phase 2 and
-   revisit if memory is constrained.
+### D2: `EC_MAX_PARALLEL_CONFIGS` — compile-time or runtime-configurable
 
-5. **DC interaction during parallel WAIT_SAFEOP**: the DC sync wait state
-   (`ec_fsm_slave_config_state_dc_sync_check`) waits up to
-   `EC_DC_SYNC_WAIT_MS` (5000 ms) for synchronization.  With N slaves in this
-   state simultaneously the wait periods overlap, which is desirable.  Verify
-   that the master's app_time accounting is not disturbed by multiple concurrent
-   accesses.
+**Decision:** Compile-time `#define` with a default value of **8**.  Users can
+override it at build time via the `./configure` option
+`--with-max-parallel-configs=N`, which injects `-DEC_MAX_PARALLEL_CONFIGS=N`
+into `CFLAGS`.  No runtime configurability is provided.
 
-6. **Interaction with `master->fsm_slave` pointer**: `ec_master_exec_slave_fsms()`
-   advances `master->fsm_slave` through the slave array each call.  The new
-   config dispatch loop must iterate the same slave array but use a separate
-   pointer (or a pending-queue) to avoid collision.
+### D3: Shared scan FSM
 
-7. **Testing infrastructure**: there are no automated unit tests for the FSM
-   layer in the current repository.  Should the parallel config work include
-   adding a test harness, or should it rely on integration tests only?
+**Decision:** Keep pointer sharing.  `ec_fsm_slave_scan_t` continues to borrow
+a pointer to the single `ec_fsm_slave_config_t` in `ec_fsm_master_t`.
+Scanning and configuration never overlap, so sharing is safe.  Phase 1 only
+needs to update the `ec_fsm_slave_config_init()` call site for the new
+signature; no structural change to the scan FSM is required.
+
+### D4: Slot datagram allocation strategy
+
+**Decision:** Share `ext_datagram_ring` — **do not** use dedicated datagrams
+per slot.  Config FSMs obtain datagrams from the ring via
+`ec_master_get_external_datagram()`, the same mechanism used by runtime slave
+FSMs.  Config FSMs are called first (priority) in the master thread execution
+order; runtime FSMs receive the remaining ring capacity.
+
+The `ec_config_slot_t` struct does **not** contain a dedicated `ec_datagram_t`
+member.  It owns only the sub-FSMs:
+
+```c
+typedef struct {
+    ec_fsm_change_t       fsm_change;
+    ec_fsm_coe_t          fsm_coe;
+    ec_fsm_soe_t          fsm_soe;
+    ec_fsm_pdo_t          fsm_pdo;
+    ec_fsm_eoe_t          fsm_eoe;
+    ec_fsm_slave_config_t fsm_slave_config;
+    int                   in_use;
+    struct list_head      list;
+} ec_config_slot_t;
+```
+
+The resulting three-layer throttle is:
+1. Ring capacity (`EC_EXT_RING_SIZE` = 32 total slots).
+2. FSM exec cap (`EC_MAX_PARALLEL_CONFIGS` = 8 for config).
+3. Frame size limit (`max_queue_size` check defers datagrams that do not fit).
+
+### D5: DC interaction during parallel WAIT_SAFEOP
+
+**Decision:** Safe, no special handling required.  The DC-related config states
+(`ec_fsm_slave_config_state_dc_sync_check`, `ec_fsm_slave_config_state_dc_start`,
+etc.) only **read** `master->app_time` and `master->dc_ref_time`.  These values
+are written exclusively by the application's RT thread
+(`ecrt_master_application_time()`), not by the config FSM.  Multiple config
+FSMs reading these fields concurrently causes no race condition.  Overlapping
+DC sync wait periods are a net win: instead of N × 5 000 ms worst case, the
+total wait is max(5 000 ms) across all slaves.
+
+### D6: Interaction with `master->fsm_slave` pointer
+
+**Decision:** Use a pending queue.  When the master FSM discovers a slave needs
+configuration (`ec_fsm_master_action_configure()`), it appends the slave to a
+`config_pending_list` (`struct list_head` in `ec_master_t`).
+`ec_master_exec_config_slots()` dequeues slaves from this list whenever a free
+slot is available.  `master->fsm_slave` remains exclusively used by
+`ec_master_exec_slave_fsms()` for the runtime FSM round-robin; no collision
+occurs.
+
+### D7: Testing infrastructure
+
+**Decision:** Start with integration tests only (real hardware or bus-simulator
+topologies: 4-slave, 32-slave).  Targeted FSM-layer unit tests should be added
+only if debugging requires them.  A full FSM test harness is a separate effort
+outside the scope of this feature.
