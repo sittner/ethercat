@@ -1,6 +1,6 @@
 # Parallel Slave Configuration: Analysis and Implementation Plan
 
-**Branch:** `uspace`  
+**Branch:** `psc`  
 **Directory in scope:** `master/`
 
 ---
@@ -382,18 +382,23 @@ sub-FSMs directly.
 **Files:** `master/fsm_slave_config.h`, `master/fsm_slave_config.c`
 
 Changes:
-- Change the six `*` pointer members to value members:
+- Change the five sub-FSM `*` pointer members to value members (the `datagram`
+  field remains a pointer — it is borrowed from `ext_datagram_ring` at execution
+  time per D4):
   ```c
-  ec_datagram_t    datagram;   // owned, not a pointer
-  ec_fsm_change_t  fsm_change;
-  ec_fsm_coe_t     fsm_coe;
-  ec_fsm_soe_t     fsm_soe;
-  ec_fsm_pdo_t     fsm_pdo;
-  ec_fsm_eoe_t     fsm_eoe;
+  ec_datagram_t   *datagram;   // pointer — borrowed from ext_datagram_ring
+  ec_fsm_change_t  fsm_change; // owned
+  ec_fsm_coe_t     fsm_coe;    // owned
+  ec_fsm_soe_t     fsm_soe;    // owned
+  ec_fsm_pdo_t     fsm_pdo;    // owned
+  ec_fsm_eoe_t     fsm_eoe;    // owned
   ```
-- Update `ec_fsm_slave_config_init()` signature: remove the six pointer
-  parameters; instead call `ec_fsm_change_init()`, `ec_fsm_coe_init()`,
-  `ec_fsm_soe_init()`, `ec_fsm_pdo_init()`, `ec_fsm_eoe_init()` internally.
+- Update `ec_fsm_slave_config_init()` signature: remove the five sub-FSM
+  pointer parameters (`fsm_change`, `fsm_coe`, `fsm_soe`, `fsm_pdo`,
+  `fsm_eoe`); keep the `datagram` pointer parameter (the datagram is
+  borrowed, not owned).  Internally call `ec_fsm_change_init()`,
+  `ec_fsm_coe_init()`, `ec_fsm_soe_init()`, `ec_fsm_pdo_init()`,
+  `ec_fsm_eoe_init()` to initialize the now-owned sub-FSMs.
 - Update `ec_fsm_slave_config_clear()` to call the corresponding `_clear()`
   functions on the now-owned sub-FSMs.
 - Replace all `fsm->fsm_coe` pointer dereferences with `&fsm->fsm_coe`
@@ -479,14 +484,16 @@ Changes:
 
 ### Phase 5 — Testing
 
-- **Unit:** Write targeted tests that instantiate two `ec_config_slot_t`
-  instances with mock slaves and verify they advance independently.
-- **Integration (small topology):** 4-slave ring; verify all four reach OP
-  in parallel and the bus state is consistent.
+- **Integration (small topology):** 4-slave ring (real hardware or
+  bus-simulator); verify all four reach OP in parallel and the bus state is
+  consistent.
 - **Stress (large topology):** 32-slave bus with complex SDO configs; measure
   startup time before and after.
 - **Regression:** run the full existing test suite after each phase to detect
   regressions in scan, runtime SDO, FoE, SoE, EoE paths.
+- **Unit (if needed):** targeted FSM-layer unit tests should be added only if
+  debugging requires them (see D7).  A full FSM test harness is a separate
+  effort outside the scope of this feature.
 
 ---
 
