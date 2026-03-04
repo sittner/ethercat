@@ -32,6 +32,9 @@
  *
  * DC sync algorithm ported from examples/rtai_rtdm_dc/main.c.
  * Timing uses clock_gettime(CLOCK_MONOTONIC) / clock_nanosleep().
+ *
+ * Uses the userspace master library (EC_USPACE_MASTER):
+ *   ecrt_lib_init() + ec_transport_create() + ecrt_startup_master()
  */
 
 #include <errno.h>
@@ -71,7 +74,8 @@
 
 /****************************************************************************/
 
-/* EtherCAT handles */
+/* Transport and master handles */
+static ec_transport_t    *transport    = NULL;
 static ec_master_t       *master       = NULL;
 static ec_master_state_t  master_state = {};
 
@@ -415,12 +419,54 @@ static void signal_handler(int sig)
 
 /****************************************************************************/
 
+static void usage(const char *prog)
+{
+    fprintf(stderr,
+            "Usage: %s -i <interface> [-t <transport>] [-d <debug_level>]\n"
+            "\n"
+            "  -i <interface>     Network interface name (required)\n"
+            "  -t <transport>     Transport type: raw (default), xdp-skb,"
+            " xdp-native\n"
+            "  -d <level>         Debug level (default: 1)\n"
+            "  -h                 Show this help\n",
+            prog);
+}
+
+/****************************************************************************/
+
 int main(int argc, char *argv[])
 {
+    const char *interface    = NULL;
+    const char *transport_name = "raw";
+    unsigned int debug_level = 1;
     int ret;
+    int c;
 
-    (void) argc;
-    (void) argv;
+    while ((c = getopt(argc, argv, "i:t:d:h")) != -1) {
+        switch (c) {
+            case 'i':
+                interface = optarg;
+                break;
+            case 't':
+                transport_name = optarg;
+                break;
+            case 'd':
+                debug_level = (unsigned int) strtoul(optarg, NULL, 0);
+                break;
+            case 'h':
+                usage(argv[0]);
+                return 0;
+            default:
+                usage(argv[0]);
+                return 1;
+        }
+    }
+
+    if (!interface) {
+        fprintf(stderr, "Error: network interface required (-i option)\n");
+        usage(argv[0]);
+        return 1;
+    }
 
     signal(SIGTERM, signal_handler);
     signal(SIGINT,  signal_handler);
@@ -430,17 +476,46 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    printf("Requesting master...\n");
-    master = ecrt_request_master(0);
+    /* Initialise the userspace master library.
+     * Pass EC_IPC_DEFAULT_SOCKET_PATH so the ethercat tool can connect. */
+    ret = ecrt_lib_init(NULL, EC_IPC_DEFAULT_SOCKET_PATH);
+    if (ret < 0) {
+        fprintf(stderr, "Failed to initialise EtherCAT library: %d\n", ret);
+        return -1;
+    }
+
+    /* Create the transport for the given interface. */
+    ret = ec_transport_find_by_name(transport_name);
+    if (ret < 0) {
+        fprintf(stderr, "Unknown transport type '%s'\n", transport_name);
+        fprintf(stderr, "Available transports: ");
+        ec_transport_print_available();
+        fprintf(stderr, "\n");
+        ecrt_lib_cleanup();
+        return -1;
+    }
+    transport = ec_transport_create((ec_transport_type_t) ret, interface);
+    if (!transport) {
+        fprintf(stderr, "Failed to create transport on %s.\n", interface);
+        ecrt_lib_cleanup();
+        return -1;
+    }
+
+    printf("Starting master on %s (transport: %s)...\n",
+            interface, transport_name);
+    master = ecrt_startup_master(0, transport, NULL, debug_level, -1);
     if (!master) {
-        fprintf(stderr, "Failed to request master.\n");
+        fprintf(stderr, "Failed to start EtherCAT master.\n");
+        ec_transport_destroy(transport);
+        ecrt_lib_cleanup();
         return -1;
     }
 
     domain1 = ecrt_master_create_domain(master);
     if (!domain1) {
         fprintf(stderr, "Failed to create domain.\n");
-        return -1;
+        ret = -1;
+        goto out_release;
     }
 
     printf("Creating slave configurations...\n");
@@ -449,35 +524,40 @@ int main(int argc, char *argv[])
     sc_ek1100 = ecrt_master_slave_config(master, EK1100_Pos, Beckhoff_EK1100);
     if (!sc_ek1100) {
         fprintf(stderr, "Failed to configure EK1100.\n");
-        return -1;
+        ret = -1;
+        goto out_release;
     }
 
     /* 0,1 – EL1808 8-ch digital input */
     sc_el1808 = ecrt_master_slave_config(master, EL1808_Pos, Beckhoff_EL1808);
     if (!sc_el1808) {
         fprintf(stderr, "Failed to configure EL1808.\n");
-        return -1;
+        ret = -1;
+        goto out_release;
     }
 
     off_dig_in = ecrt_slave_config_reg_pdo_entry(sc_el1808,
             0x6000, 0x01, domain1, NULL);
     if (off_dig_in < 0) {
         fprintf(stderr, "Failed to register EL1808 PDO entry.\n");
-        return -1;
+        ret = -1;
+        goto out_release;
     }
 
     /* 0,2 – EL2808 8-ch digital output */
     sc_el2808 = ecrt_master_slave_config(master, EL2808_Pos, Beckhoff_EL2808);
     if (!sc_el2808) {
         fprintf(stderr, "Failed to configure EL2808.\n");
-        return -1;
+        ret = -1;
+        goto out_release;
     }
 
     off_dig_out = ecrt_slave_config_reg_pdo_entry(sc_el2808,
             0x7000, 0x01, domain1, NULL);
     if (off_dig_out < 0) {
         fprintf(stderr, "Failed to register EL2808 PDO entry.\n");
-        return -1;
+        ret = -1;
+        goto out_release;
     }
 
     /* 0,3 – fb1111 generic DC slave
@@ -485,7 +565,8 @@ int main(int argc, char *argv[])
     sc_fb1111 = ecrt_master_slave_config(master, FB1111_Pos, FB1111_VID_PID);
     if (!sc_fb1111) {
         fprintf(stderr, "Failed to configure fb1111.\n");
-        return -1;
+        ret = -1;
+        goto out_release;
     }
 
     ecrt_slave_config_dc(sc_fb1111, 0x0300, PERIOD_NS, 0, 0, 0);
@@ -495,7 +576,8 @@ int main(int argc, char *argv[])
     if (ret < 0) {
         fprintf(stderr, "Failed to select reference clock: %s\n",
                 strerror(-ret));
-        return -1;
+        ret = -1;
+        goto out_release;
     }
 
     /* Record the initial master time. */
@@ -505,13 +587,15 @@ int main(int argc, char *argv[])
     printf("Activating master...\n");
     if (ecrt_master_activate(master)) {
         fprintf(stderr, "Failed to activate master.\n");
-        return -1;
+        ret = -1;
+        goto out_release;
     }
 
     domain1_pd = ecrt_domain_data(domain1);
     if (!domain1_pd) {
         fprintf(stderr, "Failed to get domain data pointer.\n");
-        return -1;
+        ret = -1;
+        goto out_release;
     }
 
     /* Set SCHED_FIFO priority. */
@@ -526,11 +610,16 @@ int main(int argc, char *argv[])
 
     printf("Starting cyclic task.\n");
     cyclic_task();
+    ret = 0;
 
+out_release:
     printf("Shutting down.\n");
     ecrt_release_master(master);
+    ec_transport_destroy(transport);
+    ecrt_lib_cleanup();
 
-    return 0;
+    return ret;
 }
 
 /****************************************************************************/
+

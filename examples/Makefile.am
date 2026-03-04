@@ -26,8 +26,12 @@ SUBDIRS =
 if ENABLE_USERLIB
 SUBDIRS += \
 	dc_user \
-	dc_user_demo \
 	user
+endif
+
+if ENABLE_USPACE_MASTER
+SUBDIRS += \
+	dc_user_demo
 endif
 
 if ENABLE_TTY

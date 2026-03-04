@@ -22,7 +22,11 @@
 noinst_PROGRAMS = ec_dc_user_demo
 
 ec_dc_user_demo_SOURCES = main.c
-ec_dc_user_demo_CFLAGS = -I$(top_srcdir)/include -Wall
-ec_dc_user_demo_LDFLAGS = -L$(top_builddir)/lib/.libs -lethercat -lrt
+ec_dc_user_demo_CFLAGS = \
+	-DEC_USPACE_MASTER \
+	-D_GNU_SOURCE \
+	-I$(top_srcdir)/include \
+	-Wall
+ec_dc_user_demo_LDADD = $(top_builddir)/master/uspace/libethercat.la -lrt
 
 #------------------------------------------------------------------------------
