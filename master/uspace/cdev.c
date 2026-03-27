@@ -53,6 +53,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdio.h>
 
 #ifndef UNIX_PATH_MAX
@@ -66,7 +67,7 @@ typedef struct {
     int              sock_fd;        /**< Listening socket fd (-1 if inactive). */
     char             sock_path[UNIX_PATH_MAX]; /**< Unix socket filesystem path. */
     ec_thread_t     *thread;         /**< Listener thread handle. */
-    volatile int     shutdown;       /**< Non-zero to request shutdown. */
+    atomic_int       shutdown;       /**< Non-zero to request shutdown. */
 } ec_cdev_t;
 
 static ec_cdev_t g_cdev = { .sock_fd = -1 };
@@ -1898,12 +1899,12 @@ static int listener_fn(void *arg)
     fds[0].fd     = cdev->sock_fd;
     fds[0].events = POLLIN;
 
-    while (!cdev->shutdown) {
+    while (!atomic_load(&cdev->shutdown)) {
         int ret = poll(fds, (nfds_t)nfds, 1000);
         if (ret < 0) {
             if (errno == EINTR)
                 continue;
-            if (!cdev->shutdown)
+            if (!atomic_load(&cdev->shutdown))
                 ec_log(EC_LOG_WARNING,
                         "IPC: poll() failed: %s\n", strerror(errno));
             break;
@@ -1941,7 +1942,7 @@ static int listener_fn(void *arg)
                             "IPC: too many connections, rejecting\n");
                     close(client_fd);
                 }
-            } else if (!cdev->shutdown) {
+            } else if (!atomic_load(&cdev->shutdown)) {
                 if (errno != EINTR && errno != EAGAIN &&
                         errno != EWOULDBLOCK)
                     ec_log(EC_LOG_WARNING,
@@ -2016,7 +2017,7 @@ int ec_ipc_server_start(const char *socket_path)
 
     snprintf(cdev->sock_path, sizeof(cdev->sock_path), "%s", socket_path);
     cdev->thread   = NULL;
-    cdev->shutdown = 0;
+    atomic_store(&cdev->shutdown, 0);
 
     /* Create the listening socket. */
     sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -2084,7 +2085,7 @@ void ec_ipc_server_stop(void)
         return; /* was never started or already stopped */
 
     /* Signal shutdown to the listener thread. */
-    cdev->shutdown = 1;
+    atomic_store(&cdev->shutdown, 1);
 
     /* Wake poll() on the listening socket so the listener thread sees the
      * shutdown flag quickly.  Do NOT close() here — the listener thread
