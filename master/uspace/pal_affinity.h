@@ -31,10 +31,10 @@
 #include "ectp.h"
 
 /** Record RT caller's CPU for IRQ affinity tracking.
- *  Guarded to only record during OPERATION (external RT caller). */
+ *  Guarded by master->active (set only after ecrt_master_activate). */
 static inline void ec_pal_record_rt_cpu(ec_master_t *master)
 {
-    if (master->phase != EC_OPERATION)
+    if (!master->active)
         return;
     atomic_store_explicit(&master->pal.rt_cpu, sched_getcpu(),
                           memory_order_relaxed);
@@ -48,10 +48,13 @@ static inline void ec_pal_check_irq_affinity(ec_master_t *master)
     if (rt_cpu >= 0 && rt_cpu != master->pal.affinity_cpu) {
         if (ec_transport_set_cpu_affinity(master->pal.transport,
                                           rt_cpu) == 0) {
-            master->pal.affinity_cpu = rt_cpu;
             EC_MASTER_INFO(master,
                 "Pinned transport IRQ to CPU %d\n", rt_cpu);
+        } else {
+            EC_MASTER_WARN(master,
+                "Failed to pin transport IRQ to CPU %d\n", rt_cpu);
         }
+        master->pal.affinity_cpu = rt_cpu;
     }
 }
 
