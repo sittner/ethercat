@@ -112,6 +112,8 @@ ec_master_t *ecrt_startup_master(unsigned int index,
     /* Borrow transport pointers — caller owns them, library opens/closes */
     master->pal.transport = transport;
     master->pal.backup_transport = backup_transport;
+    atomic_init(&master->pal.rt_cpu, -1);
+    master->pal.affinity_cpu = -1;
 
     /* Open main transport (interface stored in transport->interface) */
     ret = ec_transport_open(master->pal.transport);

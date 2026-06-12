@@ -38,6 +38,7 @@
 #include <arpa/inet.h>
 
 #include "ectp.h"
+#include "irq_pin.h"
 
 /****************************************************************************/
 
@@ -47,6 +48,7 @@ typedef struct {
     int if_index;                      /**< Interface index */
     struct sockaddr_ll socket_addr;    /**< Socket address for sending */
     uint8_t mac_addr[6];               /**< Interface MAC address */
+    int irq_number;                    /**< Cached NIC IRQ (0 = not discovered) */
 } ec_transport_raw_t;
 
 /****************************************************************************/
@@ -129,6 +131,9 @@ static int raw_open(ec_transport_t *transport, const char *interface)
         ret = -errno;
         goto err_close;
     }
+
+    /* Discover NIC IRQ for affinity pinning (best-effort, non-fatal) */
+    raw->irq_number = ec_irq_discover(interface);
 
     return 0;
 
@@ -305,6 +310,22 @@ static int raw_get_fd(ec_transport_t *transport)
 
 /****************************************************************************/
 
+/**
+ * Set CPU affinity for the NIC IRQ.
+ */
+static int raw_set_cpu_affinity(ec_transport_t *transport, int cpu)
+{
+    ec_transport_raw_t *raw = transport->priv;
+
+    if (!raw || raw->irq_number <= 0) {
+        return -ENODEV;
+    }
+
+    return ec_irq_set_affinity(raw->irq_number, cpu);
+}
+
+/****************************************************************************/
+
 /** Raw socket transport operations */
 const ec_transport_ops_t ec_transport_raw_ops = {
     .name = "raw",
@@ -316,6 +337,7 @@ const ec_transport_ops_t ec_transport_raw_ops = {
     .get_link_state = raw_get_link_state,
     .get_mac = raw_get_mac,
     .get_fd = raw_get_fd,
+    .set_cpu_affinity = raw_set_cpu_affinity,
 };
 
 /****************************************************************************/

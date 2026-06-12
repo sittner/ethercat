@@ -39,6 +39,7 @@
 #include <xdp/xsk.h>
 
 #include "ectp.h"
+#include "irq_pin.h"
 
 /****************************************************************************/
 
@@ -67,6 +68,7 @@ typedef struct {
     uint32_t xdp_flags;                /**< XDP flags used during open (needed for detach) */
     uint64_t fq_refill_pending[FQ_REFILL_MAX]; /**< Frames awaiting FQ refill */
     uint32_t fq_refill_count;          /**< Number of pending refill frames */
+    int irq_number;                    /**< Cached NIC IRQ (0 = not discovered) */
 } ec_transport_xdp_t;
 
 /****************************************************************************/
@@ -242,6 +244,9 @@ static int xdp_open(ec_transport_t *transport, const char *interface,
     }
 
     xsk_ring_prod__submit(&xdp->fq, XSK_RING_PROD__DEFAULT_NUM_DESCS);
+
+    /* Discover NIC IRQ for affinity pinning (best-effort, non-fatal) */
+    xdp->irq_number = ec_irq_discover(interface);
 
     return 0;
 
@@ -586,6 +591,22 @@ static int xdp_get_fd(ec_transport_t *transport)
 
 /****************************************************************************/
 
+/**
+ * Set CPU affinity for the NIC IRQ.
+ */
+static int xdp_set_cpu_affinity(ec_transport_t *transport, int cpu)
+{
+    ec_transport_xdp_t *xdp = transport->priv;
+
+    if (!xdp || xdp->irq_number <= 0) {
+        return -ENODEV;
+    }
+
+    return ec_irq_set_affinity(xdp->irq_number, cpu);
+}
+
+/****************************************************************************/
+
 /** XDP transport operations */
 const ec_transport_ops_t ec_transport_xdp_skb_ops = {
     .name = "xdp-skb",
@@ -597,6 +618,7 @@ const ec_transport_ops_t ec_transport_xdp_skb_ops = {
     .get_link_state = xdp_get_link_state,
     .get_mac = xdp_get_mac,
     .get_fd = xdp_get_fd,
+    .set_cpu_affinity = xdp_set_cpu_affinity,
 };
 
 const ec_transport_ops_t ec_transport_xdp_native_ops = {
@@ -609,6 +631,7 @@ const ec_transport_ops_t ec_transport_xdp_native_ops = {
     .get_link_state = xdp_get_link_state,
     .get_mac = xdp_get_mac,
     .get_fd = xdp_get_fd,
+    .set_cpu_affinity = xdp_set_cpu_affinity,
 };
 
 /****************************************************************************/

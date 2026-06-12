@@ -252,6 +252,24 @@ int ec_transport_get_fd(ec_transport_t *transport)
 /****************************************************************************/
 
 /**
+ * Set CPU affinity for the transport's NIC IRQs.
+ */
+int ec_transport_set_cpu_affinity(ec_transport_t *transport, int cpu)
+{
+    if (!transport || !transport->ops) {
+        return -EINVAL;
+    }
+
+    if (!transport->ops->set_cpu_affinity) {
+        return -ENOSYS;
+    }
+
+    return transport->ops->set_cpu_affinity(transport, cpu);
+}
+
+/****************************************************************************/
+
+/**
  * Check if a transport type is available.
  */
 int ec_transport_available(ec_transport_type_t type)
