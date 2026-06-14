@@ -22,11 +22,13 @@
 if ENABLE_TTY
 include_HEADERS = \
 	$(builddir)/ecrt.h \
+	ecrt_tool.h \
 	ectp.h \
 	ectty.h
 else
 include_HEADERS = \
 	$(builddir)/ecrt.h \
+	ecrt_tool.h \
 	ectp.h
 endif
 

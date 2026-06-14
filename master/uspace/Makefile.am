@@ -70,6 +70,7 @@ libethercat_la_SOURCES = \
 	device_uspace.c \
 	module.c \
 	cdev.c \
+	tool_api.c \
 	$(top_srcdir)/lib/shared.c \
 	$(top_srcdir)/transport/transport.c \
 	$(top_srcdir)/transport/transport_raw.c \

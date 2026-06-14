@@ -264,17 +264,21 @@ static int send_response_with_trailing(int fd, int32_t ret_val,
 /* Command dispatch                                                            */
 /****************************************************************************/
 
+#include "../../include/ecrt_tool.h"
+
 /** EC_CMD_MODULE — return version magic and master count. */
 static int dispatch_module(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_module_t io;
+    ec_tool_module_t io;
+    int ret;
     (void)master;
     (void)req;
     (void)req_size;
 
-    io.ioctl_version_magic = EC_IOCTL_VERSION_MAGIC;
-    io.master_count = (uint32_t)ec_master_registry_count();
+    ret = ecrt_tool_get_module(&io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -282,75 +286,14 @@ static int dispatch_module(int fd, ec_master_t *master,
 static int dispatch_master(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_master_t io;
-    unsigned int dev_idx, j;
+    ec_tool_master_t io;
+    int ret;
     (void)req;
     (void)req_size;
 
-    memset(&io, 0, sizeof(io));
-
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    io.slave_count  = master->slave_count;
-    io.scan_index   = master->scan_index;
-    io.config_count = ec_master_config_count(master);
-    io.domain_count = ec_master_domain_count(master);
-#ifdef EC_EOE
-    io.eoe_handler_count = ec_master_eoe_handler_count(master);
-#else
-    io.eoe_handler_count = 0;
-#endif
-    io.phase     = (uint8_t)master->phase;
-    io.active    = (uint8_t)master->active;
-    io.scan_busy = master->scan_busy;
-
-    ec_sem_up(&master->master_sem);
-
-    if (ec_sem_down_interruptible(&master->device_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    for (dev_idx = EC_DEVICE_MAIN;
-            dev_idx < ec_master_num_devices(master); dev_idx++) {
-        ec_device_t *device = &master->devices[dev_idx];
-
-        /* In userspace there is no net_device; use stored MAC address. */
-        memcpy(io.devices[dev_idx].address, master->macs[dev_idx], ETH_ALEN);
-        io.devices[dev_idx].attached   = 1;
-        io.devices[dev_idx].link_state = device->link_state ? 1 : 0;
-        io.devices[dev_idx].tx_count   = device->tx_count;
-        io.devices[dev_idx].rx_count   = device->rx_count;
-        io.devices[dev_idx].tx_bytes   = device->tx_bytes;
-        io.devices[dev_idx].rx_bytes   = device->rx_bytes;
-        io.devices[dev_idx].tx_errors  = device->tx_errors;
-        for (j = 0; j < EC_RATE_COUNT; j++) {
-            io.devices[dev_idx].tx_frame_rates[j] = device->tx_frame_rates[j];
-            io.devices[dev_idx].rx_frame_rates[j] = device->rx_frame_rates[j];
-            io.devices[dev_idx].tx_byte_rates[j]  = device->tx_byte_rates[j];
-            io.devices[dev_idx].rx_byte_rates[j]  = device->rx_byte_rates[j];
-        }
-    }
-    io.num_devices = ec_master_num_devices(master);
-
-    io.tx_count = master->device_stats.tx_count;
-    io.rx_count = master->device_stats.rx_count;
-    io.tx_bytes = master->device_stats.tx_bytes;
-    io.rx_bytes = master->device_stats.rx_bytes;
-    for (j = 0; j < EC_RATE_COUNT; j++) {
-        io.tx_frame_rates[j] = master->device_stats.tx_frame_rates[j];
-        io.rx_frame_rates[j] = master->device_stats.rx_frame_rates[j];
-        io.tx_byte_rates[j]  = master->device_stats.tx_byte_rates[j];
-        io.rx_byte_rates[j]  = master->device_stats.rx_byte_rates[j];
-        io.loss_rates[j]     = master->device_stats.loss_rates[j];
-    }
-
-    ec_sem_up(&master->device_sem);
-
-    io.app_time    = master->app_time;
-    io.dc_ref_time = master->dc_ref_time;
-    io.ref_clock   = master->dc_ref_clock
-        ? master->dc_ref_clock->ring_position : 0xffff;
-
+    ret = ecrt_tool_get_master(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -358,72 +301,16 @@ static int dispatch_master(int fd, ec_master_t *master,
 static int dispatch_slave(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_t io;
-    const ec_slave_t *slave;
-    int i;
+    ec_tool_slave_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    slave = ec_master_find_slave_const(master, 0, io.position);
-    if (!slave) {
-        ec_sem_up(&master->master_sem);
-        EC_MASTER_ERR(master, "Slave %u does not exist!\n", io.position);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    io.device_index             = slave->device_index;
-    io.vendor_id                = slave->sii.vendor_id;
-    io.product_code             = slave->sii.product_code;
-    io.revision_number          = slave->sii.revision_number;
-    io.serial_number            = slave->sii.serial_number;
-    io.alias                    = slave->effective_alias;
-    io.boot_rx_mailbox_offset   = slave->sii.boot_rx_mailbox_offset;
-    io.boot_rx_mailbox_size     = slave->sii.boot_rx_mailbox_size;
-    io.boot_tx_mailbox_offset   = slave->sii.boot_tx_mailbox_offset;
-    io.boot_tx_mailbox_size     = slave->sii.boot_tx_mailbox_size;
-    io.std_rx_mailbox_offset    = slave->sii.std_rx_mailbox_offset;
-    io.std_rx_mailbox_size      = slave->sii.std_rx_mailbox_size;
-    io.std_tx_mailbox_offset    = slave->sii.std_tx_mailbox_offset;
-    io.std_tx_mailbox_size      = slave->sii.std_tx_mailbox_size;
-    io.mailbox_protocols        = slave->sii.mailbox_protocols;
-    io.has_general_category     = slave->sii.has_general;
-    io.coe_details              = slave->sii.coe_details;
-    io.general_flags            = slave->sii.general_flags;
-    io.current_on_ebus          = slave->sii.current_on_ebus;
-
-    for (i = 0; i < EC_MAX_PORTS; i++) {
-        io.ports[i].desc                    = slave->ports[i].desc;
-        io.ports[i].link.link_up            = slave->ports[i].link.link_up;
-        io.ports[i].link.loop_closed        = slave->ports[i].link.loop_closed;
-        io.ports[i].link.signal_detected    =
-            slave->ports[i].link.signal_detected;
-        io.ports[i].receive_time            = slave->ports[i].receive_time;
-        io.ports[i].next_slave              = slave->ports[i].next_slave
-            ? slave->ports[i].next_slave->ring_position : 0xffff;
-        io.ports[i].delay_to_next_dc        = slave->ports[i].delay_to_next_dc;
-    }
-
-    io.fmmu_bit              = slave->base_fmmu_bit_operation;
-    io.dc_supported          = slave->base_dc_supported;
-    io.dc_range              = slave->base_dc_range;
-    io.has_dc_system_time    = slave->has_dc_system_time;
-    io.transmission_delay    = slave->transmission_delay;
-    io.al_state              = slave->current_state;
-    io.error_flag            = slave->error_flag;
-    io.sync_count            = slave->sii.sync_count;
-    io.sdo_count             = ec_slave_sdo_count(slave);
-    io.sii_nwords            = slave->sii_nwords;
-    ipc_strcpy(io.group,  slave->sii.group);
-    ipc_strcpy(io.image,  slave->sii.image);
-    ipc_strcpy(io.order,  slave->sii.order);
-    ipc_strcpy(io.name,   slave->sii.name);
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_get_slave(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -431,36 +318,16 @@ static int dispatch_slave(int fd, ec_master_t *master,
 static int dispatch_slave_sync(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_sync_t io;
-    const ec_slave_t *slave;
-    const ec_sync_t *sync;
+    ec_tool_slave_sync_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    slave = ec_master_find_slave_const(master, 0, io.slave_position);
-    if (!slave) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    if (io.sync_index >= slave->sii.sync_count) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    sync = &slave->sii.syncs[io.sync_index];
-    io.physical_start_address = sync->physical_start_address;
-    io.default_size           = sync->default_length;
-    io.control_register       = sync->control_register;
-    io.enable                 = sync->enable;
-    io.pdo_count              = ec_pdo_list_count(&sync->pdos);
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_get_slave_sync(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -468,41 +335,16 @@ static int dispatch_slave_sync(int fd, ec_master_t *master,
 static int dispatch_slave_sync_pdo(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_sync_pdo_t io;
-    const ec_slave_t *slave;
-    const ec_sync_t *sync;
-    const ec_pdo_t *pdo;
+    ec_tool_slave_sync_pdo_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    slave = ec_master_find_slave_const(master, 0, io.slave_position);
-    if (!slave) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    if (io.sync_index >= slave->sii.sync_count) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    sync = &slave->sii.syncs[io.sync_index];
-    pdo  = ec_pdo_list_find_pdo_by_pos_const(&sync->pdos, io.pdo_pos);
-    if (!pdo) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    io.index       = pdo->index;
-    io.entry_count = ec_pdo_entry_count(pdo);
-    ipc_strcpy(io.name, pdo->name);
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_get_slave_sync_pdo(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -510,49 +352,16 @@ static int dispatch_slave_sync_pdo(int fd, ec_master_t *master,
 static int dispatch_slave_sync_pdo_entry(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_sync_pdo_entry_t io;
-    const ec_slave_t *slave;
-    const ec_sync_t *sync;
-    const ec_pdo_t *pdo;
-    const ec_pdo_entry_t *entry;
+    ec_tool_slave_sync_pdo_entry_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    slave = ec_master_find_slave_const(master, 0, io.slave_position);
-    if (!slave) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    if (io.sync_index >= slave->sii.sync_count) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    sync  = &slave->sii.syncs[io.sync_index];
-    pdo   = ec_pdo_list_find_pdo_by_pos_const(&sync->pdos, io.pdo_pos);
-    if (!pdo) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    entry = ec_pdo_find_entry_by_pos_const(pdo, io.entry_pos);
-    if (!entry) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    io.index      = entry->index;
-    io.subindex   = entry->subindex;
-    io.bit_length = entry->bit_length;
-    ipc_strcpy(io.name, entry->name);
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_get_slave_sync_pdo_entry(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -560,34 +369,16 @@ static int dispatch_slave_sync_pdo_entry(int fd, ec_master_t *master,
 static int dispatch_domain(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_domain_t io;
-    const ec_domain_t *domain;
-    unsigned int dev_idx;
+    ec_tool_domain_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    domain = ec_master_find_domain_const(master, io.index);
-    if (!domain) {
-        ec_sem_up(&master->master_sem);
-        EC_MASTER_ERR(master, "Domain %u does not exist!\n", io.index);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    io.data_size     = domain->data_size;
-    io.logical_base_address = domain->logical_base_address;
-    for (dev_idx = EC_DEVICE_MAIN;
-            dev_idx < ec_master_num_devices(domain->master); dev_idx++) {
-        io.working_counter[dev_idx] = domain->working_counter[dev_idx];
-    }
-    io.expected_working_counter = domain->expected_working_counter;
-    io.fmmu_count               = ec_domain_fmmu_count(domain);
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_get_domain(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -595,37 +386,16 @@ static int dispatch_domain(int fd, ec_master_t *master,
 static int dispatch_domain_fmmu(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_domain_fmmu_t io;
-    const ec_domain_t *domain;
-    const ec_fmmu_config_t *fmmu;
+    ec_tool_domain_fmmu_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    domain = ec_master_find_domain_const(master, io.domain_index);
-    if (!domain) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    fmmu = ec_domain_find_fmmu(domain, io.fmmu_index);
-    if (!fmmu) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    io.slave_config_alias    = fmmu->sc->alias;
-    io.slave_config_position = fmmu->sc->position;
-    io.sync_index            = fmmu->sync_index;
-    io.dir                   = fmmu->dir;
-    io.logical_address       = fmmu->logical_start_address;
-    io.data_size             = fmmu->data_size;
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_get_domain_fmmu(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -640,7 +410,7 @@ static int dispatch_master_debug(int fd, ec_master_t *master,
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&level, req, sizeof(uint32_t));
 
-    ret = ec_master_debug_level(master, (unsigned int)level);
+    ret = ecrt_tool_set_debug(master, (unsigned int)level);
     return send_response(fd, ret, NULL, 0);
 }
 
@@ -648,39 +418,29 @@ static int dispatch_master_debug(int fd, ec_master_t *master,
 static int dispatch_master_rescan(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
+    int ret;
     (void)req;
     (void)req_size;
 
     EC_MASTER_DBG(master, 1, "Got rescan command via IPC.\n");
-    master->fsm.rescan_required = 1;
-    return send_response(fd, 0, NULL, 0);
+    ret = ecrt_tool_rescan(master);
+    return send_response(fd, ret, NULL, 0);
 }
 
 /** EC_CMD_SLAVE_STATE — request a slave state change. */
 static int dispatch_slave_state(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_state_t io;
-    ec_slave_t *slave;
+    ec_tool_slave_state_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    slave = ec_master_find_slave(master, 0, io.slave_position);
-    if (!slave) {
-        ec_sem_up(&master->master_sem);
-        EC_MASTER_ERR(master, "Slave %u does not exist!\n",
-                io.slave_position);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    ec_slave_request_state(slave, io.al_state);
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_set_slave_state(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, NULL, 0);
 }
 
@@ -688,34 +448,16 @@ static int dispatch_slave_state(int fd, ec_master_t *master,
 static int dispatch_slave_sdo(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_sdo_t io;
-    const ec_slave_t *slave;
-    const ec_sdo_t *sdo;
+    ec_tool_slave_sdo_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    slave = ec_master_find_slave_const(master, 0, io.slave_position);
-    if (!slave) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    sdo = ec_slave_get_sdo_by_pos_const(slave, io.sdo_position);
-    if (!sdo) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    io.sdo_index     = sdo->index;
-    io.max_subindex  = sdo->max_subindex;
-    ipc_strcpy(io.name, sdo->name);
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_get_slave_sdo(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -723,58 +465,16 @@ static int dispatch_slave_sdo(int fd, ec_master_t *master,
 static int dispatch_slave_sdo_entry(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_sdo_entry_t io;
-    const ec_slave_t *slave;
-    const ec_sdo_t *sdo;
-    const ec_sdo_entry_t *entry;
+    ec_tool_slave_sdo_entry_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    slave = ec_master_find_slave_const(master, 0, io.slave_position);
-    if (!slave) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    if (io.sdo_spec <= 0) {
-        sdo = ec_slave_get_sdo_by_pos_const(slave,
-                (uint16_t)(-io.sdo_spec));
-    } else {
-        sdo = ec_slave_get_sdo_const(slave, (uint16_t)io.sdo_spec);
-    }
-    if (!sdo) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    entry = ec_sdo_get_entry_const(sdo, io.sdo_entry_subindex);
-    if (!entry) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    io.data_type    = entry->data_type;
-    io.bit_length   = entry->bit_length;
-    io.read_access[EC_SDO_ENTRY_ACCESS_PREOP]  =
-        entry->read_access[EC_SDO_ENTRY_ACCESS_PREOP];
-    io.read_access[EC_SDO_ENTRY_ACCESS_SAFEOP] =
-        entry->read_access[EC_SDO_ENTRY_ACCESS_SAFEOP];
-    io.read_access[EC_SDO_ENTRY_ACCESS_OP]     =
-        entry->read_access[EC_SDO_ENTRY_ACCESS_OP];
-    io.write_access[EC_SDO_ENTRY_ACCESS_PREOP]  =
-        entry->write_access[EC_SDO_ENTRY_ACCESS_PREOP];
-    io.write_access[EC_SDO_ENTRY_ACCESS_SAFEOP] =
-        entry->write_access[EC_SDO_ENTRY_ACCESS_SAFEOP];
-    io.write_access[EC_SDO_ENTRY_ACCESS_OP]     =
-        entry->write_access[EC_SDO_ENTRY_ACCESS_OP];
-    ipc_strcpy(io.description, entry->description);
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_get_slave_sdo_entry(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -782,48 +482,16 @@ static int dispatch_slave_sdo_entry(int fd, ec_master_t *master,
 static int dispatch_config(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_config_t io;
-    const ec_slave_config_t *sc;
-    uint8_t i;
+    ec_tool_config_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    sc = ec_master_get_config_const(master, io.config_index);
-    if (!sc) {
-        ec_sem_up(&master->master_sem);
-        EC_MASTER_ERR(master, "Slave config %u does not exist!\n",
-                io.config_index);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    io.alias        = sc->alias;
-    io.position     = sc->position;
-    io.vendor_id    = sc->vendor_id;
-    io.product_code = sc->product_code;
-
-    for (i = 0; i < EC_MAX_SYNC_MANAGERS; i++) {
-        io.syncs[i].dir           = sc->sync_configs[i].dir;
-        io.syncs[i].watchdog_mode = sc->sync_configs[i].watchdog_mode;
-        io.syncs[i].pdo_count     =
-            ec_pdo_list_count(&sc->sync_configs[i].pdos);
-    }
-
-    io.watchdog_divider   = sc->watchdog_divider;
-    io.watchdog_intervals = sc->watchdog_intervals;
-    io.sdo_count          = ec_slave_config_sdo_count(sc);
-    io.idn_count          = ec_slave_config_idn_count(sc);
-    io.flag_count         = ec_slave_config_flag_count(sc);
-    io.slave_position     = sc->slave ? sc->slave->ring_position : -1;
-    io.dc_assign_activate = sc->dc_assign_activate;
-    for (i = 0; i < EC_SYNC_SIGNAL_COUNT; i++)
-        io.dc_sync[i] = sc->dc_sync[i];
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_get_config(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -831,38 +499,16 @@ static int dispatch_config(int fd, ec_master_t *master,
 static int dispatch_config_pdo(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_config_pdo_t io;
-    const ec_slave_config_t *sc;
-    const ec_pdo_t *pdo;
+    ec_tool_config_pdo_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (io.sync_index >= EC_MAX_SYNC_MANAGERS)
-        return send_response(fd, -EINVAL, NULL, 0);
-
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    sc = ec_master_get_config_const(master, io.config_index);
-    if (!sc) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    pdo = ec_pdo_list_find_pdo_by_pos_const(
-            &sc->sync_configs[io.sync_index].pdos, io.pdo_pos);
-    if (!pdo) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    io.index       = pdo->index;
-    io.entry_count = ec_pdo_entry_count(pdo);
-    ipc_strcpy(io.name, pdo->name);
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_get_config_pdo(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -870,46 +516,16 @@ static int dispatch_config_pdo(int fd, ec_master_t *master,
 static int dispatch_config_pdo_entry(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_config_pdo_entry_t io;
-    const ec_slave_config_t *sc;
-    const ec_pdo_t *pdo;
-    const ec_pdo_entry_t *entry;
+    ec_tool_config_pdo_entry_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (io.sync_index >= EC_MAX_SYNC_MANAGERS)
-        return send_response(fd, -EINVAL, NULL, 0);
-
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    sc = ec_master_get_config_const(master, io.config_index);
-    if (!sc) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    pdo = ec_pdo_list_find_pdo_by_pos_const(
-            &sc->sync_configs[io.sync_index].pdos, io.pdo_pos);
-    if (!pdo) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    entry = ec_pdo_find_entry_by_pos_const(pdo, io.entry_pos);
-    if (!entry) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    io.index      = entry->index;
-    io.subindex   = entry->subindex;
-    io.bit_length = entry->bit_length;
-    ipc_strcpy(io.name, entry->name);
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_get_config_pdo_entry(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -917,39 +533,16 @@ static int dispatch_config_pdo_entry(int fd, ec_master_t *master,
 static int dispatch_config_sdo(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_config_sdo_t io;
-    const ec_slave_config_t *sc;
-    const ec_sdo_request_t *sdo_req;
-    uint32_t copy_size;
+    ec_tool_config_sdo_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    sc = ec_master_get_config_const(master, io.config_index);
-    if (!sc) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    sdo_req = ec_slave_config_get_sdo_by_pos_const(sc, io.sdo_pos);
-    if (!sdo_req) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    io.index    = sdo_req->index;
-    io.subindex = sdo_req->subindex;
-    io.size     = sdo_req->data_size;
-    copy_size   = io.size < EC_MAX_SDO_DATA_SIZE
-                  ? (uint32_t)io.size : EC_MAX_SDO_DATA_SIZE;
-    memcpy(io.data, sdo_req->data, copy_size);
-    io.complete_access = sdo_req->complete_access;
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_get_config_sdo(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -957,39 +550,16 @@ static int dispatch_config_sdo(int fd, ec_master_t *master,
 static int dispatch_config_idn(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_config_idn_t io;
-    const ec_slave_config_t *sc;
-    const ec_soe_request_t *idn_req;
-    uint32_t copy_size;
+    ec_tool_config_idn_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    sc = ec_master_get_config_const(master, io.config_index);
-    if (!sc) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    idn_req = ec_slave_config_get_idn_by_pos_const(sc, io.idn_pos);
-    if (!idn_req) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    io.drive_no = idn_req->drive_no;
-    io.idn      = idn_req->idn;
-    io.state    = idn_req->al_state;
-    io.size     = idn_req->data_size;
-    copy_size   = io.size < EC_MAX_IDN_DATA_SIZE
-                  ? (uint32_t)io.size : EC_MAX_IDN_DATA_SIZE;
-    memcpy(io.data, idn_req->data, copy_size);
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_get_config_idn(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -997,38 +567,16 @@ static int dispatch_config_idn(int fd, ec_master_t *master,
 static int dispatch_config_flag(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_config_flag_t io;
-    const ec_slave_config_t *sc;
-    const ec_flag_t *flag;
-    size_t key_len;
+    ec_tool_config_flag_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    sc = ec_master_get_config_const(master, io.config_index);
-    if (!sc) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    flag = ec_slave_config_get_flag_by_pos_const(sc, io.flag_pos);
-    if (!flag) {
-        ec_sem_up(&master->master_sem);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    key_len = strlen(flag->key);
-    if (key_len >= EC_MAX_FLAG_KEY_SIZE)
-        key_len = EC_MAX_FLAG_KEY_SIZE - 1;
-    memcpy(io.key, flag->key, key_len);
-    io.key[key_len] = '\0';
-    io.value = flag->value;
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_get_config_flag(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -1038,40 +586,16 @@ static int dispatch_config_flag(int fd, ec_master_t *master,
 static int dispatch_eoe_handler(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_eoe_handler_t io;
-    const ec_eoe_t *eoe;
+    ec_tool_eoe_handler_t io;
+    int ret;
 
     if (req_size != sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    eoe = ec_master_get_eoe_handler_const(master, io.eoe_index);
-    if (!eoe) {
-        ec_sem_up(&master->master_sem);
-        EC_MASTER_ERR(master, "EoE handler %u does not exist!\n",
-                io.eoe_index);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    io.slave_position     = eoe->slave
-        ? eoe->slave->ring_position : 0xffff;
-    snprintf(io.name, EC_DATAGRAM_NAME_SIZE, "%s", eoe->dev->name);
-    io.open               = eoe->opened;
-    /* EoE statistics are reported from the EtherCAT bus perspective:
-     * tool "Rx" = data received from bus = net_device tx (interface sends to bus)
-     * tool "Tx" = data sent to bus = net_device rx (interface receives from bus)
-     */
-    io.rx_bytes           = eoe->stats.tx_bytes;
-    io.rx_rate            = eoe->tx_rate;
-    io.tx_bytes           = eoe->stats.rx_bytes;
-    io.tx_rate            = eoe->rx_rate;
-    io.tx_queued_frames   = eoe->tx_queued_frames;
-    io.tx_queue_size      = eoe->tx_queue_size;
-
-    ec_sem_up(&master->master_sem);
+    ret = ecrt_tool_get_eoe_handler(master, &io);
+    if (ret)
+        return send_response(fd, ret, NULL, 0);
     return send_response(fd, 0, &io, sizeof(io));
 }
 
@@ -1095,46 +619,40 @@ static int dispatch_eoe_ip_unsupported(int fd, ec_master_t *master,
 static int dispatch_domain_data(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_domain_data_t io;
-    const ec_domain_t *domain;
+    ec_tool_domain_data_t io;
+    uint8_t *buf;
+    int ret;
 
     if (req_size < sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (ec_sem_down_interruptible(&master->master_sem))
-        return send_response(fd, -EINTR, NULL, 0);
-
-    domain = ec_master_find_domain_const(master, io.domain_index);
-    if (!domain) {
-        ec_sem_up(&master->master_sem);
-        EC_MASTER_ERR(master, "Domain %u does not exist!\n", io.domain_index);
+    if (!io.data_size)
         return send_response(fd, -EINVAL, NULL, 0);
+
+    buf = malloc(io.data_size);
+    if (!buf)
+        return send_response(fd, -ENOMEM, NULL, 0);
+
+    io.target = buf;
+    ret = ecrt_tool_get_domain_data(master, &io);
+    if (ret) {
+        free(buf);
+        return send_response(fd, ret, NULL, 0);
     }
 
-    if (domain->data_size != io.data_size) {
-        ec_sem_up(&master->master_sem);
-        EC_MASTER_ERR(master, "Data size mismatch %u/%zu!\n",
-                io.data_size, domain->data_size);
-        return send_response(fd, -EFAULT, NULL, 0);
-    }
-
-    {
-        int ret = send_response_with_trailing(fd, 0,
-                &io, sizeof(io),
-                domain->data, io.data_size);
-        ec_sem_up(&master->master_sem);
-        return ret;
-    }
+    ret = send_response_with_trailing(fd, 0,
+            &io, sizeof(io), buf, io.data_size);
+    free(buf);
+    return ret;
 }
 
 /** EC_CMD_SLAVE_SDO_UPLOAD — read an SDO entry from a slave. */
 static int dispatch_slave_sdo_upload(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_sdo_upload_t io;
+    ec_tool_slave_sdo_upload_t io;
     uint8_t *target;
-    size_t result_size = 0;
     int ret;
 
     if (req_size < sizeof(io))
@@ -1145,21 +663,15 @@ static int dispatch_slave_sdo_upload(int fd, ec_master_t *master,
         return send_response(fd, -EINVAL, NULL, 0);
 
     target = malloc(io.target_size);
-    if (!target) {
-        EC_MASTER_ERR(master, "Failed to allocate %u bytes for SDO upload.\n",
-                io.target_size);
+    if (!target)
         return send_response(fd, -ENOMEM, NULL, 0);
-    }
 
-    ret = ecrt_master_sdo_upload(master, io.slave_position,
-            io.sdo_index, io.sdo_entry_subindex, target,
-            io.target_size, &result_size, &io.abort_code);
-    io.data_size = (uint32_t)result_size;
+    io.target = target;
+    ret = ecrt_tool_sdo_upload(master, &io);
 
     if (!ret) {
         int send_ret = send_response_with_trailing(fd, 0,
-                &io, sizeof(io),
-                target, io.data_size);
+                &io, sizeof(io), target, io.data_size);
         free(target);
         return send_ret;
     } else {
@@ -1172,37 +684,26 @@ static int dispatch_slave_sdo_upload(int fd, ec_master_t *master,
 static int dispatch_slave_sdo_download(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_sdo_download_t io;
-    const uint8_t *sdo_data;
-    int retval;
+    ec_tool_slave_sdo_download_t io;
+    int ret;
 
     if (req_size < sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    /* Trailing SDO data follows the struct in the request payload. */
     if (req_size < sizeof(io) + io.data_size)
         return send_response(fd, -EINVAL, NULL, 0);
-    sdo_data = req + sizeof(io);
 
-    if (io.complete_access) {
-        retval = ecrt_master_sdo_download_complete(master, io.slave_position,
-                io.sdo_index, sdo_data, io.data_size, &io.abort_code);
-    } else {
-        retval = ecrt_master_sdo_download(master, io.slave_position,
-                io.sdo_index, io.sdo_entry_subindex, sdo_data,
-                io.data_size, &io.abort_code);
-    }
-
-    return send_response(fd, retval, &io, sizeof(io));
+    io.data = (uint8_t *)(req + sizeof(io));
+    ret = ecrt_tool_sdo_download(master, &io);
+    return send_response(fd, ret, &io, sizeof(io));
 }
 
 /** EC_CMD_SLAVE_SII_READ — read SII words from a slave's EEPROM. */
 static int dispatch_slave_sii_read(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_sii_t io;
-    const ec_slave_t *slave;
+    ec_tool_slave_sii_t io;
     uint16_t *words;
     int ret;
 
@@ -1214,39 +715,18 @@ static int dispatch_slave_sii_read(int fd, ec_master_t *master,
         return send_response(fd, -EINVAL, NULL, 0);
 
     words = malloc(io.nwords * 2);
-    if (!words) {
-        EC_MASTER_ERR(master, "Failed to allocate %u bytes for SII read.\n",
-                io.nwords * 2);
+    if (!words)
         return send_response(fd, -ENOMEM, NULL, 0);
-    }
 
-    if (ec_sem_down_interruptible(&master->master_sem)) {
+    io.words = words;
+    ret = ecrt_tool_sii_read(master, &io);
+    if (ret) {
         free(words);
-        return send_response(fd, -EINTR, NULL, 0);
+        return send_response(fd, ret, NULL, 0);
     }
-
-    if (!(slave = ec_master_find_slave_const(master, 0, io.slave_position))) {
-        ec_sem_up(&master->master_sem);
-        EC_MASTER_ERR(master, "Slave %u does not exist!\n",
-                io.slave_position);
-        free(words);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    if (io.offset + io.nwords > slave->sii_nwords) {
-        ec_sem_up(&master->master_sem);
-        EC_SLAVE_ERR(slave, "Invalid SII read offset/size %u/%u for slave SII"
-                " size %zu!\n", io.offset, io.nwords, slave->sii_nwords);
-        free(words);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    memcpy(words, slave->sii_words + io.offset, io.nwords * 2);
-    ec_sem_up(&master->master_sem);
 
     ret = send_response_with_trailing(fd, 0,
-            &io, sizeof(io),
-            words, io.nwords * 2);
+            &io, sizeof(io), words, io.nwords * 2);
     free(words);
     return ret;
 }
@@ -1255,10 +735,8 @@ static int dispatch_slave_sii_read(int fd, ec_master_t *master,
 static int dispatch_slave_sii_write(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_sii_t io;
-    ec_slave_t *slave;
-    uint16_t *words;
-    ec_sii_write_request_t request;
+    ec_tool_slave_sii_t io;
+    int ret;
 
     if (req_size < sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
@@ -1267,75 +745,20 @@ static int dispatch_slave_sii_write(int fd, ec_master_t *master,
     if (!io.nwords)
         return send_response(fd, 0, NULL, 0);
 
-    /* Trailing word data follows the struct in the request payload. */
     if (req_size < sizeof(io) + (uint32_t)io.nwords * 2)
         return send_response(fd, -EINVAL, NULL, 0);
 
-    /* Copy word data to heap so it remains valid during FSM processing. */
-    words = malloc((size_t)io.nwords * 2);
-    if (!words) {
-        EC_MASTER_ERR(master, "Failed to allocate %u bytes for SII write.\n",
-                io.nwords * 2);
-        return send_response(fd, -ENOMEM, NULL, 0);
-    }
-    memcpy(words, req + sizeof(io), (size_t)io.nwords * 2);
-
-    if (ec_sem_down_interruptible(&master->master_sem)) {
-        free(words);
-        return send_response(fd, -EINTR, NULL, 0);
-    }
-
-    if (!(slave = ec_master_find_slave(master, 0, io.slave_position))) {
-        ec_sem_up(&master->master_sem);
-        EC_MASTER_ERR(master, "Slave %u does not exist!\n",
-                io.slave_position);
-        free(words);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    /* Init SII write request. */
-    INIT_LIST_HEAD(&request.list);
-    request.slave = slave;
-    request.words = words;
-    request.offset = io.offset;
-    request.nwords = io.nwords;
-    request.state = EC_INT_REQUEST_QUEUED;
-
-    /* Schedule SII write request. */
-    list_add_tail(&request.list, &master->sii_requests);
-    ec_sem_up(&master->master_sem);
-
-    /* Wait for processing through FSM. */
-    if (ec_wq_wait_interruptible(master->request_queue,
-                request.state != EC_INT_REQUEST_QUEUED)) {
-        ec_sem_down(&master->master_sem);
-        if (request.state == EC_INT_REQUEST_QUEUED) {
-            list_del(&request.list);
-            ec_sem_up(&master->master_sem);
-            free(words);
-            return send_response(fd, -EINTR, NULL, 0);
-        }
-        ec_sem_up(&master->master_sem);
-    }
-
-    /* Wait until master FSM has finished processing. */
-    ec_wq_wait(master->request_queue,
-            request.state != EC_INT_REQUEST_BUSY);
-
-    free(words);
-
-    return send_response(fd,
-            request.state == EC_INT_REQUEST_SUCCESS ? 0 : -EIO,
-            NULL, 0);
+    io.words = (uint16_t *)(req + sizeof(io));
+    ret = ecrt_tool_sii_write(master, &io);
+    return send_response(fd, ret, NULL, 0);
 }
 
 /** EC_CMD_SLAVE_REG_READ — read slave registers. */
 static int dispatch_slave_reg_read(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_reg_t io;
-    ec_slave_t *slave;
-    ec_reg_request_t request;
+    ec_tool_slave_reg_t io;
+    uint8_t *data;
     int ret;
 
     if (req_size < sizeof(io))
@@ -1345,67 +768,28 @@ static int dispatch_slave_reg_read(int fd, ec_master_t *master,
     if (!io.size)
         return send_response(fd, 0, NULL, 0);
 
-    ret = ec_reg_request_init(&request, io.size);
-    if (ret)
-        return send_response(fd, ret, NULL, 0);
+    data = malloc(io.size);
+    if (!data)
+        return send_response(fd, -ENOMEM, NULL, 0);
 
-    ret = ecrt_reg_request_read(&request, io.address, io.size);
+    io.data = data;
+    ret = ecrt_tool_reg_read(master, &io);
     if (ret) {
-        ec_reg_request_clear(&request);
+        free(data);
         return send_response(fd, ret, NULL, 0);
     }
 
-    if (ec_sem_down_interruptible(&master->master_sem)) {
-        ec_reg_request_clear(&request);
-        return send_response(fd, -EINTR, NULL, 0);
-    }
-
-    if (!(slave = ec_master_find_slave(master, 0, io.slave_position))) {
-        ec_sem_up(&master->master_sem);
-        EC_MASTER_ERR(master, "Slave %u does not exist!\n",
-                io.slave_position);
-        ec_reg_request_clear(&request);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    /* Schedule request. */
-    list_add_tail(&request.list, &slave->reg_requests);
-    ec_sem_up(&master->master_sem);
-
-    /* Wait for processing through FSM. */
-    if (ec_wq_wait_interruptible(master->request_queue,
-                request.state != EC_INT_REQUEST_QUEUED)) {
-        ec_sem_down(&master->master_sem);
-        if (request.state == EC_INT_REQUEST_QUEUED) {
-            list_del(&request.list);
-            ec_sem_up(&master->master_sem);
-            ec_reg_request_clear(&request);
-            return send_response(fd, -EINTR, NULL, 0);
-        }
-        ec_sem_up(&master->master_sem);
-    }
-
-    /* Wait until master FSM has finished processing. */
-    ec_wq_wait(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
-
-    if (request.state == EC_INT_REQUEST_SUCCESS) {
-        ret = send_response_with_trailing(fd, 0,
-                &io, sizeof(io),
-                request.data, io.size);
-        ec_reg_request_clear(&request);
-        return ret;
-    }
-    ec_reg_request_clear(&request);
-    return send_response(fd, -EIO, NULL, 0);
+    ret = send_response_with_trailing(fd, 0,
+            &io, sizeof(io), data, io.size);
+    free(data);
+    return ret;
 }
 
 /** EC_CMD_SLAVE_REG_WRITE — write slave registers. */
 static int dispatch_slave_reg_write(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_reg_t io;
-    ec_slave_t *slave;
-    ec_reg_request_t request;
+    ec_tool_slave_reg_t io;
     int ret;
 
     if (req_size < sizeof(io))
@@ -1418,58 +802,8 @@ static int dispatch_slave_reg_write(int fd, ec_master_t *master,
     if (req_size < sizeof(io) + io.size)
         return send_response(fd, -EINVAL, NULL, 0);
 
-    ret = ec_reg_request_init(&request, io.size);
-    if (ret)
-        return send_response(fd, ret, NULL, 0);
-
-    memcpy(request.data, req + sizeof(io), io.size);
-
-    ret = ecrt_reg_request_write(&request, io.address, io.size);
-    if (ret) {
-        ec_reg_request_clear(&request);
-        return send_response(fd, ret, NULL, 0);
-    }
-
-    if (ec_sem_down_interruptible(&master->master_sem)) {
-        ec_reg_request_clear(&request);
-        return send_response(fd, -EINTR, NULL, 0);
-    }
-
-    if (io.emergency) {
-        request.ring_position = io.slave_position;
-        /* Schedule emergency register request. */
-        list_add_tail(&request.list, &master->emerg_reg_requests);
-    } else {
-        if (!(slave = ec_master_find_slave(master, 0, io.slave_position))) {
-            ec_sem_up(&master->master_sem);
-            EC_MASTER_ERR(master, "Slave %u does not exist!\n",
-                    io.slave_position);
-            ec_reg_request_clear(&request);
-            return send_response(fd, -EINVAL, NULL, 0);
-        }
-        /* Schedule request. */
-        list_add_tail(&request.list, &slave->reg_requests);
-    }
-    ec_sem_up(&master->master_sem);
-
-    /* Wait for processing through FSM. */
-    if (ec_wq_wait_interruptible(master->request_queue,
-                request.state != EC_INT_REQUEST_QUEUED)) {
-        ec_sem_down(&master->master_sem);
-        if (request.state == EC_INT_REQUEST_QUEUED) {
-            list_del(&request.list);
-            ec_sem_up(&master->master_sem);
-            ec_reg_request_clear(&request);
-            return send_response(fd, -EINTR, NULL, 0);
-        }
-        ec_sem_up(&master->master_sem);
-    }
-
-    /* Wait until master FSM has finished processing. */
-    ec_wq_wait(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
-
-    ret = request.state == EC_INT_REQUEST_SUCCESS ? 0 : -EIO;
-    ec_reg_request_clear(&request);
+    io.data = (uint8_t *)(req + sizeof(io));
+    ret = ecrt_tool_reg_write(master, &io);
     return send_response(fd, ret, NULL, 0);
 }
 
@@ -1477,74 +811,32 @@ static int dispatch_slave_reg_write(int fd, ec_master_t *master,
 static int dispatch_slave_foe_read(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_foe_t io;
-    ec_foe_request_t request;
-    ec_slave_t *slave;
+    ec_tool_slave_foe_t io;
+    uint8_t *buffer;
     int ret;
 
     if (req_size < sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    ec_foe_request_init(&request, io.file_name);
-    ret = ec_foe_request_alloc(&request, 10000); // FIXME
-    if (ret) {
-        ec_foe_request_clear(&request);
-        return send_response(fd, ret, NULL, 0);
-    }
-
-    ec_foe_request_read(&request);
-
-    if (ec_sem_down_interruptible(&master->master_sem)) {
-        ec_foe_request_clear(&request);
-        return send_response(fd, -EINTR, NULL, 0);
-    }
-
-    if (!(slave = ec_master_find_slave(master, 0, io.slave_position))) {
-        ec_sem_up(&master->master_sem);
-        EC_MASTER_ERR(master, "Slave %u does not exist!\n",
-                io.slave_position);
-        ec_foe_request_clear(&request);
+    if (!io.buffer_size)
         return send_response(fd, -EINVAL, NULL, 0);
+
+    buffer = malloc(io.buffer_size);
+    if (!buffer)
+        return send_response(fd, -ENOMEM, NULL, 0);
+
+    io.buffer = buffer;
+    ret = ecrt_tool_foe_read(master, &io);
+    if (ret) {
+        int send_ret = send_response(fd, ret, &io, sizeof(io));
+        free(buffer);
+        return send_ret;
     }
 
-    EC_SLAVE_DBG(slave, 1, "Scheduling FoE read request.\n");
-
-    /* Schedule request. */
-    list_add_tail(&request.list, &slave->foe_requests);
-    ec_sem_up(&master->master_sem);
-
-    /* Wait for processing through FSM. */
-    if (ec_wq_wait_interruptible(master->request_queue,
-                request.state != EC_INT_REQUEST_QUEUED)) {
-        ec_sem_down(&master->master_sem);
-        if (request.state == EC_INT_REQUEST_QUEUED) {
-            list_del(&request.list);
-            ec_sem_up(&master->master_sem);
-            ec_foe_request_clear(&request);
-            return send_response(fd, -EINTR, NULL, 0);
-        }
-        /* Request already processing: interrupt not possible. */
-        ec_sem_up(&master->master_sem);
-    }
-
-    /* Wait until master FSM has finished processing. */
-    ec_wq_wait(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
-
-    io.result = request.result;
-    io.error_code = request.error_code;
-
-    if (request.state != EC_INT_REQUEST_SUCCESS) {
-        io.data_size = 0;
-        ec_foe_request_clear(&request);
-        return send_response(fd, -EIO, &io, sizeof(io));
-    }
-
-    io.data_size = (uint32_t)request.data_size;
     ret = send_response_with_trailing(fd, 0,
-            &io, sizeof(io),
-            request.buffer, io.data_size);
-    ec_foe_request_clear(&request);
+            &io, sizeof(io), buffer, io.data_size);
+    free(buffer);
     return ret;
 }
 
@@ -1552,9 +844,7 @@ static int dispatch_slave_foe_read(int fd, ec_master_t *master,
 static int dispatch_slave_foe_write(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_foe_t io;
-    ec_foe_request_t request;
-    ec_slave_t *slave;
+    ec_tool_slave_foe_t io;
     int ret;
 
     if (req_size < sizeof(io))
@@ -1564,57 +854,8 @@ static int dispatch_slave_foe_write(int fd, ec_master_t *master,
     if (req_size < sizeof(io) + io.buffer_size)
         return send_response(fd, -EINVAL, NULL, 0);
 
-    ec_foe_request_init(&request, io.file_name);
-    ret = ec_foe_request_alloc(&request, io.buffer_size);
-    if (ret) {
-        ec_foe_request_clear(&request);
-        return send_response(fd, ret, NULL, 0);
-    }
-
-    memcpy(request.buffer, req + sizeof(io), io.buffer_size);
-    request.data_size = io.buffer_size;
-    ec_foe_request_write(&request);
-
-    if (ec_sem_down_interruptible(&master->master_sem)) {
-        ec_foe_request_clear(&request);
-        return send_response(fd, -EINTR, NULL, 0);
-    }
-
-    if (!(slave = ec_master_find_slave(master, 0, io.slave_position))) {
-        ec_sem_up(&master->master_sem);
-        EC_MASTER_ERR(master, "Slave %u does not exist!\n",
-                io.slave_position);
-        ec_foe_request_clear(&request);
-        return send_response(fd, -EINVAL, NULL, 0);
-    }
-
-    EC_SLAVE_DBG(slave, 1, "Scheduling FoE write request.\n");
-
-    /* Schedule FoE write request. */
-    list_add_tail(&request.list, &slave->foe_requests);
-    ec_sem_up(&master->master_sem);
-
-    /* Wait for processing through FSM. */
-    if (ec_wq_wait_interruptible(master->request_queue,
-                request.state != EC_INT_REQUEST_QUEUED)) {
-        ec_sem_down(&master->master_sem);
-        if (request.state == EC_INT_REQUEST_QUEUED) {
-            list_del(&request.list);
-            ec_sem_up(&master->master_sem);
-            ec_foe_request_clear(&request);
-            return send_response(fd, -EINTR, NULL, 0);
-        }
-        ec_sem_up(&master->master_sem);
-    }
-
-    /* Wait until master FSM has finished processing. */
-    ec_wq_wait(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
-
-    io.result = request.result;
-    io.error_code = request.error_code;
-
-    ret = request.state == EC_INT_REQUEST_SUCCESS ? 0 : -EIO;
-    ec_foe_request_clear(&request);
+    io.buffer = (uint8_t *)(req + sizeof(io));
+    ret = ecrt_tool_foe_write(master, &io);
     return send_response(fd, ret, &io, sizeof(io));
 }
 
@@ -1622,10 +863,9 @@ static int dispatch_slave_foe_write(int fd, ec_master_t *master,
 static int dispatch_slave_soe_read(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_soe_read_t io;
+    ec_tool_slave_soe_read_t io;
     uint8_t *data;
-    size_t result_size = 0;
-    int retval;
+    int ret;
 
     if (req_size < sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
@@ -1635,34 +875,28 @@ static int dispatch_slave_soe_read(int fd, ec_master_t *master,
         return send_response(fd, -EINVAL, NULL, 0);
 
     data = malloc(io.mem_size);
-    if (!data) {
-        EC_MASTER_ERR(master, "Failed to allocate %u bytes of IDN data.\n",
-                io.mem_size);
+    if (!data)
         return send_response(fd, -ENOMEM, NULL, 0);
-    }
 
-    retval = ecrt_master_read_idn(master, io.slave_position,
-            io.drive_no, io.idn, data, io.mem_size, &result_size,
-            &io.error_code);
-    io.data_size = (uint32_t)result_size;
-    if (retval) {
+    io.data = data;
+    ret = ecrt_tool_soe_read(master, &io);
+    if (ret) {
         free(data);
-        return send_response(fd, retval, &io, sizeof(io));
+        return send_response(fd, ret, &io, sizeof(io));
     }
 
-    retval = send_response_with_trailing(fd, 0,
-            &io, sizeof(io),
-            data, io.data_size);
+    ret = send_response_with_trailing(fd, 0,
+            &io, sizeof(io), data, io.data_size);
     free(data);
-    return retval;
+    return ret;
 }
 
 /** EC_CMD_SLAVE_SOE_WRITE — write an SoE IDN to a slave. */
 static int dispatch_slave_soe_write(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    ec_ioctl_slave_soe_write_t io;
-    int retval;
+    ec_tool_slave_soe_write_t io;
+    int ret;
 
     if (req_size < sizeof(io))
         return send_response(fd, -EINVAL, NULL, 0);
@@ -1671,10 +905,9 @@ static int dispatch_slave_soe_write(int fd, ec_master_t *master,
     if (req_size < sizeof(io) + io.data_size)
         return send_response(fd, -EINVAL, NULL, 0);
 
-    retval = ecrt_master_write_idn(master, io.slave_position,
-            io.drive_no, io.idn, req + sizeof(io), io.data_size,
-            &io.error_code);
-    return send_response(fd, retval, &io, sizeof(io));
+    io.data = (uint8_t *)(req + sizeof(io));
+    ret = ecrt_tool_soe_write(master, &io);
+    return send_response(fd, ret, &io, sizeof(io));
 }
 
 /****************************************************************************/
