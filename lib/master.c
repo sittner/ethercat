@@ -78,6 +78,7 @@ void ec_master_clear_config(ec_master_t *master)
     master->first_config = NULL;
 
     if (master->process_data)  {
+        munlock(master->process_data, master->process_data_size);
         munmap(master->process_data, master->process_data_size);
         master->process_data = NULL;
         master->process_data_size = 0;
@@ -588,8 +589,8 @@ int ecrt_master_activate(ec_master_t *master)
         }
 #endif
 
-        // Access the mapped region to cause the initial page fault
-        master->process_data[0] = 0x00;
+        // Lock process data into physical RAM (mlock populates shared pages)
+        mlock(master->process_data, master->process_data_size);
     }
 
     // pick up process data pointers for all created domains
