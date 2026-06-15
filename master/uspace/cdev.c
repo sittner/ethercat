@@ -599,14 +599,21 @@ static int dispatch_eoe_handler(int fd, ec_master_t *master,
     return send_response(fd, 0, &io, sizeof(io));
 }
 
-/** EC_CMD_SLAVE_EOE_IP_PARAM / EC_CMD_CONFIG_EOE_IP_PARAM — not supported. */
-static int dispatch_eoe_ip_unsupported(int fd, ec_master_t *master,
+/** EC_CMD_SLAVE_EOE_IP_PARAM — Set EoE IP parameters. */
+static int dispatch_eoe_ip(int fd, ec_master_t *master,
         const uint8_t *req, uint32_t req_size)
 {
-    (void)master;
-    (void)req;
-    (void)req_size;
-    return send_response(fd, -ENOSYS, NULL, 0);
+    ec_tool_eoe_ip_t io;
+    int ret;
+
+    if (req_size != sizeof(io))
+        return send_response(fd, -EINVAL, NULL, 0);
+    memcpy(&io, req, sizeof(io));
+
+    ret = ecrt_tool_set_eoe_ip(master, &io);
+    if (ret)
+        return send_response(fd, ret, &io, sizeof(io));
+    return send_response(fd, 0, &io, sizeof(io));
 }
 
 #endif /* EC_EOE */
@@ -1066,8 +1073,7 @@ static int handle_client_request(int fd, uint8_t **payload,
             break;
 #ifdef EC_EOE
         case EC_CMD_SLAVE_EOE_IP_PARAM:
-            dispatch_eoe_ip_unsupported(fd, master, *payload,
-                    req.data_size);
+            dispatch_eoe_ip(fd, master, *payload, req.data_size);
             break;
 #endif
         case EC_CMD_CONFIG:
@@ -1090,8 +1096,7 @@ static int handle_client_request(int fd, uint8_t **payload,
             break;
 #ifdef EC_EOE
         case EC_CMD_CONFIG_EOE_IP_PARAM:
-            dispatch_eoe_ip_unsupported(fd, master, *payload,
-                    req.data_size);
+            dispatch_eoe_ip(fd, master, *payload, req.data_size);
             break;
         case EC_CMD_EOE_HANDLER:
             dispatch_eoe_handler(fd, master, *payload, req.data_size);

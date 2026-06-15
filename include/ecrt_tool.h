@@ -534,6 +534,27 @@ typedef struct {
     uint32_t tx_queue_size;
 } ec_tool_eoe_handler_t;
 
+/** EoE set IP parameter request. */
+typedef struct {
+    // inputs
+    uint16_t slave_position;
+    uint8_t mac_address_included;
+    uint8_t ip_address_included;
+    uint8_t subnet_mask_included;
+    uint8_t gateway_included;
+    uint8_t dns_included;
+    uint8_t name_included;
+    unsigned char mac_address[EC_TOOL_ETH_ALEN];
+    uint32_t ip_address;
+    uint32_t subnet_mask;
+    uint32_t gateway;
+    uint32_t dns;
+    char name[EC_TOOL_MAX_HOSTNAME_SIZE];
+
+    // outputs
+    uint16_t result;
+} ec_tool_eoe_ip_t;
+
 /****************************************************************************/
 /* Tool API functions                                                        */
 /****************************************************************************/
@@ -711,6 +732,12 @@ EC_PUBLIC_API int ecrt_tool_get_config_flag(ec_master_t *master,
  * \return 0 on success, negative errno on failure. */
 EC_PUBLIC_API int ecrt_tool_get_eoe_handler(ec_master_t *master,
         ec_tool_eoe_handler_t *data);
+
+/** Set EoE IP parameters on a slave.
+ * Queues an EoE Set IP Parameter request and waits for completion.
+ * \return 0 on success, negative errno on failure. */
+EC_PUBLIC_API int ecrt_tool_set_eoe_ip(ec_master_t *master,
+        ec_tool_eoe_ip_t *data);
 #endif
 
 #ifdef __cplusplus

@@ -1368,6 +1368,65 @@ int ecrt_tool_get_eoe_handler(ec_master_t *master,
     return 0;
 }
 
+/****************************************************************************/
+
+int ecrt_tool_set_eoe_ip(ec_master_t *master,
+        ec_tool_eoe_ip_t *data)
+{
+    ec_slave_t *slave;
+    ec_eoe_request_t request;
+
+    if (!master || !data)
+        return -EINVAL;
+
+    ec_eoe_request_init(&request);
+
+    request.mac_address_included = data->mac_address_included;
+    request.ip_address_included  = data->ip_address_included;
+    request.subnet_mask_included = data->subnet_mask_included;
+    request.gateway_included     = data->gateway_included;
+    request.dns_included         = data->dns_included;
+    request.name_included        = data->name_included;
+
+    memcpy(request.mac_address, data->mac_address, EC_ETH_ALEN);
+    memcpy(&request.ip_address, &data->ip_address, 4);
+    memcpy(&request.subnet_mask, &data->subnet_mask, 4);
+    memcpy(&request.gateway, &data->gateway, 4);
+    memcpy(&request.dns, &data->dns, 4);
+    memcpy(request.name, data->name, EC_MAX_HOSTNAME_SIZE);
+
+    request.state = EC_INT_REQUEST_QUEUED;
+
+    if (ec_sem_down_interruptible(&master->master_sem))
+        return -EINTR;
+
+    slave = ec_master_find_slave(master, 0, data->slave_position);
+    if (!slave) {
+        ec_sem_up(&master->master_sem);
+        return -EINVAL;
+    }
+
+    list_add_tail(&request.list, &slave->eoe_requests);
+    ec_sem_up(&master->master_sem);
+
+    /* Wait for processing through FSM. */
+    if (ec_wq_wait_interruptible(master->request_queue,
+                request.state != EC_INT_REQUEST_QUEUED)) {
+        ec_sem_down(&master->master_sem);
+        if (request.state == EC_INT_REQUEST_QUEUED) {
+            list_del(&request.list);
+            ec_sem_up(&master->master_sem);
+            return -EINTR;
+        }
+        ec_sem_up(&master->master_sem);
+    }
+
+    ec_wq_wait(master->request_queue, request.state != EC_INT_REQUEST_BUSY);
+
+    data->result = request.result;
+    return request.state == EC_INT_REQUEST_SUCCESS ? 0 : -EIO;
+}
+
 #endif /* EC_EOE */
 
 /****************************************************************************/
