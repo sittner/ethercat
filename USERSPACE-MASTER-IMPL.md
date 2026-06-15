@@ -336,7 +336,7 @@ When enabled, implies:
 
 | Target | Source | Install |
 |--------|--------|---------|
-| `libethercat.so` | master core (`master/*.c`) + PAL (`master/uspace/pal*.c`) + transport (`transport/*.c`) + `master/uspace/module.c` + `master/uspace/device_uspace.c` | `libdir` |
+| `libethercat.so` | master core (`master/*.c`) + PAL (`master/uspace/pal*.c`) + transport (`transport/*.c`) + `master/uspace/module.c` + `master/uspace/device_uspace.c` + `master/uspace/cdev.c` + `master/uspace/tool_api.c` | `libdir` |
 | `ec_master` | `master/uspace/main.c` linked against `libethercat.so` | `bindir` |
 
 ### Autotools Integration
@@ -354,10 +354,28 @@ When enabled, implies:
 |------|---------|
 | `master/uspace/module.c` | Library lifecycle: `ecrt_lib_init()`, `ecrt_startup_master()`, `ecrt_release_master()`, `ecrt_lib_cleanup()` |
 | `master/uspace/device_uspace.c` | Device functions extracted from `main.c`: `ec_device_init()`, `ec_device_clear()`, `ec_device_tx_data()`, `ec_device_send()`, `ec_device_poll()`, `ec_device_open()`, `ec_device_close()` |
+| `master/uspace/cdev.c/h` | Character device emulation (IPC socket for tool API) |
+| `master/uspace/tool_api.c` | Tool API implementation (responds to `ethercat` CLI commands) |
+| `master/uspace/pal.c` | Logging dispatch, misc PAL functions |
+| `master/uspace/pal.h` | Master PAL header (includes all sub-PAL headers) |
+| `master/uspace/pal_eoe.c/h` | EoE PAL: TAP device, skb emulation, TX polling |
+| `master/uspace/pal_affinity.h` | NIC IRQ CPU affinity pinning (records RT CPU, updates smp_affinity) |
+| `master/uspace/pal_thread.c/h` | Thread abstraction → pthreads |
+| `master/uspace/pal_work.c/h` | Work queue abstraction |
+| `master/uspace/pal_irq_work.c/h` | IRQ work abstraction |
+| `master/uspace/pal_alloc.h` | `ec_alloc()` → `calloc()` |
+| `master/uspace/pal_list.h` | Linux-style linked list (userspace reimplementation) |
+| `master/uspace/pal_mtx.h` | Mutex abstraction → `pthread_mutex_t` |
+| `master/uspace/pal_sem.h` | Semaphore abstraction → `sem_t` |
+| `master/uspace/pal_queue.h` | Completion queue abstraction |
+| `master/uspace/pal_misc.h` | Misc utilities (jiffies, time, printk) |
 | `include/ectp.h` | Transport abstraction interface (renamed from `ec_transport.h`) |
+| `include/ecrt_tool.h` | Tool API header (for CLI/external tools) |
 | `transport/transport.c` | Transport registry and common helpers (moved from `master/uspace/transport/`) |
 | `transport/transport_raw.c` | Raw socket transport implementation (moved) |
 | `transport/transport_xdp.c` | XDP/AF_XDP transport implementation (moved) |
+| `transport/transport_macb.c` | MACB register-level transport |
+| `transport/irq_pin.c` | NIC IRQ affinity pinning implementation |
 | `master/uspace/Makefile.am` | Autotools build rules for library + binary |
 
 ### Modified Files (implemented)
@@ -369,11 +387,17 @@ When enabled, implies:
 | `configure.ac` | Add `--enable-uspace-master` option, conditionals, implied options, XDP detection |
 | `master/Makefile.am` | Conditional uspace subdirectory |
 
+### Modified Shared Files
+
+| File | Change |
+|------|--------|
+| `master/master.c` | EoE thread calls `ec_eoe_poll_tx()` before `ec_eoe_run()` |
+| `master/kernel/pal_eoe.h` | No-op `ec_eoe_poll_tx()` inline for kernel build |
+
 ### Files NOT Modified
 
 - `master/master.h` — no type renames
-- `master/master.c` — no changes to core
-- `master/*.c` — master core unchanged
+- `master/*.c` (other than master.c EoE hook) — master core unchanged
 - `lib/` — untouched (disabled when uspace-master enabled)
 
 ## Task Tracking
@@ -404,10 +428,10 @@ When enabled, implies:
 - [x] Implement syslog support (log callback in ecrt_lib_init)
 - [x] Implement --foreground / --log-stdout flags
 - [x] Update help text
-- [ ] Test: build with `--enable-uspace-master`
-- [ ] Test: build without (default kernel mode unchanged)
-- [ ] Test: `ec_master` standalone binary works
-- [ ] Test: application linked against `libethercat.so` works
+- [x] Test: build with `--enable-uspace-master`
+- [x] Test: build without (default kernel mode unchanged)
+- [x] Test: `ec_master` standalone binary works
+- [x] Test: application linked against `libethercat.so` works
 
 ## Items to Watch
 
