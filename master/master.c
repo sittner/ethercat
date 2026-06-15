@@ -1541,6 +1541,7 @@ static int ec_master_eoe_thread(void *priv_data)
         // actual EoE processing
         sth_to_send = 0;
         list_for_each_entry(eoe, &master->eoe_handlers, list) {
+            ec_eoe_poll_tx(eoe);
             ec_eoe_run(eoe);
             if (eoe->queue_datagram) {
                 sth_to_send = 1;
