@@ -39,9 +39,6 @@ extern const ec_transport_ops_t ec_transport_raw_ops;
 extern const ec_transport_ops_t ec_transport_xdp_skb_ops;
 extern const ec_transport_ops_t ec_transport_xdp_native_ops;
 #endif
-#ifdef HAVE_MACB_UIO
-extern const ec_transport_ops_t ec_transport_macb_uio_ops;
-#endif
 
 /****************************************************************************/
 
@@ -54,9 +51,6 @@ static const struct {
 #ifdef HAVE_XDP
     { EC_TRANSPORT_XDP_SKB,    &ec_transport_xdp_skb_ops },
     { EC_TRANSPORT_XDP_NATIVE, &ec_transport_xdp_native_ops },
-#endif
-#ifdef HAVE_MACB_UIO
-    { EC_TRANSPORT_MACB_UIO,   &ec_transport_macb_uio_ops },
 #endif
     { 0, NULL }  /* End of table marker */
 };

@@ -1447,34 +1447,14 @@ if test "x$enable_uspace_master" = "xyes"; then
     if test "x$have_xdp" = "xyes"; then
         AC_DEFINE([HAVE_XDP], [1], [XDP transport support available])
     fi
-
-    # Optional MACB/GEM UIO transport support
-    AC_ARG_ENABLE([macb-uio],
-        AS_HELP_STRING([--enable-macb-uio],
-                       [Enable MACB/GEM direct register access transport via UIO or /dev/mem (default: no)]),
-        [
-            case "${enableval}" in
-                yes) enable_macb_uio=yes ;;
-                no)  enable_macb_uio=no  ;;
-                *) AC_MSG_ERROR([Invalid value for --enable-macb-uio]) ;;
-            esac
-        ],
-        [enable_macb_uio=no]
-    )
-
-    if test "x$enable_macb_uio" = "xyes"; then
-        AC_DEFINE([HAVE_MACB_UIO], [1], [MACB/GEM UIO transport support enabled])
-    fi
 else
     EC_USPACE_MASTER_DEFINE=''
-    enable_macb_uio=no
 fi
 
 AC_SUBST(EC_USPACE_MASTER_DEFINE)
 
 AM_CONDITIONAL([ENABLE_USPACE_MASTER], [test "x$enable_uspace_master" = "xyes"])
 AM_CONDITIONAL([HAVE_XDP], [test "x$have_xdp" = "xyes"])
-AM_CONDITIONAL([HAVE_MACB_UIO], [test "x$enable_macb_uio" = "xyes"])
 
 #-----------------------------------------------------------------------------
 

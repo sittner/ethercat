@@ -80,10 +80,6 @@ if HAVE_XDP
 libethercat_la_SOURCES += $(top_srcdir)/transport/transport_xdp.c
 endif
 
-if HAVE_MACB_UIO
-libethercat_la_SOURCES += $(top_srcdir)/transport/transport_macb.c
-endif
-
 libethercat_la_CFLAGS = \
 	-DEC_USPACE_MASTER \
 	-D_GNU_SOURCE \
@@ -95,10 +91,6 @@ libethercat_la_CFLAGS = \
 
 if HAVE_XDP
 libethercat_la_CFLAGS += -DHAVE_XDP
-endif
-
-if HAVE_MACB_UIO
-libethercat_la_CFLAGS += -DHAVE_MACB_UIO
 endif
 
 #
