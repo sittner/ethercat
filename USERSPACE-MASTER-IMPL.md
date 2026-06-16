@@ -516,8 +516,9 @@ treated as unstable for third-party consumers.
 Multi-master userspace setups share a single global workqueue thread
 (`ec_system_wq`). A work item blocked on one master (for example a slow SII
 read against an unresponsive slave) can delay timeout callbacks on other
-masters. In practice this is typically low impact because FSM work items are
-designed to stay non-blocking, but the shared resource remains a limitation.
+masters (for example request timeout handling and other deferred FSM work). In
+practice this is typically low impact because FSM work items are designed to
+stay non-blocking, but the shared resource remains a limitation.
 
 ### `ecrt_lib_init()` Idempotency
 

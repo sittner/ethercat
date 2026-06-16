@@ -157,8 +157,7 @@ ec_master_t *ec_master_registry_pop_first(void)
         if (master_registry[i]) {
             master = master_registry[i];
             master_registry[i] = NULL;
-            if (registry_master_count > 0)
-                registry_master_count--;
+            registry_master_count--;
             break;
         }
     }
