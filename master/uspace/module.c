@@ -37,6 +37,11 @@
 
 /****************************************************************************/
 
+/** Seconds of inactivity before giving up on the initial bus scan. */
+#define EC_SCAN_PROGRESS_TIMEOUT 5
+
+/****************************************************************************/
+
 static atomic_flag lib_initialized = ATOMIC_FLAG_INIT;
 
 /****************************************************************************/
@@ -195,11 +200,9 @@ ec_master_t *ecrt_startup_master(unsigned int index,
      * Activity-based scan timeout: reset on every new slave discovered.
      * This handles both empty buses (timeout after ~5s) and large buses
      * (keeps waiting as long as slaves are being found). */
-#define EC_SCAN_PROGRESS_TIMEOUT 5  /* seconds */
     {
-        unsigned int prev_count = 0;
+        unsigned int prev_count = master->slave_count;
         while (!master->initial_scan_done) {
-            prev_count = master->slave_count;
             ec_wq_wait_timeout(master->scan_queue, master->initial_scan_done,
                     EC_SCAN_PROGRESS_TIMEOUT);
             if (master->initial_scan_done)
@@ -217,6 +220,7 @@ ec_master_t *ecrt_startup_master(unsigned int index,
             EC_MASTER_DBG(master, 1,
                     "Scan progress: %u slave(s) found so far,"
                     " resetting timeout.\n", master->slave_count);
+            prev_count = master->slave_count;
         }
     }
     EC_MASTER_DBG(master, 1, "Initial bus scan complete, %u slave(s) found.\n",

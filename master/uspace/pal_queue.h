@@ -40,8 +40,12 @@ typedef struct {
 
 static inline void ec_wq_init(ec_wait_queue_t *wq)
 {
+    pthread_condattr_t attr;
     pthread_mutex_init(&wq->lock, NULL);
-    pthread_cond_init(&wq->cond, NULL);
+    pthread_condattr_init(&attr);
+    pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+    pthread_cond_init(&wq->cond, &attr);
+    pthread_condattr_destroy(&attr);
 }
 
 static inline void ec_wq_wake(ec_wait_queue_t *wq)
@@ -107,7 +111,7 @@ static inline void ec_wq_wake_all(ec_wait_queue_t *wq)
         pthread_mutex_lock(&(wq).lock);                        \
         if (!(condition)) {                                    \
             struct timespec __ts;                              \
-            clock_gettime(CLOCK_REALTIME, &__ts);              \
+            clock_gettime(CLOCK_MONOTONIC, &__ts);              \
             __ts.tv_sec += (timeout_sec);                      \
             while (!(condition)) {                             \
                 int __rc = pthread_cond_timedwait(             \
