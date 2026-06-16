@@ -29,6 +29,9 @@
 #ifndef __EC_USPACE_PAL_QUEUE_H__
 #define __EC_USPACE_PAL_QUEUE_H__
 
+#include <errno.h>
+#include <time.h>
+
 /* Wait queue structure for userspace */
 typedef struct {
     pthread_mutex_t lock;
@@ -37,8 +40,12 @@ typedef struct {
 
 static inline void ec_wq_init(ec_wait_queue_t *wq)
 {
+    pthread_condattr_t attr;
     pthread_mutex_init(&wq->lock, NULL);
-    pthread_cond_init(&wq->cond, NULL);
+    pthread_condattr_init(&attr);
+    pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+    pthread_cond_init(&wq->cond, &attr);
+    pthread_condattr_destroy(&attr);
 }
 
 static inline void ec_wq_wake(ec_wait_queue_t *wq)
@@ -88,6 +95,35 @@ static inline void ec_wq_wake_all(ec_wait_queue_t *wq)
     ({                                                   \
         ec_wq_wait(wq, condition);                       \
         0;                                               \
+    })
+
+/**
+ * ec_wq_wait_timeout - sleep until condition is true or timeout expires
+ * @wq: wait queue (passed by VALUE)
+ * @condition: condition to wait for
+ * @timeout_sec: timeout in seconds
+ *
+ * Returns 0 if condition became true, non-zero if timed out.
+ */
+#define ec_wq_wait_timeout(wq, condition, timeout_sec)        \
+    ({                                                         \
+        int __ret = 0;                                         \
+        pthread_mutex_lock(&(wq).lock);                        \
+        if (!(condition)) {                                    \
+            struct timespec __ts;                              \
+            clock_gettime(CLOCK_MONOTONIC, &__ts);              \
+            __ts.tv_sec += (timeout_sec);                      \
+            while (!(condition)) {                             \
+                int __rc = pthread_cond_timedwait(             \
+                        &(wq).cond, &(wq).lock, &__ts);        \
+                if (__rc == ETIMEDOUT) {                       \
+                    __ret = 1;                                 \
+                    break;                                     \
+                }                                             \
+            }                                                  \
+        }                                                      \
+        pthread_mutex_unlock(&(wq).lock);                      \
+        __ret;                                                 \
     })
 
 #endif /* __EC_USPACE_PAL_QUEUE_H__ */
