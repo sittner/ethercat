@@ -74,6 +74,10 @@ static ec_cdev_t g_cdev = { .sock_fd = -1 };
 
 /****************************************************************************/
 
+extern void ecrt_release_master(ec_master_t *master);
+
+/****************************************************************************/
+
 /** Global master registry — protected by registry_rwlock. */
 static ec_master_t *master_registry[EC_MAX_MASTERS];
 static unsigned int registry_master_count;
@@ -144,6 +148,24 @@ unsigned int ec_master_registry_count(void)
     pthread_rwlock_rdlock(&registry_rwlock);
     count = registry_master_count;
     pthread_rwlock_unlock(&registry_rwlock);
+    return count;
+}
+
+unsigned int ec_master_registry_release_all(void)
+{
+    ec_master_t *masters[EC_MAX_MASTERS];
+    unsigned int i, count = 0;
+
+    pthread_rwlock_rdlock(&registry_rwlock);
+    for (i = 0; i < EC_MAX_MASTERS; i++) {
+        if (master_registry[i])
+            masters[count++] = master_registry[i];
+    }
+    pthread_rwlock_unlock(&registry_rwlock);
+
+    for (i = 0; i < count; i++)
+        ecrt_release_master(masters[i]);
+
     return count;
 }
 
