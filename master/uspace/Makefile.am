@@ -108,13 +108,18 @@ endif
 #   release, then set age to 0.
 #
 libethercat_la_LDFLAGS = -version-info 0:0:0 \
+	-Wl,--version-script=$(srcdir)/libethercat.map \
 	-fvisibility=hidden
+
+libethercat_la_DEPENDENCIES = libethercat.map
 
 libethercat_la_LIBADD = -lpthread
 
 if HAVE_XDP
 libethercat_la_LIBADD += -lxdp
 endif
+
+EXTRA_DIST = libethercat.map
 
 bin_PROGRAMS = ec_master
 
