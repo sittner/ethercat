@@ -147,6 +147,25 @@ unsigned int ec_master_registry_count(void)
     return count;
 }
 
+ec_master_t *ec_master_registry_pop_first(void)
+{
+    ec_master_t *master = NULL;
+    unsigned int i;
+
+    pthread_rwlock_wrlock(&registry_rwlock);
+    for (i = 0; i < EC_MAX_MASTERS; i++) {
+        if (master_registry[i]) {
+            master = master_registry[i];
+            master_registry[i] = NULL;
+            registry_master_count--;
+            break;
+        }
+    }
+    pthread_rwlock_unlock(&registry_rwlock);
+
+    return master;
+}
+
 /****************************************************************************/
 /* Helper: copy string into fixed-size ioctl buffer (NUL-terminated).        */
 /****************************************************************************/

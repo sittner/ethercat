@@ -718,7 +718,10 @@ EC_PUBLIC_API ec_master_t *ecrt_startup_master(
         );
 
 /** Cleanup the userspace master library.
- *  Must be called after all masters have been released. */
+ *
+ *  Any still-active masters are force-released before global userspace
+ *  infrastructure teardown.
+ */
 EC_PUBLIC_API void ecrt_lib_cleanup(void);
 
 #else /* !EC_USPACE_MASTER */

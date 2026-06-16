@@ -85,9 +85,11 @@ EC_PUBLIC_API ec_master_t *ecrt_startup_master(
         );
 
 /** Cleanup the userspace master library.
- *  Must be called after all masters have been released.
+ *  Any still-active masters are force-released before global infrastructure
+ *  teardown.
  *
  *  Internally calls:
+ *    ecrt_release_master() on all active masters
  *    ec_pal_irq_work_cleanup()
  *    ec_pal_work_cleanup()
  *
@@ -486,3 +488,40 @@ the define automatically.
 The library currently uses `-version-info 0:0:0` (libtool). Before a stable
 release, the version-info triple should be updated following libtool's
 current:revision:age scheme to maintain ABI compatibility tracking.
+
+## Known Limitations and Usage Notes
+
+### EoE Callback Requirement
+
+`ecrt_master_callbacks()` must be called before `ecrt_master_activate()` for
+EoE (Ethernet over EtherCAT) processing to be enabled. If callbacks are not
+set, EoE is effectively disabled for the master by design.
+
+### Transport Ops Visibility (`ectp.h`)
+
+`ec_transport_ops_t` is intentionally visible in the public `ectp.h` header so
+applications can implement custom transports. Direct application use of ops
+function pointers is unsupported; applications should call the
+`ec_transport_*()` wrapper functions.
+
+### `ecrt_tool.h` Stability
+
+The tool API (`ecrt_tool_*` functions and structs referenced from
+`ec_ioctl_data.h`) may change between minor releases. It is versioned
+separately in the linker map (`LIBETHERCAT_USPACE_TOOL_1.0`) and should be
+treated as unstable for third-party consumers.
+
+### Multi-Master Workqueue Limitation
+
+Multi-master userspace setups share a single global workqueue thread
+(`ec_system_wq`). A work item blocked on one master (for example a slow SII
+read against an unresponsive slave) can delay timeout callbacks on other
+masters (for example request timeout handling and other deferred FSM work). In
+practice this is typically low impact because FSM work items are designed to
+stay non-blocking, but the shared resource remains a limitation.
+
+### `ecrt_lib_init()` Idempotency
+
+Calling `ecrt_lib_init()` more than once is a no-op: it returns 0 with a
+warning and does not re-initialize global state. Any `socket_path` provided on
+subsequent calls is ignored.

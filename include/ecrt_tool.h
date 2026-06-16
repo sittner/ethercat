@@ -20,6 +20,11 @@
  *
  ****************************************************************************/
 
+/* WARNING: This is an unstable internal API. Struct layouts and function
+ * signatures may change between minor releases. This header is intended
+ * for the ethercat CLI tool which is always version-matched with the
+ * library. Third-party consumers should not rely on ABI stability. */
+
 /**
  * \file
  * EtherCAT master tool/diagnostic API.
