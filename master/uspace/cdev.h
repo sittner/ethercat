@@ -75,14 +75,14 @@ struct ec_master *ec_master_registry_find(unsigned int index);
 /** Return the number of registered masters. */
 unsigned int ec_master_registry_count(void);
 
-/** Release all currently registered masters.
+/** Remove and return one registered master (if any).
  *
- *  Takes a snapshot of the registry and calls ecrt_release_master() for each
- *  entry. Intended for library shutdown hardening paths.
+ *  The returned master is unregistered from the global registry while under
+ *  lock, so callers can safely release it afterwards.
  *
- *  \return Number of released masters.
+ *  \return Pointer to an unregistered master, or NULL if none are registered.
  */
-unsigned int ec_master_registry_release_all(void);
+struct ec_master *ec_master_registry_pop_first(void);
 
 /****************************************************************************/
 

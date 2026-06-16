@@ -289,12 +289,14 @@ void ecrt_release_master(ec_master_t *master)
 void ecrt_lib_cleanup(void)
 {
     unsigned int active_masters = ec_master_registry_count();
+    ec_master_t *master;
 
     if (active_masters) {
         ec_log(EC_LOG_WARNING,
                 "ecrt_lib_cleanup() called with %u master(s) still active, releasing them\n",
                 active_masters);
-        ec_master_registry_release_all();
+        while ((master = ec_master_registry_pop_first()) != NULL)
+            ecrt_release_master(master);
     }
 
     ec_ipc_server_stop();
