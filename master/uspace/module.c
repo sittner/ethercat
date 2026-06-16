@@ -252,13 +252,12 @@ out_free:
 
 /****************************************************************************/
 
-void ecrt_release_master(ec_master_t *master)
+/** Internal master teardown — stops threads, closes devices/transports, frees
+ *  memory. Does NOT touch the registry (caller is responsible for removing
+ *  the master from the registry before calling this).
+ */
+static void release_master_internal(ec_master_t *master)
 {
-    if (!master) return;
-
-    /* Unregister master from global registry before shutting down. */
-    ec_master_registry_remove(master);
-
     if (master->phase != EC_ORPHANED) {
         if (master->active) {
             ec_master_leave_operation_phase(master);
@@ -286,6 +285,18 @@ void ecrt_release_master(ec_master_t *master)
 
 /****************************************************************************/
 
+void ecrt_release_master(ec_master_t *master)
+{
+    if (!master) return;
+
+    /* Unregister master from global registry before shutting down. */
+    ec_master_registry_remove(master);
+
+    release_master_internal(master);
+}
+
+/****************************************************************************/
+
 void ecrt_lib_cleanup(void)
 {
     unsigned int active_masters = ec_master_registry_count();
@@ -295,8 +306,10 @@ void ecrt_lib_cleanup(void)
         ec_log(EC_LOG_WARNING,
                 "ecrt_lib_cleanup() called with %u master(s) still active, releasing them\n",
                 active_masters);
+        /* pop_first() unregisters under lock; release_master_internal()
+         * performs teardown without a redundant registry scan. */
         while ((master = ec_master_registry_pop_first()) != NULL)
-            ecrt_release_master(master);
+            release_master_internal(master);
     }
 
     ec_ipc_server_stop();
