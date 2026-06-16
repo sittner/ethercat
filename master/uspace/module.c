@@ -191,8 +191,34 @@ ec_master_t *ecrt_startup_master(unsigned int index,
      * caller. This ensures that when the application calls
      * ecrt_master_slave_config(), slaves have been scanned and their SII
      * data (including default PDO mappings) is available.
-     * ec_wq_wait_interruptible() always returns 0 in the userspace PAL. */
-    ec_wq_wait_interruptible(master->scan_queue, master->initial_scan_done);
+     *
+     * Activity-based scan timeout: reset on every new slave discovered.
+     * This handles both empty buses (timeout after ~5s) and large buses
+     * (keeps waiting as long as slaves are being found). */
+#define EC_SCAN_PROGRESS_TIMEOUT 5  /* seconds */
+    {
+        unsigned int prev_count = 0;
+        while (!master->initial_scan_done) {
+            prev_count = master->slave_count;
+            ec_wq_wait_timeout(master->scan_queue, master->initial_scan_done,
+                    EC_SCAN_PROGRESS_TIMEOUT);
+            if (master->initial_scan_done)
+                break;
+            if (master->slave_count == prev_count) {
+                /* No progress — bus empty or stalled */
+                EC_MASTER_WARN(master,
+                        "Initial bus scan timed out after %u seconds"
+                        " with no new slaves. %u slave(s) found so far."
+                        " Scan continues in background.\n",
+                        EC_SCAN_PROGRESS_TIMEOUT, master->slave_count);
+                break;
+            }
+            /* Progress was made (new slaves found), keep waiting */
+            EC_MASTER_DBG(master, 1,
+                    "Scan progress: %u slave(s) found so far,"
+                    " resetting timeout.\n", master->slave_count);
+        }
+    }
     EC_MASTER_DBG(master, 1, "Initial bus scan complete, %u slave(s) found.\n",
             master->slave_count);
 
