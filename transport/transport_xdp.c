@@ -39,14 +39,37 @@
 #include <xdp/xsk.h>
 
 #include "ectp.h"
+#include "irq_pin.h"
 
 /****************************************************************************/
 
-#define NUM_FRAMES 4096
+/*
+ * Frame pool and ring sizing for EtherCAT XDP transport.
+ *
+ * EtherCAT is a synchronous request/reply protocol: at most one TX frame and
+ * a handful of RX frames are in flight per cycle.  A small UMEM pool is
+ * therefore sufficient:
+ *
+ *   NUM_FRAMES    = 64  → 64 × 4 KiB = 256 KiB UMEM (vs. 16 MB at 4096)
+ *   XDP_FQ_FILL_SIZE    = 32  → initial fill-queue population (half the pool,
+ *                               leaving headroom for TX / CQ in-flight frames)
+ *   XDP_RX/TX_RING_SIZE = 32  → explicit ring sizes (replacing the 2048-entry
+ *                               XSK_RING_*_DEFAULT_NUM_DESCS defaults)
+ *
+ * Invariant: NUM_FRAMES must be at least XDP_FQ_FILL_SIZE + some headroom so
+ * the free pool is never exhausted while frames are in-flight in TX/CQ/RX.
+ */
+#define NUM_FRAMES 64
 #define FRAME_SIZE XSK_UMEM__DEFAULT_FRAME_SIZE
 #define INVALID_UMEM_FRAME UINT64_MAX
 #define FQ_REFILL_MAX 64
 #define CQ_DRAIN_MAX 8
+#define XDP_RX_RING_SIZE 32
+#define XDP_TX_RING_SIZE 32
+#define XDP_FQ_FILL_SIZE 32
+
+_Static_assert(NUM_FRAMES >= XDP_FQ_FILL_SIZE * 2,
+    "NUM_FRAMES must be at least twice XDP_FQ_FILL_SIZE to leave headroom");
 
 /** Private data for XDP transport */
 typedef struct {
@@ -67,6 +90,7 @@ typedef struct {
     uint32_t xdp_flags;                /**< XDP flags used during open (needed for detach) */
     uint64_t fq_refill_pending[FQ_REFILL_MAX]; /**< Frames awaiting FQ refill */
     uint32_t fq_refill_count;          /**< Number of pending refill frames */
+    int irq_number;                    /**< Cached NIC IRQ (0 = not discovered) */
 } ec_transport_xdp_t;
 
 /****************************************************************************/
@@ -215,8 +239,8 @@ static int xdp_open(ec_transport_t *transport, const char *interface,
      * on all network interfaces without requiring driver-specific XDP support.
      */
     memset(&cfg, 0, sizeof(cfg));
-    cfg.rx_size = XSK_RING_CONS__DEFAULT_NUM_DESCS;
-    cfg.tx_size = XSK_RING_PROD__DEFAULT_NUM_DESCS;
+    cfg.rx_size = XDP_RX_RING_SIZE;
+    cfg.tx_size = XDP_TX_RING_SIZE;
     cfg.xdp_flags = xdp_flags;
     cfg.bind_flags = bind_flags;
     cfg.libbpf_flags = 0;
@@ -230,18 +254,21 @@ static int xdp_open(ec_transport_t *transport, const char *interface,
     }
 
     /* Populate fill queue */
-    ret = xsk_ring_prod__reserve(&xdp->fq, XSK_RING_PROD__DEFAULT_NUM_DESCS, &idx);
-    if (ret != XSK_RING_PROD__DEFAULT_NUM_DESCS) {
+    ret = xsk_ring_prod__reserve(&xdp->fq, XDP_FQ_FILL_SIZE, &idx);
+    if (ret != XDP_FQ_FILL_SIZE) {
         fprintf(stderr, "Failed to reserve fill queue\n");
         goto err_free_socket;
     }
 
-    for (i = 0; i < XSK_RING_PROD__DEFAULT_NUM_DESCS; i++) {
+    for (i = 0; i < XDP_FQ_FILL_SIZE; i++) {
         addr = xsk_alloc_umem_frame(xdp);
         *xsk_ring_prod__fill_addr(&xdp->fq, idx++) = addr;
     }
 
-    xsk_ring_prod__submit(&xdp->fq, XSK_RING_PROD__DEFAULT_NUM_DESCS);
+    xsk_ring_prod__submit(&xdp->fq, XDP_FQ_FILL_SIZE);
+
+    /* Discover NIC IRQ for affinity pinning (best-effort, non-fatal) */
+    xdp->irq_number = ec_irq_discover(interface);
 
     return 0;
 
@@ -586,6 +613,22 @@ static int xdp_get_fd(ec_transport_t *transport)
 
 /****************************************************************************/
 
+/**
+ * Set CPU affinity for the NIC IRQ.
+ */
+static int xdp_set_cpu_affinity(ec_transport_t *transport, int cpu)
+{
+    ec_transport_xdp_t *xdp = transport->priv;
+
+    if (!xdp || xdp->irq_number <= 0) {
+        return -ENODEV;
+    }
+
+    return ec_irq_set_affinity(xdp->irq_number, cpu);
+}
+
+/****************************************************************************/
+
 /** XDP transport operations */
 const ec_transport_ops_t ec_transport_xdp_skb_ops = {
     .name = "xdp-skb",
@@ -597,6 +640,7 @@ const ec_transport_ops_t ec_transport_xdp_skb_ops = {
     .get_link_state = xdp_get_link_state,
     .get_mac = xdp_get_mac,
     .get_fd = xdp_get_fd,
+    .set_cpu_affinity = xdp_set_cpu_affinity,
 };
 
 const ec_transport_ops_t ec_transport_xdp_native_ops = {
@@ -609,6 +653,7 @@ const ec_transport_ops_t ec_transport_xdp_native_ops = {
     .get_link_state = xdp_get_link_state,
     .get_mac = xdp_get_mac,
     .get_fd = xdp_get_fd,
+    .set_cpu_affinity = xdp_set_cpu_affinity,
 };
 
 /****************************************************************************/

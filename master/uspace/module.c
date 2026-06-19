@@ -37,6 +37,11 @@
 
 /****************************************************************************/
 
+/** Seconds of inactivity before giving up on the initial bus scan. */
+#define EC_SCAN_PROGRESS_TIMEOUT 5
+
+/****************************************************************************/
+
 static atomic_flag lib_initialized = ATOMIC_FLAG_INIT;
 
 /****************************************************************************/
@@ -112,6 +117,8 @@ ec_master_t *ecrt_startup_master(unsigned int index,
     /* Borrow transport pointers — caller owns them, library opens/closes */
     master->pal.transport = transport;
     master->pal.backup_transport = backup_transport;
+    atomic_init(&master->pal.rt_cpu, -1);
+    master->pal.affinity_cpu = -1;
 
     /* Open main transport (interface stored in transport->interface) */
     ret = ec_transport_open(master->pal.transport);
@@ -189,8 +196,33 @@ ec_master_t *ecrt_startup_master(unsigned int index,
      * caller. This ensures that when the application calls
      * ecrt_master_slave_config(), slaves have been scanned and their SII
      * data (including default PDO mappings) is available.
-     * ec_wq_wait_interruptible() always returns 0 in the userspace PAL. */
-    ec_wq_wait_interruptible(master->scan_queue, master->initial_scan_done);
+     *
+     * Activity-based scan timeout: reset on every new slave discovered.
+     * This handles both empty buses (timeout after ~5s) and large buses
+     * (keeps waiting as long as slaves are being found). */
+    {
+        unsigned int prev_count = master->slave_count;
+        while (!master->initial_scan_done) {
+            ec_wq_wait_timeout(master->scan_queue, master->initial_scan_done,
+                    EC_SCAN_PROGRESS_TIMEOUT);
+            if (master->initial_scan_done)
+                break;
+            if (master->slave_count == prev_count) {
+                /* No progress — bus empty or stalled */
+                EC_MASTER_WARN(master,
+                        "Initial bus scan timed out after %u seconds"
+                        " with no new slaves. %u slave(s) found so far."
+                        " Scan continues in background.\n",
+                        EC_SCAN_PROGRESS_TIMEOUT, master->slave_count);
+                break;
+            }
+            /* Progress was made (new slaves found), keep waiting */
+            EC_MASTER_DBG(master, 1,
+                    "Scan progress: %u slave(s) found so far,"
+                    " resetting timeout.\n", master->slave_count);
+            prev_count = master->slave_count;
+        }
+    }
     EC_MASTER_DBG(master, 1, "Initial bus scan complete, %u slave(s) found.\n",
             master->slave_count);
 
@@ -220,13 +252,12 @@ out_free:
 
 /****************************************************************************/
 
-void ecrt_release_master(ec_master_t *master)
+/** Internal master teardown — stops threads, closes devices/transports, frees
+ *  memory. Does NOT touch the registry (caller is responsible for removing
+ *  the master from the registry before calling this).
+ */
+static void release_master_internal(ec_master_t *master)
 {
-    if (!master) return;
-
-    /* Unregister master from global registry before shutting down. */
-    ec_master_registry_remove(master);
-
     if (master->phase != EC_ORPHANED) {
         if (master->active) {
             ec_master_leave_operation_phase(master);
@@ -254,8 +285,33 @@ void ecrt_release_master(ec_master_t *master)
 
 /****************************************************************************/
 
+void ecrt_release_master(ec_master_t *master)
+{
+    if (!master) return;
+
+    /* Unregister master from global registry before shutting down. */
+    ec_master_registry_remove(master);
+
+    release_master_internal(master);
+}
+
+/****************************************************************************/
+
 void ecrt_lib_cleanup(void)
 {
+    unsigned int active_masters = ec_master_registry_count();
+    ec_master_t *master;
+
+    if (active_masters) {
+        ec_log(EC_LOG_WARNING,
+                "ecrt_lib_cleanup() called with %u master(s) still active, releasing them\n",
+                active_masters);
+        /* pop_first() unregisters under lock; release_master_internal()
+         * performs teardown without a redundant registry scan. */
+        while ((master = ec_master_registry_pop_first()) != NULL)
+            release_master_internal(master);
+    }
+
     ec_ipc_server_stop();
     ec_pal_irq_work_cleanup();
     ec_pal_work_cleanup();

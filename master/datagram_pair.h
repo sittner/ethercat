@@ -45,6 +45,7 @@ typedef struct {
     ec_datagram_t datagrams[EC_MAX_NUM_DEVICES]; /**< Datagrams.  */
 #if EC_MAX_NUM_DEVICES > 1
     uint8_t *send_buffer;
+    size_t send_buffer_size; /**< Size of send_buffer allocation. */
 #endif
     unsigned int expected_working_counter; /**< Expectord working conter. */
 } ec_datagram_pair_t;

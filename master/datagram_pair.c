@@ -74,12 +74,13 @@ int ec_datagram_pair_init(
     }
 
 #if EC_MAX_NUM_DEVICES > 1
-    if (!(pair->send_buffer = ec_alloc(data_size))) {
+    if (!(pair->send_buffer = ec_rt_alloc(data_size))) {
         EC_MASTER_ERR(domain->master,
                 "Failed to allocate domain send buffer!\n");
         ret = -ENOMEM;
         goto out_datagrams;
     }
+    pair->send_buffer_size = data_size;
 #endif
 
     /* The ec_datagram_lxx() calls below can not fail, because either the
@@ -155,7 +156,7 @@ void ec_datagram_pair_clear(
 
 #if EC_MAX_NUM_DEVICES > 1
     if (pair->send_buffer) {
-        ec_free(pair->send_buffer);
+        ec_rt_free(pair->send_buffer, pair->send_buffer_size);
     }
 #endif
 }

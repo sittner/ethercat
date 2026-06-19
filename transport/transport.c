@@ -39,9 +39,7 @@ extern const ec_transport_ops_t ec_transport_raw_ops;
 extern const ec_transport_ops_t ec_transport_xdp_skb_ops;
 extern const ec_transport_ops_t ec_transport_xdp_native_ops;
 #endif
-#ifdef HAVE_MACB_UIO
-extern const ec_transport_ops_t ec_transport_macb_uio_ops;
-#endif
+extern const ec_transport_ops_t ec_transport_ccat_ops;
 
 /****************************************************************************/
 
@@ -55,9 +53,7 @@ static const struct {
     { EC_TRANSPORT_XDP_SKB,    &ec_transport_xdp_skb_ops },
     { EC_TRANSPORT_XDP_NATIVE, &ec_transport_xdp_native_ops },
 #endif
-#ifdef HAVE_MACB_UIO
-    { EC_TRANSPORT_MACB_UIO,   &ec_transport_macb_uio_ops },
-#endif
+    { EC_TRANSPORT_CCAT,       &ec_transport_ccat_ops },
     { 0, NULL }  /* End of table marker */
 };
 
@@ -247,6 +243,24 @@ int ec_transport_get_fd(ec_transport_t *transport)
     }
 
     return transport->ops->get_fd(transport);
+}
+
+/****************************************************************************/
+
+/**
+ * Set CPU affinity for the transport's NIC IRQs.
+ */
+int ec_transport_set_cpu_affinity(ec_transport_t *transport, int cpu)
+{
+    if (!transport || !transport->ops) {
+        return -EINVAL;
+    }
+
+    if (!transport->ops->set_cpu_affinity) {
+        return -ENOSYS;
+    }
+
+    return transport->ops->set_cpu_affinity(transport, cpu);
 }
 
 /****************************************************************************/

@@ -1449,6 +1449,8 @@ static int ec_master_operation_thread(void *priv_data)
         }
 
         ec_master_operation_thread_schedule(master);
+
+        ec_pal_check_irq_affinity(master);
     }
 
     EC_MASTER_DBG(master, 1, "Master OP thread exiting...\n");
@@ -1539,6 +1541,7 @@ static int ec_master_eoe_thread(void *priv_data)
         // actual EoE processing
         sth_to_send = 0;
         list_for_each_entry(eoe, &master->eoe_handlers, list) {
+            ec_eoe_poll_tx(eoe);
             ec_eoe_run(eoe);
             if (eoe->queue_datagram) {
                 sth_to_send = 1;
@@ -2284,6 +2287,8 @@ int ecrt_master_receive(ec_master_t *master)
 {
     unsigned int dev_idx;
     ec_datagram_t *datagram, *next;
+
+    ec_pal_record_rt_cpu(master);
 
     // receive datagrams
     for (dev_idx = EC_DEVICE_MAIN; dev_idx < ec_master_num_devices(master);

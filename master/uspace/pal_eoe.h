@@ -229,6 +229,9 @@ struct ec_eoe;
 int ec_eoe_netdev_create(struct ec_eoe *eoe, const char *name);
 void ec_eoe_netdev_destroy(struct ec_eoe *eoe);
 
+/* TX polling (userspace pull model) */
+void ec_eoe_poll_tx(struct ec_eoe *eoe);
+
 /* Net_device queue operations */
 static inline void ec_eoe_netdev_tx_lock(ec_eoe_netdev_t dev) {
     ec_netdev_tx_lock(dev);

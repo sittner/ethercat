@@ -45,7 +45,7 @@ enum ec_transport_type {
     EC_TRANSPORT_RAW = 0,   /**< AF_PACKET raw socket */
     EC_TRANSPORT_XDP_SKB,   /**< AF_XDP Generic SKB mode (universal compatibility) */
     EC_TRANSPORT_XDP_NATIVE,   /**< AF_XDP Native driver mode with copy */
-    EC_TRANSPORT_MACB_UIO,  /**< MACB/GEM direct register access via UIO or /dev/mem */
+    EC_TRANSPORT_CCAT,      /**< Beckhoff CCAT EIM direct PCI access (no kernel module) */
 };
 
 typedef enum ec_transport_type ec_transport_type_t;
@@ -89,6 +89,18 @@ struct ec_transport_ops {
     
     /** Get file descriptor for polling (optional, returns -1 if not supported) */
     int (*get_fd)(ec_transport_t *transport);
+
+    /** Set CPU affinity for transport IRQs (optional, NULL if not supported).
+     *
+     * Pins the NIC IRQ(s) associated with this transport to the specified CPU.
+     * This keeps the IRQ handler and the RT thread on the same core for
+     * cache-local I/O, reducing latency and jitter in the EtherCAT cycle.
+     *
+     * @param transport  Transport instance.
+     * @param cpu        Target CPU number (0-based).
+     * @return 0 on success, negative error code on failure.
+     */
+    int (*set_cpu_affinity)(ec_transport_t *transport, int cpu);
 };
 
 /****************************************************************************/
@@ -246,6 +258,17 @@ const ec_transport_ops_t *ec_transport_get_ops(ec_transport_type_t type);
  * Print available transports to stderr.
  */
 void ec_transport_print_available(void);
+
+/**
+ * Set CPU affinity for the transport's NIC IRQs.
+ *
+ * Calls the transport's set_cpu_affinity op if available.
+ *
+ * @param transport Transport instance
+ * @param cpu Target CPU number (0-based)
+ * @return 0 on success, -ENOSYS if not supported, other negative on error
+ */
+int ec_transport_set_cpu_affinity(ec_transport_t *transport, int cpu);
 
 /****************************************************************************/
 

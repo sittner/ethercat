@@ -65,5 +65,37 @@ static inline void ec_vfree(void *ptr)
 }
 
 /****************************************************************************/
+/* RT-hardened allocation: on kernel, all kmalloc memory is pinned.         */
+/****************************************************************************/
+
+static inline void *ec_rt_alloc(size_t size)
+{
+    return kmalloc(size, GFP_KERNEL);
+}
+
+static inline void *ec_rt_zalloc(size_t size)
+{
+    return kzalloc(size, GFP_KERNEL);
+}
+
+static inline void ec_rt_free(void *ptr, size_t size)
+{
+    (void)size;
+    kfree(ptr);
+}
+
+static inline void ec_rt_lock_mem(void *p, size_t size)
+{
+    (void)p;
+    (void)size;
+}
+
+static inline void ec_rt_unlock_mem(void *p, size_t size)
+{
+    (void)p;
+    (void)size;
+}
+
+/****************************************************************************/
 
 #endif /* __EC_KERNEL_PAL_ALLOC_H__ */

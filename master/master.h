@@ -373,6 +373,8 @@ ec_time_t ec_current_time(void);
 
 extern const unsigned int rate_intervals[EC_RATE_COUNT]; // see master.c
 
+#include "pal_affinity.h"
+
 /****************************************************************************/
 
 #endif

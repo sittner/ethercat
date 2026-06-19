@@ -347,15 +347,66 @@ int ec_eoe_netdev_create(struct ec_eoe *eoe, const char *name)
     mac_addr[ETH_ALEN - 1] = (uint8_t) ec_eoe_netdev_ifindex(eoe->dev);
     ec_netdev_set_mac(eoe->dev, mac_addr);
 
+    /* In userspace, the TAP device is always "open" once created.
+     * There is no ifconfig/ip-link callback, so we mark it open
+     * immediately to allow the EoE state machine to process frames.
+     */
+    eoe->opened = 1;
+    eoe->tx_queue_active = 1;
+
     return 0;
 }
 
 void ec_eoe_netdev_destroy(struct ec_eoe *eoe)
 {
     if (eoe->dev) {
+        eoe->opened = 0;
+        eoe->tx_queue_active = 0;
         ec_netdev_unregister(eoe->dev);
         ec_netdev_free(eoe->dev);
         eoe->dev = NULL;
+    }
+}
+
+/****************************************************************************/
+/* EoE TX Polling                                                            */
+/****************************************************************************/
+
+/** Poll TAP device for outgoing frames and enqueue them for EoE transmission.
+ *
+ * In kernel space, the network stack calls ndo_start_xmit (push model).
+ * In userspace, we poll the TAP fd (pull model) from the EoE thread.
+ */
+void ec_eoe_poll_tx(ec_eoe_t *eoe)
+{
+    ec_skb_t *skb;
+    ec_eoe_frame_t *frame;
+
+    if (!eoe->opened || !eoe->dev || !eoe->tx_queue_active) {
+        return;
+    }
+
+    while (eoe->tx_queued_frames < eoe->tx_queue_size) {
+        skb = ec_netdev_rx_from_tap(eoe->dev);
+        if (!skb) {
+            break;
+        }
+
+        frame = malloc(sizeof(ec_eoe_frame_t));
+        if (!frame) {
+            ec_skb_free(skb);
+            break;
+        }
+
+        frame->skb = skb;
+        INIT_LIST_HEAD(&frame->queue);
+        list_add_tail(&frame->queue, &eoe->tx_queue);
+        eoe->tx_queued_frames++;
+    }
+
+    /* Stop accepting if queue is full */
+    if (eoe->tx_queued_frames >= eoe->tx_queue_size) {
+        ec_eoe_netdev_stop_queue(eoe->dev);
     }
 }
 

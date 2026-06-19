@@ -104,6 +104,21 @@ static void log_to_stderr(int level, const char *fmt, va_list ap)
 
 /****************************************************************************/
 
+static void main_log(int level, const char *fmt, ...)
+{
+    va_list ap;
+
+    va_start(ap, fmt);
+    if (g_log_stdout) {
+        log_to_stderr(level, fmt, ap);
+    } else {
+        log_to_syslog(level, fmt, ap);
+    }
+    va_end(ap);
+}
+
+/****************************************************************************/
+
 /** Double-fork daemonization. */
 static int daemonize(void)
 {
@@ -329,7 +344,7 @@ int main(int argc, char *argv[])
             return 1;
         }
         if (write_pidfile(EC_PIDFILE) < 0) {
-            ec_log(EC_LOG_WARNING, "Failed to write PID file %s\n",
+            main_log(EC_LOG_WARNING, "Failed to write PID file %s\n",
                     EC_PIDFILE);
         }
     }
@@ -339,7 +354,7 @@ int main(int argc, char *argv[])
 
     ret = ecrt_lib_init(log_cb, g_socket_path);
     if (ret < 0) {
-        ec_log(EC_LOG_ERR, "Failed to initialize EtherCAT library\n");
+        main_log(EC_LOG_ERR, "Failed to initialize EtherCAT library\n");
         ret = 1;
         goto out_cleanup_log;
     }
@@ -352,7 +367,7 @@ int main(int argc, char *argv[])
 
     /* Start all masters (transports[] and backup_transports[] are already NULL) */
     for (i = 0; i < master_count; i++) {
-        ec_log(EC_LOG_INFO, "Starting EtherCAT master %d on interface %s"
+        main_log(EC_LOG_INFO, "Starting EtherCAT master %d on interface %s"
                 " (transport: %s)\n",
                 i, configs[i].interface,
                 ec_transport_get_name(configs[i].transport));
@@ -361,7 +376,7 @@ int main(int argc, char *argv[])
         transports[i] = ec_transport_create(configs[i].transport,
                 configs[i].interface);
         if (!transports[i]) {
-            ec_log(EC_LOG_ERR, "Failed to create transport for master %d\n", i);
+            main_log(EC_LOG_ERR, "Failed to create transport for master %d\n", i);
             goto out_release_masters;
         }
 
@@ -371,7 +386,7 @@ int main(int argc, char *argv[])
             backup_transports[i] = ec_transport_create(configs[i].transport,
                     configs[i].backup);
             if (!backup_transports[i]) {
-                ec_log(EC_LOG_ERR,
+                main_log(EC_LOG_ERR,
                         "Failed to create backup transport for master %d\n", i);
                 ec_transport_destroy(transports[i]);
                 transports[i] = NULL;
@@ -386,7 +401,7 @@ int main(int argc, char *argv[])
                 g_debug_level,
                 configs[i].cpu);
         if (!masters[i]) {
-            ec_log(EC_LOG_ERR, "Failed to start EtherCAT master %d\n", i);
+            main_log(EC_LOG_ERR, "Failed to start EtherCAT master %d\n", i);
             if (backup_transports[i]) {
                 ec_transport_destroy(backup_transports[i]);
                 backup_transports[i] = NULL;
@@ -397,14 +412,14 @@ int main(int argc, char *argv[])
         }
     }
 
-    ec_log(EC_LOG_INFO, "EtherCAT master(s) started (%d total)\n",
+    main_log(EC_LOG_INFO, "EtherCAT master(s) started (%d total)\n",
             master_count);
 
     while (g_running) {
         pause();
     }
 
-    ec_log(EC_LOG_INFO, "Shutting down EtherCAT master(s)\n");
+    main_log(EC_LOG_INFO, "Shutting down EtherCAT master(s)\n");
     ret = 0;
 
     i = master_count;
@@ -431,7 +446,7 @@ cleanup_masters:
     ecrt_lib_cleanup();
 
     if (!ret)
-        ec_log(EC_LOG_INFO, "EtherCAT master(s) stopped\n");
+        main_log(EC_LOG_INFO, "EtherCAT master(s) stopped\n");
 
 out_cleanup_log:
     if (!g_foreground) {
@@ -443,5 +458,4 @@ out_cleanup_log:
 
     return ret;
 }
-
 

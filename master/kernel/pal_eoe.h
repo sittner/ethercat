@@ -20,6 +20,9 @@ struct ec_eoe;
 int ec_eoe_netdev_create(struct ec_eoe *eoe, const char *name);
 void ec_eoe_netdev_destroy(struct ec_eoe *eoe);
 
+/* TX polling - no-op in kernel (uses push model via ndo_start_xmit) */
+static inline void ec_eoe_poll_tx(struct ec_eoe *eoe) {}
+
 /* Net_device queue operations */
 static inline void ec_eoe_netdev_tx_lock(ec_eoe_netdev_t dev) {
     netif_tx_lock_bh(dev);

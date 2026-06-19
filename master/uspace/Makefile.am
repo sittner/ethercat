@@ -70,16 +70,15 @@ libethercat_la_SOURCES = \
 	device_uspace.c \
 	module.c \
 	cdev.c \
+	tool_api.c \
 	$(top_srcdir)/lib/shared.c \
 	$(top_srcdir)/transport/transport.c \
-	$(top_srcdir)/transport/transport_raw.c
+	$(top_srcdir)/transport/transport_raw.c \
+	$(top_srcdir)/transport/transport_ccat.c \
+	$(top_srcdir)/transport/irq_pin.c
 
 if HAVE_XDP
 libethercat_la_SOURCES += $(top_srcdir)/transport/transport_xdp.c
-endif
-
-if HAVE_MACB_UIO
-libethercat_la_SOURCES += $(top_srcdir)/transport/transport_macb.c
 endif
 
 libethercat_la_CFLAGS = \
@@ -93,10 +92,6 @@ libethercat_la_CFLAGS = \
 
 if HAVE_XDP
 libethercat_la_CFLAGS += -DHAVE_XDP
-endif
-
-if HAVE_MACB_UIO
-libethercat_la_CFLAGS += -DHAVE_MACB_UIO
 endif
 
 #
@@ -113,13 +108,18 @@ endif
 #   release, then set age to 0.
 #
 libethercat_la_LDFLAGS = -version-info 0:0:0 \
+	-Wl,--version-script=$(srcdir)/libethercat.map \
 	-fvisibility=hidden
+
+libethercat_la_DEPENDENCIES = libethercat.map
 
 libethercat_la_LIBADD = -lpthread
 
 if HAVE_XDP
 libethercat_la_LIBADD += -lxdp
 endif
+
+EXTRA_DIST = libethercat.map
 
 bin_PROGRAMS = ec_master
 
