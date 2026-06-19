@@ -34,6 +34,9 @@
 #include "slave_config.h"
 #include "fsm_slave_config.h"
 
+#define PSC_DBG(fmt, ...) \
+    printf("#### " fmt, ##__VA_ARGS__)
+
 /****************************************************************************/
 
 /** Maximum clock difference (in ns) before going to SAFEOP.
@@ -195,16 +198,26 @@ int ec_fsm_slave_config_exec(
         ec_datagram_t *datagram /**< Datagram to use. */
         )
 {
+    PSC_DBG("[slave %u] exec entry dg=%s\n",
+            fsm->slave->ring_position,
+            ec_datagram_state_str(datagram));
+
     // D9: Propagate datagram to sub-FSMs that store it persistently
     fsm->fsm_change.datagram = datagram;
 
     if (datagram->state == EC_DATAGRAM_SENT
         || datagram->state == EC_DATAGRAM_QUEUED) {
         // datagram was not sent or received yet.
+        PSC_DBG("[slave %u] exec: dg not ready, skip\n",
+                fsm->slave->ring_position);
         return ec_fsm_slave_config_running(fsm);
     }
 
     fsm->state(fsm, datagram);
+
+    PSC_DBG("[slave %u] exec exit running=%d\n",
+            fsm->slave->ring_position,
+            ec_fsm_slave_config_running(fsm));
     return ec_fsm_slave_config_running(fsm);
 }
 
@@ -246,6 +259,8 @@ void ec_fsm_slave_config_enter_init(
         ec_datagram_t *datagram /**< Datagram to use. */
         )
 {
+    PSC_DBG("[slave %u] enter_init: change_start(INIT), immediate exec\n",
+            fsm->slave->ring_position);
     ec_fsm_change_start(&fsm->fsm_change, fsm->slave, EC_SLAVE_STATE_INIT);
     ec_fsm_change_exec(&fsm->fsm_change);
     fsm->state = ec_fsm_slave_config_state_init;
@@ -262,6 +277,9 @@ void ec_fsm_slave_config_state_init(
         )
 {
     ec_slave_t *slave = fsm->slave;
+
+    PSC_DBG("[slave %u] state_init: change_exec\n",
+            slave->ring_position);
 
     if (ec_fsm_change_exec(&fsm->fsm_change)) return;
 
@@ -710,6 +728,9 @@ void ec_fsm_slave_config_enter_boot_preop(
         ec_datagram_t *datagram /**< Datagram to use. */
         )
 {
+    PSC_DBG("[slave %u] enter_boot_preop\n",
+            fsm->slave->ring_position);
+
     fsm->state = ec_fsm_slave_config_state_boot_preop;
 
     if (fsm->slave->requested_state != EC_SLAVE_STATE_BOOT) {
@@ -849,6 +870,9 @@ void ec_fsm_slave_config_enter_sdo_conf(
 {
     ec_slave_t *slave = fsm->slave;
 
+    PSC_DBG("[slave %u] enter_sdo_conf\n",
+            slave->ring_position);
+
     if (!slave->config) {
         ec_fsm_slave_config_enter_pdo_sync(fsm, datagram);
         return;
@@ -880,6 +904,9 @@ void ec_fsm_slave_config_state_sdo_conf(
         ec_datagram_t *datagram /**< Datagram to use. */
         )
 {
+    PSC_DBG("[slave %u] state_sdo_conf: coe_exec\n",
+            fsm->slave->ring_position);
+
     if (ec_fsm_coe_exec(&fsm->fsm_coe, datagram)) {
         return;
     }
@@ -1733,6 +1760,9 @@ void ec_fsm_slave_config_enter_safeop(
         ec_datagram_t *datagram /**< Datagram to use. */
         )
 {
+    PSC_DBG("[slave %u] enter_safeop\n",
+            fsm->slave->ring_position);
+
     fsm->state = ec_fsm_slave_config_state_safeop;
     ec_fsm_change_start(&fsm->fsm_change, fsm->slave, EC_SLAVE_STATE_SAFEOP);
     ec_fsm_change_exec(&fsm->fsm_change); // execute immediately
@@ -1864,6 +1894,9 @@ void ec_fsm_slave_config_enter_op(
         ec_datagram_t *datagram /**< Datagram to use. */
         )
 {
+    PSC_DBG("[slave %u] enter_op\n",
+            fsm->slave->ring_position);
+
     // set state to OP
     fsm->state = ec_fsm_slave_config_state_op;
     ec_fsm_change_start(&fsm->fsm_change, fsm->slave, EC_SLAVE_STATE_OP);

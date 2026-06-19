@@ -1034,10 +1034,17 @@ void ec_fsm_master_state_configure_slave(
 {
     ec_master_t *master = fsm->master;
 
+    printf("#### [master] configure_slave: calling config_exec for slave %u, dg=%s\n",
+            fsm->fsm_slave_config.slave->ring_position,
+            ec_datagram_state_str(fsm->datagram));
+
     if (ec_fsm_slave_config_exec(&fsm->fsm_slave_config,
                 fsm->datagram)) {
         return;
     }
+
+    printf("#### [master] configure_slave: slave %u config DONE\n",
+            fsm->fsm_slave_config.slave->ring_position);
 
     fsm->slave->force_config = 0;
 
