@@ -107,10 +107,9 @@ void ec_fsm_master_init(
 #ifdef EC_EOE
     ec_fsm_eoe_init(&fsm->fsm_eoe);
 #endif
-    ec_fsm_change_init(&fsm->fsm_change, fsm->datagram);
-    ec_fsm_slave_config_init(&fsm->fsm_slave_config, fsm->datagram,
-            &fsm->fsm_change, &fsm->fsm_coe, &fsm->fsm_soe, &fsm->fsm_pdo,
-            &fsm->fsm_eoe);
+    ec_fsm_change_init(&fsm->fsm_change);
+    fsm->fsm_change.datagram = fsm->datagram;
+    ec_fsm_slave_config_init(&fsm->fsm_slave_config);
     ec_fsm_slave_scan_init(&fsm->fsm_slave_scan, fsm->datagram,
             &fsm->fsm_slave_config, &fsm->fsm_pdo);
     ec_fsm_sii_init(&fsm->fsm_sii, fsm->datagram);
@@ -794,6 +793,7 @@ void ec_fsm_master_state_read_state(
         if (slave->current_state & EC_SLAVE_STATE_ACK_ERR) {
             fsm->idle = 0;
             fsm->state = ec_fsm_master_state_acknowledge;
+            fsm->fsm_change.datagram = fsm->datagram;
             ec_fsm_change_ack(&fsm->fsm_change, slave);
             fsm->state(fsm); // execute immediately
             return;
@@ -1034,7 +1034,8 @@ void ec_fsm_master_state_configure_slave(
 {
     ec_master_t *master = fsm->master;
 
-    if (ec_fsm_slave_config_exec(&fsm->fsm_slave_config)) {
+    if (ec_fsm_slave_config_exec(&fsm->fsm_slave_config,
+                fsm->datagram)) {
         return;
     }
 
