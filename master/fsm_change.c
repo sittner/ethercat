@@ -51,12 +51,11 @@ void ec_fsm_change_state_error(ec_fsm_change_t *);
    Constructor.
 */
 
-void ec_fsm_change_init(ec_fsm_change_t *fsm, /**< finite state machine */
-                        ec_datagram_t *datagram /**< datagram */
+void ec_fsm_change_init(ec_fsm_change_t *fsm /**< finite state machine */
                         )
 {
     fsm->state = NULL;
-    fsm->datagram = datagram;
+    fsm->datagram = NULL;
     fsm->spontaneous_change = 0;
 }
 

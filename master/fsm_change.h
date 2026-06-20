@@ -70,7 +70,7 @@ struct ec_fsm_change
 
 /****************************************************************************/
 
-void ec_fsm_change_init(ec_fsm_change_t *, ec_datagram_t *);
+void ec_fsm_change_init(ec_fsm_change_t *);
 void ec_fsm_change_clear(ec_fsm_change_t *);
 
 void ec_fsm_change_start(ec_fsm_change_t *, ec_slave_t *, ec_slave_state_t);
