@@ -109,9 +109,20 @@ void ec_fsm_master_init(
 #endif
     ec_fsm_change_init(&fsm->fsm_change);
     fsm->fsm_change.datagram = fsm->datagram;
-    ec_fsm_slave_config_init(&fsm->fsm_slave_config);
+
+    // init slave config FSM pool
+    {
+        unsigned int i;
+        for (i = 0; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
+            ec_fsm_slave_config_init(&fsm->config_slots[i].fsm);
+            fsm->config_slots[i].in_use = 0;
+        }
+    }
+    fsm->active_config_slot = NULL;
+
+    // slave scan uses pool slot 0 (never concurrent with config)
     ec_fsm_slave_scan_init(&fsm->fsm_slave_scan, fsm->datagram,
-            &fsm->fsm_slave_config, &fsm->fsm_pdo);
+            &fsm->config_slots[0].fsm, &fsm->fsm_pdo);
     ec_fsm_sii_init(&fsm->fsm_sii, fsm->datagram);
 }
 
@@ -131,9 +142,49 @@ void ec_fsm_master_clear(
     ec_fsm_eoe_clear(&fsm->fsm_eoe);
 #endif
     ec_fsm_change_clear(&fsm->fsm_change);
-    ec_fsm_slave_config_clear(&fsm->fsm_slave_config);
+
+    // clear slave config FSM pool
+    {
+        unsigned int i;
+        for (i = 0; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
+            ec_fsm_slave_config_clear(&fsm->config_slots[i].fsm);
+        }
+    }
+
     ec_fsm_slave_scan_clear(&fsm->fsm_slave_scan);
     ec_fsm_sii_clear(&fsm->fsm_sii);
+}
+
+/****************************************************************************/
+
+/** Allocate a slave config FSM slot from the pool.
+ *
+ * \return pointer to the allocated slot, or NULL if pool is full.
+ */
+ec_fsm_slave_config_slot_t *ec_fsm_master_alloc_config_slot(
+        ec_fsm_master_t *fsm /**< Master state machine. */
+        )
+{
+    unsigned int i;
+
+    for (i = 0; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
+        if (!fsm->config_slots[i].in_use) {
+            fsm->config_slots[i].in_use = 1;
+            return &fsm->config_slots[i];
+        }
+    }
+    return NULL;
+}
+
+/****************************************************************************/
+
+/** Free a slave config FSM slot back to the pool.
+ */
+void ec_fsm_master_free_config_slot(
+        ec_fsm_slave_config_slot_t *slot /**< Slot to free. */
+        )
+{
+    slot->in_use = 0;
 }
 
 /****************************************************************************/
@@ -742,7 +793,19 @@ void ec_fsm_master_action_configure(
 
         fsm->idle = 0;
         fsm->state = ec_fsm_master_state_configure_slave;
-        ec_fsm_slave_config_start(&fsm->fsm_slave_config, slave);
+
+        // allocate a config FSM slot from the pool
+        fsm->active_config_slot =
+                ec_fsm_master_alloc_config_slot(fsm);
+        if (!fsm->active_config_slot) {
+            EC_MASTER_ERR(master,
+                    "No free slave config FSM slots!\n");
+            fsm->state = ec_fsm_master_state_start;
+            return;
+        }
+
+        ec_fsm_slave_config_start(
+                &fsm->active_config_slot->fsm, slave);
         fsm->state(fsm); // execute immediately
         fsm->datagram->device_index = fsm->slave->device_index;
         return;
@@ -1033,18 +1096,19 @@ void ec_fsm_master_state_configure_slave(
         )
 {
     ec_master_t *master = fsm->master;
+    ec_fsm_slave_config_slot_t *slot = fsm->active_config_slot;
 
     printf("#### [master] configure_slave: calling config_exec for slave %u, dg=%s\n",
-            fsm->fsm_slave_config.slave->ring_position,
+            slot->fsm.slave->ring_position,
             ec_datagram_state_str(fsm->datagram));
 
-    if (ec_fsm_slave_config_exec(&fsm->fsm_slave_config,
+    if (ec_fsm_slave_config_exec(&slot->fsm,
                 fsm->datagram)) {
         return;
     }
 
     printf("#### [master] configure_slave: slave %u config DONE\n",
-            fsm->fsm_slave_config.slave->ring_position);
+            slot->fsm.slave->ring_position);
 
     fsm->slave->force_config = 0;
 
@@ -1052,9 +1116,13 @@ void ec_fsm_master_state_configure_slave(
     master->config_busy = 0;
     ec_wq_wake_interruptible(&master->config_queue);
 
-    if (!ec_fsm_slave_config_success(&fsm->fsm_slave_config)) {
+    if (!ec_fsm_slave_config_success(&slot->fsm)) {
         // TODO: mark slave_config as failed.
     }
+
+    // free the pool slot
+    ec_fsm_master_free_config_slot(slot);
+    fsm->active_config_slot = NULL;
 
     fsm->idle = 1;
     ec_fsm_master_action_next_slave_state(fsm);

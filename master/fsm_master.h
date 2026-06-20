@@ -53,6 +53,19 @@ typedef struct {
 
 /****************************************************************************/
 
+/** Maximum number of parallel slave configuration FSM slots.
+ */
+#define EC_FSM_SLAVE_CONFIG_POOL_SIZE 16
+
+/** A slave configuration FSM pool slot.
+ */
+typedef struct {
+    ec_fsm_slave_config_t fsm; /**< The slave config FSM. */
+    int in_use; /**< Non-zero if this slot is currently allocated. */
+} ec_fsm_slave_config_slot_t;
+
+/****************************************************************************/
+
 typedef struct ec_fsm_master ec_fsm_master_t; /**< \see ec_fsm_master */
 
 /** Finite state machine of an EtherCAT master.
@@ -87,7 +100,10 @@ struct ec_fsm_master {
     ec_fsm_pdo_t fsm_pdo; /**< PDO configuration state machine. */
     ec_fsm_eoe_t fsm_eoe; /**< EoE state machine */
     ec_fsm_change_t fsm_change; /**< State change state machine */
-    ec_fsm_slave_config_t fsm_slave_config; /**< slave state machine */
+    ec_fsm_slave_config_slot_t config_slots[EC_FSM_SLAVE_CONFIG_POOL_SIZE];
+                                /**< Pool of slave config FSM slots. */
+    ec_fsm_slave_config_slot_t *active_config_slot; /**< Currently executing
+                                                       config slot (sequential). */
     ec_fsm_slave_scan_t fsm_slave_scan; /**< slave state machine */
     ec_fsm_sii_t fsm_sii; /**< SII state machine */
 };
