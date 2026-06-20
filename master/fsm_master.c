@@ -184,38 +184,6 @@ void ec_fsm_master_clear(
 
 /****************************************************************************/
 
-/** Allocate a slave config FSM slot from the pool.
- *
- * \return pointer to the allocated slot, or NULL if pool is full.
- */
-ec_fsm_slave_config_slot_t *ec_fsm_master_alloc_config_slot(
-        ec_fsm_master_t *fsm /**< Master state machine. */
-        )
-{
-    unsigned int i;
-
-    for (i = 0; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
-        if (!fsm->config_slots[i].in_use) {
-            fsm->config_slots[i].in_use = 1;
-            return &fsm->config_slots[i];
-        }
-    }
-    return NULL;
-}
-
-/****************************************************************************/
-
-/** Free a slave config FSM slot back to the pool.
- */
-void ec_fsm_master_free_config_slot(
-        ec_fsm_slave_config_slot_t *slot /**< Slot to free. */
-        )
-{
-    slot->in_use = 0;
-}
-
-/****************************************************************************/
-
 /** Check if a slave is already assigned to an active config slot.
  *
  * \return 1 if slave is in a slot, 0 otherwise.
