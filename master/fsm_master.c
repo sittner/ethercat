@@ -128,7 +128,6 @@ int ec_fsm_master_init(
         }
         fsm->config_slots[i].in_use = 0;
     }
-    fsm->active_config_slot = NULL;
 
     // slave scan uses pool slot 0 (never concurrent with config)
     ec_fsm_slave_scan_init(&fsm->fsm_slave_scan, fsm->datagram,
@@ -324,25 +323,6 @@ int ec_fsm_master_exec(
 
     fsm->state(fsm);
     return 1;
-}
-
-/****************************************************************************/
-
-/** Get the datagram that should be queued for sending.
- *
- * When a config slot is active, returns the slot's private datagram;
- * otherwise returns the master FSM datagram.
- *
- * \return pointer to the active datagram.
- */
-ec_datagram_t *ec_fsm_master_get_datagram(
-        ec_fsm_master_t *fsm /**< Master state machine. */
-        )
-{
-    if (fsm->active_config_slot) {
-        return &fsm->active_config_slot->datagram;
-    }
-    return fsm->datagram;
 }
 
 /****************************************************************************/

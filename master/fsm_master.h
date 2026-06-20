@@ -103,8 +103,6 @@ struct ec_fsm_master {
     ec_fsm_change_t fsm_change; /**< State change state machine */
     ec_fsm_slave_config_slot_t config_slots[EC_FSM_SLAVE_CONFIG_POOL_SIZE];
                                 /**< Pool of slave config FSM slots. */
-    ec_fsm_slave_config_slot_t *active_config_slot; /**< Currently executing
-                                                       config slot (sequential). */
     ec_fsm_slave_scan_t fsm_slave_scan; /**< slave state machine */
     ec_fsm_sii_t fsm_sii; /**< SII state machine */
 };
@@ -117,7 +115,6 @@ void ec_fsm_master_clear(ec_fsm_master_t *);
 void ec_fsm_master_reset(ec_fsm_master_t *);
 
 int ec_fsm_master_exec(ec_fsm_master_t *);
-ec_datagram_t *ec_fsm_master_get_datagram(ec_fsm_master_t *);
 int ec_fsm_master_queue_datagram(ec_fsm_master_t *);
 int ec_fsm_master_idle(const ec_fsm_master_t *);
 
