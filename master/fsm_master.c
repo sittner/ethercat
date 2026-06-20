@@ -217,6 +217,51 @@ void ec_fsm_master_free_config_slot(
 
 /****************************************************************************/
 
+/** Queue the FSM datagram(s) for sending, respecting frame size limits.
+ *
+ * For non-config states, the master fsm_datagram is always queued (small).
+ * For config states, the slot datagram is checked against max_queue_size.
+ * If it doesn't fit, it is not queued and will be retried next cycle.
+ *
+ * \return 1 if a datagram was queued, 0 otherwise.
+ */
+int ec_fsm_master_queue_datagram(
+        ec_fsm_master_t *fsm /**< Master state machine. */
+        )
+{
+    ec_master_t *master = fsm->master;
+    ec_datagram_t *datagram;
+
+    if (fsm->active_config_slot) {
+        ec_datagram_t *queued;
+        size_t queue_size = 0;
+
+        datagram = &fsm->active_config_slot->datagram;
+
+        // sum current queue usage
+        list_for_each_entry(queued, &master->datagram_queue, queue) {
+            if (queued->state == EC_DATAGRAM_QUEUED) {
+                queue_size += queued->data_size;
+            }
+        }
+
+        // check if the config datagram fits
+        if (queue_size + datagram->data_size > master->max_queue_size) {
+            // does not fit — defer to next cycle
+            return 0;
+        }
+
+        ec_master_queue_datagram(master, datagram);
+        return 1;
+    }
+
+    // non-config: always queue the master FSM datagram
+    ec_master_queue_datagram(master, fsm->datagram);
+    return 1;
+}
+
+/****************************************************************************/
+
 /** Reset state machine.
  */
 void ec_fsm_master_reset(

@@ -1404,8 +1404,7 @@ static int ec_master_idle_thread(void *priv_data)
         if (ec_rt_lock_interruptible(&master->io_mutex))
             break;
         if (fsm_exec) {
-            ec_master_queue_datagram(master,
-                    ec_fsm_master_get_datagram(&master->fsm));
+            ec_fsm_master_queue_datagram(&master->fsm);
         }
         sent_bytes = ecrt_master_send(master);
         ec_mutex_unlock(&master->io_mutex);
@@ -2248,9 +2247,8 @@ int ecrt_master_send(ec_master_t *master)
     int sent_bytes;
 
     if (master->injection_seq_rt != master->injection_seq_fsm) {
-        // inject datagram produced by master FSM
-        ec_master_queue_datagram(master,
-                ec_fsm_master_get_datagram(&master->fsm));
+        // inject datagram produced by master FSM (with frame size check)
+        ec_fsm_master_queue_datagram(&master->fsm);
         master->injection_seq_rt = master->injection_seq_fsm;
     }
 

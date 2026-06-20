@@ -118,6 +118,7 @@ void ec_fsm_master_reset(ec_fsm_master_t *);
 
 int ec_fsm_master_exec(ec_fsm_master_t *);
 ec_datagram_t *ec_fsm_master_get_datagram(ec_fsm_master_t *);
+int ec_fsm_master_queue_datagram(ec_fsm_master_t *);
 int ec_fsm_master_idle(const ec_fsm_master_t *);
 
 /****************************************************************************/
