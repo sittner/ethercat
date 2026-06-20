@@ -1121,6 +1121,7 @@ void ec_fsm_master_enter_configure_slaves(
     ec_master_t *master = fsm->master;
     ec_slave_t *slave;
     ec_fsm_slave_config_slot_t *slot;
+    unsigned int i;
     int started = 0;
 
     // Handle config_changed: restart from write_system_times
@@ -1177,8 +1178,14 @@ void ec_fsm_master_enter_configure_slaves(
         return;
     }
 
-    // Execute all active slots immediately (first cycle)
-    fsm->state(fsm);
+    // Execute initial state of all active slots (prepares first datagrams)
+    for (i = 0; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
+        slot = &fsm->config_slots[i];
+        if (!slot->in_use) {
+            continue;
+        }
+        ec_fsm_slave_config_exec(&slot->fsm, &slot->datagram);
+    }
 }
 
 /****************************************************************************/
@@ -1204,8 +1211,10 @@ void ec_fsm_master_state_configure_slaves(
             continue;
         }
 
-        // Skip if datagram not yet received
-        if (slot->datagram.state == EC_DATAGRAM_SENT
+        // Skip if datagram not yet processed (not sent, or not queued due
+        // to frame size limits — will be queued on a subsequent cycle)
+        if (slot->datagram.state == EC_DATAGRAM_INIT
+                || slot->datagram.state == EC_DATAGRAM_SENT
                 || slot->datagram.state == EC_DATAGRAM_QUEUED) {
             any_active = 1;
             continue;
