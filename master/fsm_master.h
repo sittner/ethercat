@@ -54,8 +54,9 @@ typedef struct {
 /****************************************************************************/
 
 /** Maximum number of parallel slave configuration FSM slots.
+ *  Slot 0 is reserved for slave scan; config uses slots 1..POOL_SIZE-1.
  */
-#define EC_FSM_SLAVE_CONFIG_POOL_SIZE 8
+#define EC_FSM_SLAVE_CONFIG_POOL_SIZE 9
 
 /** A slave configuration FSM pool slot.
  */

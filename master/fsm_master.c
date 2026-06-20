@@ -129,11 +129,8 @@ int ec_fsm_master_init(
         fsm->config_slots[i].in_use = 0;
     }
 
-    // Slave scan borrows slot 0's FSM. This is safe because:
-    // - The master FSM is a single state pointer; it can only be in
-    //   state_scan_slave OR state_configure_slaves, never both.
-    // - Scanning completes (all slots unused) before state_start, which is
-    //   the only path to rescan. No explicit drain flag is needed.
+    // Slave scan permanently owns slot 0's FSM. The config pool allocator
+    // starts at slot 1, so slot 0 is structurally reserved and never shared.
     ec_fsm_slave_scan_init(&fsm->fsm_slave_scan, fsm->datagram,
             &fsm->config_slots[0].fsm, &fsm->fsm_pdo);
     ec_fsm_sii_init(&fsm->fsm_sii, fsm->datagram);
@@ -199,7 +196,7 @@ static int ec_fsm_master_slave_in_slot(
 {
     unsigned int i;
 
-    for (i = 0; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
+    for (i = 1; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
         if (fsm->config_slots[i].in_use
                 && fsm->config_slots[i].fsm.slave == slave) {
             return 1;
@@ -285,7 +282,7 @@ int ec_fsm_master_queue_datagram(
         // Queue each active slot's datagram if it fits.
         // Returns 0 if nothing was queued (all datagrams already in flight
         // or none fit); this is normal during parallel config.
-        for (i = 0; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
+        for (i = 1; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
             slot = &fsm->config_slots[i];
             if (!slot->in_use) {
                 continue;
@@ -1172,8 +1169,9 @@ void ec_fsm_master_enter_configure_slaves(
         return;
     }
 
-    // Fill as many slots as possible with slaves needing configuration
-    for (i = 0; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
+    // Fill as many slots as possible with slaves needing configuration.
+    // Start at slot 1: slot 0 is reserved for slave scan.
+    for (i = 1; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
         slot = &fsm->config_slots[i];
         if (slot->in_use) {
             continue;
@@ -1223,7 +1221,8 @@ void ec_fsm_master_state_configure_slaves(
     unsigned int i;
     int any_active = 0;
 
-    for (i = 0; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
+    // Start at slot 1: slot 0 is reserved for slave scan.
+    for (i = 1; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
         slot = &fsm->config_slots[i];
         if (!slot->in_use) {
             continue;
@@ -1246,9 +1245,11 @@ void ec_fsm_master_state_configure_slaves(
 
         slot->fsm.slave->force_config = 0;
 
-        // Try to refill this slot with the next unconfigured slave
+        // Stop refilling if configuration changed; let active slots drain,
+        // then the FSM will restart and re-evaluate from write_system_times.
         slot->in_use = 0;
-        if (ec_fsm_master_fill_config_slot(fsm, slot)) {
+        if (!master->config_changed
+                && ec_fsm_master_fill_config_slot(fsm, slot)) {
             any_active = 1;
         }
     }
