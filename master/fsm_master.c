@@ -230,13 +230,13 @@ int ec_fsm_master_queue_datagram(
         )
 {
     ec_master_t *master = fsm->master;
-    ec_datagram_t *datagram;
 
-    if (fsm->active_config_slot) {
+    if (fsm->state == ec_fsm_master_state_configure_slaves) {
         ec_datagram_t *queued;
+        ec_fsm_slave_config_slot_t *slot;
         size_t queue_size = 0;
-
-        datagram = &fsm->active_config_slot->datagram;
+        unsigned int i;
+        int queued_any = 0;
 
         // sum current queue usage
         list_for_each_entry(queued, &master->datagram_queue, queue) {
@@ -245,14 +245,27 @@ int ec_fsm_master_queue_datagram(
             }
         }
 
-        // check if the config datagram fits
-        if (queue_size + datagram->data_size > master->max_queue_size) {
-            // does not fit — defer to next cycle
-            return 0;
+        // queue each active slot's datagram if it fits
+        for (i = 0; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
+            slot = &fsm->config_slots[i];
+            if (!slot->in_use) {
+                continue;
+            }
+            // only queue if in INIT state (needs sending)
+            if (slot->datagram.state != EC_DATAGRAM_INIT) {
+                continue;
+            }
+            if (queue_size + slot->datagram.data_size
+                    > master->max_queue_size) {
+                // doesn't fit — skip, will retry next cycle
+                continue;
+            }
+            ec_master_queue_datagram(master, &slot->datagram);
+            queue_size += slot->datagram.data_size;
+            queued_any = 1;
         }
 
-        ec_master_queue_datagram(master, datagram);
-        return 1;
+        return queued_any;
     }
 
     // non-config: always queue the master FSM datagram
@@ -297,20 +310,16 @@ int ec_fsm_master_exec(
         ec_fsm_master_t *fsm /**< Master state machine. */
         )
 {
-    ec_datagram_t *datagram;
+    // In parallel config mode, the state function itself checks per-slot
+    // datagram states. Just check the master datagram for non-config states.
+    if (fsm->state != ec_fsm_master_state_configure_slaves) {
+        ec_datagram_t *datagram = fsm->datagram;
 
-    // When configuring a slave, use the slot's private datagram;
-    // otherwise use the master FSM datagram.
-    if (fsm->active_config_slot) {
-        datagram = &fsm->active_config_slot->datagram;
-    } else {
-        datagram = fsm->datagram;
-    }
-
-    if (datagram->state == EC_DATAGRAM_SENT
-        || datagram->state == EC_DATAGRAM_QUEUED) {
-        // datagram was not sent or received yet.
-        return 0;
+        if (datagram->state == EC_DATAGRAM_SENT
+            || datagram->state == EC_DATAGRAM_QUEUED) {
+            // datagram was not sent or received yet.
+            return 0;
+        }
     }
 
     fsm->state(fsm);
@@ -1131,6 +1140,8 @@ void ec_fsm_master_enter_configure_slaves(
 {
     ec_master_t *master = fsm->master;
     ec_slave_t *slave;
+    ec_fsm_slave_config_slot_t *slot;
+    int started = 0;
 
     // Handle config_changed: restart from write_system_times
     if (master->config_changed) {
@@ -1141,17 +1152,28 @@ void ec_fsm_master_enter_configure_slaves(
         return;
     }
 
-    // Find first slave needing configuration
+    // Allocate a slot for EACH slave needing configuration
     for (slave = master->slaves;
             slave < master->slaves + master->slave_count;
             slave++) {
         if ((slave->current_state != slave->requested_state
                     || slave->force_config) && !slave->error_flag) {
 
-            // Start slave configuration
-            ec_sem_down(&master->config_sem);
-            master->config_busy = 1;
-            ec_sem_up(&master->config_sem);
+            slot = ec_fsm_master_alloc_config_slot(fsm);
+            if (!slot) {
+                EC_MASTER_WARN(master,
+                        "No free config slots, %d slaves started.\n",
+                        started);
+                break;
+            }
+
+            if (!started) {
+                ec_sem_down(&master->config_sem);
+                master->config_busy = 1;
+                ec_sem_up(&master->config_sem);
+                fsm->idle = 0;
+                fsm->state = ec_fsm_master_state_configure_slaves;
+            }
 
             if (master->debug_level) {
                 char old_state[EC_STATE_STRING_SIZE],
@@ -1163,103 +1185,75 @@ void ec_fsm_master_enter_configure_slaves(
                         slave->force_config ? " (forced)" : "");
             }
 
-            fsm->idle = 0;
-            fsm->slave = slave; // track which slave we started from
-            fsm->state = ec_fsm_master_state_configure_slaves;
-
-            fsm->active_config_slot =
-                    ec_fsm_master_alloc_config_slot(fsm);
-            if (!fsm->active_config_slot) {
-                EC_MASTER_ERR(master,
-                        "No free slave config FSM slots!\n");
-                ec_fsm_master_restart(fsm);
-                return;
-            }
-
-            ec_fsm_slave_config_start(
-                    &fsm->active_config_slot->fsm, slave);
-            fsm->state(fsm); // execute immediately
-            fsm->active_config_slot->datagram.device_index =
-                    slave->device_index;
-            return;
+            ec_fsm_slave_config_start(&slot->fsm, slave);
+            slot->datagram.device_index = slave->device_index;
+            started++;
         }
     }
 
-    // No slave needs configuration
-    ec_fsm_master_action_idle(fsm);
+    if (!started) {
+        // No slave needs configuration
+        ec_fsm_master_action_idle(fsm);
+        return;
+    }
+
+    // Execute all active slots immediately (first cycle)
+    fsm->state(fsm);
 }
 
 /****************************************************************************/
 
 /** Master state: CONFIGURE SLAVES.
  *
- * Executes slave configurations sequentially. After one finishes,
- * finds and starts the next. When all are done, goes to idle.
+ * Executes all active slave configuration slots in parallel.
+ * Each cycle, executes every in_use slot whose datagram has been received.
+ * When all slots finish, goes to idle.
  */
 void ec_fsm_master_state_configure_slaves(
         ec_fsm_master_t *fsm /**< Master state machine. */
         )
 {
     ec_master_t *master = fsm->master;
-    ec_fsm_slave_config_slot_t *slot = fsm->active_config_slot;
-    ec_slave_t *done_slave;
-    ec_slave_t *slave;
+    ec_fsm_slave_config_slot_t *slot;
+    unsigned int i;
+    int any_active = 0;
 
-    printf("#### [master] configure_slaves: exec slave %u, dg=%s\n",
-            slot->fsm.slave->ring_position,
-            ec_datagram_state_str(&slot->datagram));
+    for (i = 0; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
+        slot = &fsm->config_slots[i];
+        if (!slot->in_use) {
+            continue;
+        }
 
-    if (ec_fsm_slave_config_exec(&slot->fsm, &slot->datagram)) {
+        // Skip if datagram not yet received
+        if (slot->datagram.state == EC_DATAGRAM_SENT
+                || slot->datagram.state == EC_DATAGRAM_QUEUED) {
+            any_active = 1;
+            continue;
+        }
+
+        printf("#### [master] configure_slaves: exec slave %u, dg=%s\n",
+                slot->fsm.slave->ring_position,
+                ec_datagram_state_str(&slot->datagram));
+
+        if (ec_fsm_slave_config_exec(&slot->fsm, &slot->datagram)) {
+            // still running
+            any_active = 1;
+            continue;
+        }
+
+        printf("#### [master] configure_slaves: slave %u config DONE\n",
+                slot->fsm.slave->ring_position);
+
+        slot->fsm.slave->force_config = 0;
+        ec_fsm_master_free_config_slot(slot);
+        // don't set any_active for this slot — it's done
+    }
+
+    if (any_active) {
         return;
     }
 
-    printf("#### [master] configure_slaves: slave %u config DONE\n",
-            slot->fsm.slave->ring_position);
-
-    done_slave = slot->fsm.slave;
-    done_slave->force_config = 0;
-
-    // free the pool slot
-    ec_fsm_master_free_config_slot(slot);
-    fsm->active_config_slot = NULL;
-
-    // Find next slave needing configuration (continue after the one just done)
-    for (slave = done_slave + 1;
-            slave < master->slaves + master->slave_count;
-            slave++) {
-        if ((slave->current_state != slave->requested_state
-                    || slave->force_config) && !slave->error_flag) {
-
-            if (master->debug_level) {
-                char old_state[EC_STATE_STRING_SIZE],
-                     new_state[EC_STATE_STRING_SIZE];
-                ec_state_string(slave->current_state, old_state, 0);
-                ec_state_string(slave->requested_state, new_state, 0);
-                EC_SLAVE_DBG(slave, 1, "Changing state from %s to %s%s.\n",
-                        old_state, new_state,
-                        slave->force_config ? " (forced)" : "");
-            }
-
-            fsm->slave = slave;
-
-            fsm->active_config_slot =
-                    ec_fsm_master_alloc_config_slot(fsm);
-            if (!fsm->active_config_slot) {
-                EC_MASTER_ERR(master,
-                        "No free slave config FSM slots!\n");
-                break;
-            }
-
-            ec_fsm_slave_config_start(
-                    &fsm->active_config_slot->fsm, slave);
-            fsm->state(fsm); // execute immediately
-            fsm->active_config_slot->datagram.device_index =
-                    slave->device_index;
-            return;
-        }
-    }
-
-    // All configurations done (or error)
+    // All configurations done
     ec_sem_down(&master->config_sem);
     master->config_busy = 0;
     ec_sem_up(&master->config_sem);
