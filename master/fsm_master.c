@@ -50,7 +50,6 @@ int ec_fsm_master_action_process_sii(ec_fsm_master_t *);
 int ec_fsm_master_action_process_int_request(ec_fsm_master_t *);
 void ec_fsm_master_action_idle(ec_fsm_master_t *);
 void ec_fsm_master_action_next_slave_state(ec_fsm_master_t *);
-void ec_fsm_master_action_configure(ec_fsm_master_t *);
 uint64_t ec_fsm_master_dc_offset32(ec_fsm_master_t *, uint64_t, uint64_t, unsigned long);
 uint64_t ec_fsm_master_dc_offset64(ec_fsm_master_t *, uint64_t, uint64_t, unsigned long);
 
@@ -60,7 +59,8 @@ void ec_fsm_master_state_start(ec_fsm_master_t *);
 void ec_fsm_master_state_broadcast(ec_fsm_master_t *);
 void ec_fsm_master_state_read_state(ec_fsm_master_t *);
 void ec_fsm_master_state_acknowledge(ec_fsm_master_t *);
-void ec_fsm_master_state_configure_slave(ec_fsm_master_t *);
+void ec_fsm_master_enter_configure_slaves(ec_fsm_master_t *);
+void ec_fsm_master_state_configure_slaves(ec_fsm_master_t *);
 void ec_fsm_master_state_clear_addresses(ec_fsm_master_t *);
 void ec_fsm_master_state_dc_measure_delays(ec_fsm_master_t *);
 void ec_fsm_master_state_scan_slave(ec_fsm_master_t *);
@@ -845,78 +845,11 @@ void ec_fsm_master_action_next_slave_state(
         return;
     }
 
-    // all slaves processed
-    ec_fsm_master_action_idle(fsm);
+    // all slaves' states read — enter configuration phase
+    ec_fsm_master_enter_configure_slaves(fsm);
 }
 
 /****************************************************************************/
-
-/** Master action: Configure.
- */
-void ec_fsm_master_action_configure(
-        ec_fsm_master_t *fsm /**< Master state machine. */
-        )
-{
-    ec_master_t *master = fsm->master;
-    ec_slave_t *slave = fsm->slave;
-
-    if (master->config_changed) {
-        master->config_changed = 0;
-
-        // abort iterating through slaves,
-        // first compensate DC system time offsets,
-        // then begin configuring at slave 0
-        EC_MASTER_DBG(master, 1, "Configuration changed"
-                " (aborting state check).\n");
-
-        fsm->slave = master->slaves; // begin with first slave
-        ec_fsm_master_enter_write_system_times(fsm);
-        return;
-    }
-
-    // Does the slave have to be configured?
-    if ((slave->current_state != slave->requested_state
-                || slave->force_config) && !slave->error_flag) {
-
-        // Start slave configuration
-        ec_sem_down(&master->config_sem);
-        master->config_busy = 1;
-        ec_sem_up(&master->config_sem);
-
-        if (master->debug_level) {
-            char old_state[EC_STATE_STRING_SIZE],
-                 new_state[EC_STATE_STRING_SIZE];
-            ec_state_string(slave->current_state, old_state, 0);
-            ec_state_string(slave->requested_state, new_state, 0);
-            EC_SLAVE_DBG(slave, 1, "Changing state from %s to %s%s.\n",
-                    old_state, new_state,
-                    slave->force_config ? " (forced)" : "");
-        }
-
-        fsm->idle = 0;
-        fsm->state = ec_fsm_master_state_configure_slave;
-
-        // allocate a config FSM slot from the pool
-        fsm->active_config_slot =
-                ec_fsm_master_alloc_config_slot(fsm);
-        if (!fsm->active_config_slot) {
-            EC_MASTER_ERR(master,
-                    "No free slave config FSM slots!\n");
-            fsm->state = ec_fsm_master_state_start;
-            return;
-        }
-
-        ec_fsm_slave_config_start(
-                &fsm->active_config_slot->fsm, slave);
-        fsm->state(fsm); // execute immediately
-        fsm->active_config_slot->datagram.device_index =
-                fsm->slave->device_index;
-        return;
-    }
-
-    // process next slave
-    ec_fsm_master_action_next_slave_state(fsm);
-}
 
 /****************************************************************************/
 
@@ -964,13 +897,9 @@ void ec_fsm_master_state_read_state(
             fsm->state(fsm); // execute immediately
             return;
         }
-
-        // No acknowlegde necessary; check for configuration
-        ec_fsm_master_action_configure(fsm);
-        return;
     }
 
-    // slave has error flag set; process next one
+    // Move to next slave (configuration deferred to after all states read)
     ec_fsm_master_action_next_slave_state(fsm);
 }
 
@@ -993,7 +922,8 @@ void ec_fsm_master_state_acknowledge(
         EC_SLAVE_ERR(slave, "Failed to acknowledge state change.\n");
     }
 
-    ec_fsm_master_action_configure(fsm);
+    // Move to next slave (configuration deferred to after all states read)
+    ec_fsm_master_action_next_slave_state(fsm);
 }
 
 /****************************************************************************/
@@ -1190,45 +1120,153 @@ void ec_fsm_master_state_scan_slave(
 
 /****************************************************************************/
 
-/** Master state: CONFIGURE SLAVE.
+/** Enter the configuration phase after all slave states have been read.
  *
- * Starts configuring a slave.
+ * Scans all slaves for configuration needs and starts the first one.
+ * If no slave needs configuration, goes to idle.
  */
-void ec_fsm_master_state_configure_slave(
+void ec_fsm_master_enter_configure_slaves(
+        ec_fsm_master_t *fsm /**< Master state machine. */
+        )
+{
+    ec_master_t *master = fsm->master;
+    ec_slave_t *slave;
+
+    // Handle config_changed: restart from write_system_times
+    if (master->config_changed) {
+        master->config_changed = 0;
+        EC_MASTER_DBG(master, 1, "Configuration changed.\n");
+        fsm->slave = master->slaves;
+        ec_fsm_master_enter_write_system_times(fsm);
+        return;
+    }
+
+    // Find first slave needing configuration
+    for (slave = master->slaves;
+            slave < master->slaves + master->slave_count;
+            slave++) {
+        if ((slave->current_state != slave->requested_state
+                    || slave->force_config) && !slave->error_flag) {
+
+            // Start slave configuration
+            ec_sem_down(&master->config_sem);
+            master->config_busy = 1;
+            ec_sem_up(&master->config_sem);
+
+            if (master->debug_level) {
+                char old_state[EC_STATE_STRING_SIZE],
+                     new_state[EC_STATE_STRING_SIZE];
+                ec_state_string(slave->current_state, old_state, 0);
+                ec_state_string(slave->requested_state, new_state, 0);
+                EC_SLAVE_DBG(slave, 1, "Changing state from %s to %s%s.\n",
+                        old_state, new_state,
+                        slave->force_config ? " (forced)" : "");
+            }
+
+            fsm->idle = 0;
+            fsm->slave = slave; // track which slave we started from
+            fsm->state = ec_fsm_master_state_configure_slaves;
+
+            fsm->active_config_slot =
+                    ec_fsm_master_alloc_config_slot(fsm);
+            if (!fsm->active_config_slot) {
+                EC_MASTER_ERR(master,
+                        "No free slave config FSM slots!\n");
+                ec_fsm_master_restart(fsm);
+                return;
+            }
+
+            ec_fsm_slave_config_start(
+                    &fsm->active_config_slot->fsm, slave);
+            fsm->state(fsm); // execute immediately
+            fsm->active_config_slot->datagram.device_index =
+                    slave->device_index;
+            return;
+        }
+    }
+
+    // No slave needs configuration
+    ec_fsm_master_action_idle(fsm);
+}
+
+/****************************************************************************/
+
+/** Master state: CONFIGURE SLAVES.
+ *
+ * Executes slave configurations sequentially. After one finishes,
+ * finds and starts the next. When all are done, goes to idle.
+ */
+void ec_fsm_master_state_configure_slaves(
         ec_fsm_master_t *fsm /**< Master state machine. */
         )
 {
     ec_master_t *master = fsm->master;
     ec_fsm_slave_config_slot_t *slot = fsm->active_config_slot;
+    ec_slave_t *done_slave;
+    ec_slave_t *slave;
 
-    printf("#### [master] configure_slave: calling config_exec for slave %u, dg=%s\n",
+    printf("#### [master] configure_slaves: exec slave %u, dg=%s\n",
             slot->fsm.slave->ring_position,
             ec_datagram_state_str(&slot->datagram));
 
-    if (ec_fsm_slave_config_exec(&slot->fsm,
-                &slot->datagram)) {
+    if (ec_fsm_slave_config_exec(&slot->fsm, &slot->datagram)) {
         return;
     }
 
-    printf("#### [master] configure_slave: slave %u config DONE\n",
+    printf("#### [master] configure_slaves: slave %u config DONE\n",
             slot->fsm.slave->ring_position);
 
-    fsm->slave->force_config = 0;
-
-    // configuration finished
-    master->config_busy = 0;
-    ec_wq_wake_interruptible(&master->config_queue);
-
-    if (!ec_fsm_slave_config_success(&slot->fsm)) {
-        // TODO: mark slave_config as failed.
-    }
+    done_slave = slot->fsm.slave;
+    done_slave->force_config = 0;
 
     // free the pool slot
     ec_fsm_master_free_config_slot(slot);
     fsm->active_config_slot = NULL;
 
+    // Find next slave needing configuration (continue after the one just done)
+    for (slave = done_slave + 1;
+            slave < master->slaves + master->slave_count;
+            slave++) {
+        if ((slave->current_state != slave->requested_state
+                    || slave->force_config) && !slave->error_flag) {
+
+            if (master->debug_level) {
+                char old_state[EC_STATE_STRING_SIZE],
+                     new_state[EC_STATE_STRING_SIZE];
+                ec_state_string(slave->current_state, old_state, 0);
+                ec_state_string(slave->requested_state, new_state, 0);
+                EC_SLAVE_DBG(slave, 1, "Changing state from %s to %s%s.\n",
+                        old_state, new_state,
+                        slave->force_config ? " (forced)" : "");
+            }
+
+            fsm->slave = slave;
+
+            fsm->active_config_slot =
+                    ec_fsm_master_alloc_config_slot(fsm);
+            if (!fsm->active_config_slot) {
+                EC_MASTER_ERR(master,
+                        "No free slave config FSM slots!\n");
+                break;
+            }
+
+            ec_fsm_slave_config_start(
+                    &fsm->active_config_slot->fsm, slave);
+            fsm->state(fsm); // execute immediately
+            fsm->active_config_slot->datagram.device_index =
+                    slave->device_index;
+            return;
+        }
+    }
+
+    // All configurations done (or error)
+    ec_sem_down(&master->config_sem);
+    master->config_busy = 0;
+    ec_sem_up(&master->config_sem);
+    ec_wq_wake_interruptible(&master->config_queue);
+
     fsm->idle = 1;
-    ec_fsm_master_action_next_slave_state(fsm);
+    ec_fsm_master_action_idle(fsm);
 }
 
 /****************************************************************************/
