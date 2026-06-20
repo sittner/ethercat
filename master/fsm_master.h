@@ -55,12 +55,13 @@ typedef struct {
 
 /** Maximum number of parallel slave configuration FSM slots.
  */
-#define EC_FSM_SLAVE_CONFIG_POOL_SIZE 16
+#define EC_FSM_SLAVE_CONFIG_POOL_SIZE 8
 
 /** A slave configuration FSM pool slot.
  */
 typedef struct {
     ec_fsm_slave_config_t fsm; /**< The slave config FSM. */
+    ec_datagram_t datagram; /**< Private datagram for this config slot. */
     int in_use; /**< Non-zero if this slot is currently allocated. */
 } ec_fsm_slave_config_slot_t;
 
@@ -110,12 +111,13 @@ struct ec_fsm_master {
 
 /****************************************************************************/
 
-void ec_fsm_master_init(ec_fsm_master_t *, ec_master_t *, ec_datagram_t *);
+int ec_fsm_master_init(ec_fsm_master_t *, ec_master_t *, ec_datagram_t *);
 void ec_fsm_master_clear(ec_fsm_master_t *);
 
 void ec_fsm_master_reset(ec_fsm_master_t *);
 
 int ec_fsm_master_exec(ec_fsm_master_t *);
+ec_datagram_t *ec_fsm_master_get_datagram(ec_fsm_master_t *);
 int ec_fsm_master_idle(const ec_fsm_master_t *);
 
 /****************************************************************************/

@@ -79,12 +79,15 @@ void ec_fsm_master_enter_write_system_times(ec_fsm_master_t *);
 
 /** Constructor.
  */
-void ec_fsm_master_init(
+int ec_fsm_master_init(
         ec_fsm_master_t *fsm, /**< Master state machine. */
         ec_master_t *master, /**< EtherCAT master. */
         ec_datagram_t *datagram /**< Datagram object to use. */
         )
 {
+    int ret;
+    unsigned int i;
+
     fsm->master = master;
     fsm->datagram = datagram;
 
@@ -110,13 +113,20 @@ void ec_fsm_master_init(
     ec_fsm_change_init(&fsm->fsm_change);
     fsm->fsm_change.datagram = fsm->datagram;
 
-    // init slave config FSM pool
-    {
-        unsigned int i;
-        for (i = 0; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
-            ec_fsm_slave_config_init(&fsm->config_slots[i].fsm);
-            fsm->config_slots[i].in_use = 0;
+    // init slave config FSM pool with per-slot datagrams
+    for (i = 0; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
+        ec_fsm_slave_config_init(&fsm->config_slots[i].fsm);
+        ec_datagram_init(&fsm->config_slots[i].datagram);
+        snprintf(fsm->config_slots[i].datagram.name,
+                EC_DATAGRAM_NAME_SIZE, "config-slot-%u", i);
+        ret = ec_datagram_prealloc(&fsm->config_slots[i].datagram,
+                EC_MAX_DATA_SIZE);
+        if (ret < 0) {
+            EC_MASTER_ERR(master,
+                    "Failed to allocate config slot %u datagram.\n", i);
+            goto out_clear_slots;
         }
+        fsm->config_slots[i].in_use = 0;
     }
     fsm->active_config_slot = NULL;
 
@@ -124,6 +134,23 @@ void ec_fsm_master_init(
     ec_fsm_slave_scan_init(&fsm->fsm_slave_scan, fsm->datagram,
             &fsm->config_slots[0].fsm, &fsm->fsm_pdo);
     ec_fsm_sii_init(&fsm->fsm_sii, fsm->datagram);
+
+    return 0;
+
+out_clear_slots:
+    while (i > 0) {
+        i--;
+        ec_datagram_clear(&fsm->config_slots[i].datagram);
+        ec_fsm_slave_config_clear(&fsm->config_slots[i].fsm);
+    }
+    ec_fsm_change_clear(&fsm->fsm_change);
+#ifdef EC_EOE
+    ec_fsm_eoe_clear(&fsm->fsm_eoe);
+#endif
+    ec_fsm_pdo_clear(&fsm->fsm_pdo);
+    ec_fsm_soe_clear(&fsm->fsm_soe);
+    ec_fsm_coe_clear(&fsm->fsm_coe);
+    return ret;
 }
 
 /****************************************************************************/
@@ -148,6 +175,7 @@ void ec_fsm_master_clear(
         unsigned int i;
         for (i = 0; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
             ec_fsm_slave_config_clear(&fsm->config_slots[i].fsm);
+            ec_datagram_clear(&fsm->config_slots[i].datagram);
         }
     }
 
@@ -224,14 +252,43 @@ int ec_fsm_master_exec(
         ec_fsm_master_t *fsm /**< Master state machine. */
         )
 {
-    if (fsm->datagram->state == EC_DATAGRAM_SENT
-        || fsm->datagram->state == EC_DATAGRAM_QUEUED) {
+    ec_datagram_t *datagram;
+
+    // When configuring a slave, use the slot's private datagram;
+    // otherwise use the master FSM datagram.
+    if (fsm->active_config_slot) {
+        datagram = &fsm->active_config_slot->datagram;
+    } else {
+        datagram = fsm->datagram;
+    }
+
+    if (datagram->state == EC_DATAGRAM_SENT
+        || datagram->state == EC_DATAGRAM_QUEUED) {
         // datagram was not sent or received yet.
         return 0;
     }
 
     fsm->state(fsm);
     return 1;
+}
+
+/****************************************************************************/
+
+/** Get the datagram that should be queued for sending.
+ *
+ * When a config slot is active, returns the slot's private datagram;
+ * otherwise returns the master FSM datagram.
+ *
+ * \return pointer to the active datagram.
+ */
+ec_datagram_t *ec_fsm_master_get_datagram(
+        ec_fsm_master_t *fsm /**< Master state machine. */
+        )
+{
+    if (fsm->active_config_slot) {
+        return &fsm->active_config_slot->datagram;
+    }
+    return fsm->datagram;
 }
 
 /****************************************************************************/
@@ -807,7 +864,8 @@ void ec_fsm_master_action_configure(
         ec_fsm_slave_config_start(
                 &fsm->active_config_slot->fsm, slave);
         fsm->state(fsm); // execute immediately
-        fsm->datagram->device_index = fsm->slave->device_index;
+        fsm->active_config_slot->datagram.device_index =
+                fsm->slave->device_index;
         return;
     }
 
@@ -1100,10 +1158,10 @@ void ec_fsm_master_state_configure_slave(
 
     printf("#### [master] configure_slave: calling config_exec for slave %u, dg=%s\n",
             slot->fsm.slave->ring_position,
-            ec_datagram_state_str(fsm->datagram));
+            ec_datagram_state_str(&slot->datagram));
 
     if (ec_fsm_slave_config_exec(&slot->fsm,
-                fsm->datagram)) {
+                &slot->datagram)) {
         return;
     }
 
