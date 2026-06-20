@@ -1501,14 +1501,16 @@ void ec_fsm_slave_config_state_dc_sync_check(
     ec_slave_config_t *config = slave->config;
     uint32_t abs_sync_diff;
     unsigned long diff_ms;
-    ec_sync_signal_t *sync0 = &config->dc_sync[0];
-    ec_sync_signal_t *sync1 = &config->dc_sync[1];
+    ec_sync_signal_t *sync0, *sync1;
     uint64_t start_time;
 
     if (!config) { // config removed in the meantime
         ec_fsm_slave_config_reconfigure(fsm, datagram);
         return;
     }
+
+    sync0 = &config->dc_sync[0];
+    sync1 = &config->dc_sync[1];
 
     if (datagram->state == EC_DATAGRAM_TIMED_OUT && fsm->retries--)
         return;

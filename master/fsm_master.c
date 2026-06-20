@@ -310,7 +310,9 @@ int ec_fsm_master_queue_datagram(
             }
         }
 
-        // queue each active slot's datagram if it fits
+        // Queue each active slot's datagram if it fits.
+        // Returns 0 if nothing was queued (all datagrams already in flight
+        // or none fit); this is normal during parallel config.
         for (i = 0; i < EC_FSM_SLAVE_CONFIG_POOL_SIZE; i++) {
             slot = &fsm->config_slots[i];
             if (!slot->in_use) {
@@ -1223,6 +1225,10 @@ void ec_fsm_master_enter_configure_slaves(
         ec_fsm_master_action_idle(fsm);
         return;
     }
+
+    // Intentionally not calling the state function here: the datagrams
+    // prepared by fill_config_slot() need to be queued and sent first.
+    // The state function will execute on the next cycle after receive.
 }
 
 /****************************************************************************/

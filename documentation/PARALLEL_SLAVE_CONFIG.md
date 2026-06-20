@@ -125,16 +125,12 @@ When `state == ec_fsm_master_state_configure_slaves`:
 ### 2.5 Datagram propagation (D9 pattern)
 
 At the top of `ec_fsm_slave_config_exec()`, the caller's datagram is
-propagated to all owned sub-FSMs:
+propagated to `fsm_change` (the only sub-FSM that stores it persistently):
 
 ```c
 int ec_fsm_slave_config_exec(ec_fsm_slave_config_t *fsm, ec_datagram_t *datagram)
 {
     fsm->fsm_change.datagram = datagram;
-    fsm->fsm_coe.datagram    = datagram;
-    fsm->fsm_soe.datagram    = datagram;
-    fsm->fsm_pdo.datagram    = datagram;
-    fsm->fsm_eoe.datagram    = datagram;
 
     if (datagram->state == EC_DATAGRAM_SENT
         || datagram->state == EC_DATAGRAM_QUEUED) {
@@ -146,9 +142,13 @@ int ec_fsm_slave_config_exec(ec_fsm_slave_config_t *fsm, ec_datagram_t *datagram
 }
 ```
 
+The other sub-FSMs (`fsm_coe`, `fsm_soe`, `fsm_pdo`, `fsm_eoe`) receive the
+datagram as a function parameter to their `exec()` calls, so they don't need
+persistent assignment.  Only `ec_fsm_change_t` stores `datagram` as a field
+(its `exec()` takes no datagram parameter).
+
 Each slot always passes `&slot->datagram` — the same dedicated datagram every
-cycle.  The propagation ensures sub-FSMs always reference the correct datagram
-without any init-time binding.
+cycle.
 
 ### 2.6 Frame-fitting throttle
 
