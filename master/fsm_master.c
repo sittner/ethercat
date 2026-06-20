@@ -1257,18 +1257,11 @@ void ec_fsm_master_state_configure_slaves(
             continue;
         }
 
-        printf("#### [master] configure_slaves: exec slave %u, dg=%s\n",
-                slot->fsm.slave->ring_position,
-                ec_datagram_state_str(&slot->datagram));
-
         if (ec_fsm_slave_config_exec(&slot->fsm, &slot->datagram)) {
             // still running
             any_active = 1;
             continue;
         }
-
-        printf("#### [master] configure_slaves: slave %u config DONE\n",
-                slot->fsm.slave->ring_position);
 
         slot->fsm.slave->force_config = 0;
 
