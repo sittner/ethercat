@@ -129,7 +129,11 @@ int ec_fsm_master_init(
         fsm->config_slots[i].in_use = 0;
     }
 
-    // slave scan uses pool slot 0 (never concurrent with config)
+    // Slave scan borrows slot 0's FSM. This is safe because:
+    // - The master FSM is a single state pointer; it can only be in
+    //   state_scan_slave OR state_configure_slaves, never both.
+    // - Scanning completes (all slots unused) before state_start, which is
+    //   the only path to rescan. No explicit drain flag is needed.
     ec_fsm_slave_scan_init(&fsm->fsm_slave_scan, fsm->datagram,
             &fsm->config_slots[0].fsm, &fsm->fsm_pdo);
     ec_fsm_sii_init(&fsm->fsm_sii, fsm->datagram);
@@ -1189,7 +1193,10 @@ void ec_fsm_master_enter_configure_slaves(
     }
 
     if (!started) {
-        // No slave needs configuration
+        // No slave needs configuration.
+        // Note: config_busy was never set on this path (it's only set
+        // inside the loop above when started transitions from 0 to 1),
+        // so no cleanup or wakeup is needed here.
         ec_fsm_master_action_idle(fsm);
         return;
     }
