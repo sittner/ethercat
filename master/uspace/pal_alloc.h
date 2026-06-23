@@ -123,6 +123,21 @@ static inline void ec_rt_free(void *ptr, size_t size)
     free(ptr);
 }
 
+/**
+ * Page-aligned RT allocation.  Uses posix_memalign() to satisfy the alignment
+ * requirement of AF_XDP UMEM (must be page-aligned), then prefaults all pages
+ * and mlocks the region to prevent page faults and swapping on the RT path.
+ * Free with ec_rt_free().
+ */
+static inline void *ec_rt_alloc_aligned(size_t alignment, size_t size)
+{
+    void *p = NULL;
+    if (posix_memalign(&p, alignment, size) != 0)
+        return NULL;
+    ec_rt_lock_mem(p, size);
+    return p;
+}
+
 /****************************************************************************/
 
 #endif /* __EC_USPACE_PAL_ALLOC_H__ */

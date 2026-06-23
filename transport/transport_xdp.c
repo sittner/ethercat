@@ -38,6 +38,7 @@
 #include <linux/if_link.h>
 #include <xdp/xsk.h>
 
+#include "pal_alloc.h"
 #include "ectp.h"
 #include "irq_pin.h"
 
@@ -86,7 +87,6 @@ typedef struct {
     int if_index;                      /**< Interface index */
     uint8_t mac_addr[6];               /**< Interface MAC address */
     int ioctl_sock;                    /**< Socket for ioctl operations (link state, etc.) */
-    uint64_t tx_frame_addr;            /**< Pre-allocated TX frame for zero-copy */
     uint32_t xdp_flags;                /**< XDP flags used during open (needed for detach) */
     uint64_t fq_refill_pending[FQ_REFILL_MAX]; /**< Frames awaiting FQ refill */
     uint32_t fq_refill_count;          /**< Number of pending refill frames */
@@ -169,7 +169,6 @@ static int xdp_open(ec_transport_t *transport, const char *interface,
     }
 
     xdp->ioctl_sock = -1;
-    xdp->tx_frame_addr = INVALID_UMEM_FRAME;
     xdp->xdp_flags = xdp_flags;
     transport->priv = xdp;
 
@@ -210,8 +209,9 @@ static int xdp_open(ec_transport_t *transport, const char *interface,
     /* Store socket for later ioctl operations */
     xdp->ioctl_sock = sock_fd;
 
-    /* Allocate UMEM buffer */
-    xdp->umem_buffer = aligned_alloc(getpagesize(), NUM_FRAMES * FRAME_SIZE);
+    /* Allocate UMEM buffer: page-aligned, prefaulted, and mlocked so that
+     * no page faults or swapping occur on the RT cyclic TX/RX path. */
+    xdp->umem_buffer = ec_rt_alloc_aligned(getpagesize(), NUM_FRAMES * FRAME_SIZE);
     if (!xdp->umem_buffer) {
         fprintf(stderr, "Failed to allocate UMEM buffer\n");
         ret = -ENOMEM;
@@ -277,7 +277,7 @@ err_free_socket:
 err_free_umem:
     xsk_umem__delete(xdp->umem);
 err_free_buffer:
-    free(xdp->umem_buffer);
+    ec_rt_free(xdp->umem_buffer, NUM_FRAMES * FRAME_SIZE);
 err_free:
     if (xdp->ioctl_sock >= 0) {
         close(xdp->ioctl_sock);
@@ -332,7 +332,7 @@ static void xdp_close(ec_transport_t *transport)
             xsk_umem__delete(xdp->umem);
         }
         if (xdp->umem_buffer) {
-            free(xdp->umem_buffer);
+            ec_rt_free(xdp->umem_buffer, NUM_FRAMES * FRAME_SIZE);
         }
         if (xdp->ioctl_sock >= 0) {
             close(xdp->ioctl_sock);
@@ -346,35 +346,28 @@ static void xdp_close(ec_transport_t *transport)
 
 /**
  * Get TX buffer pointer.
+ *
+ * Always returns transport->tx_buffer so the Ethernet header written by
+ * ec_device_open() at positions 0..ETH_HLEN-1 is preserved across every TX
+ * cycle.  xdp_send() copies the full frame from this buffer into a fresh UMEM
+ * frame, so there is no risk of sending a frame with a stale or
+ * uninitialized header caused by UMEM frame pool churn.
  */
 static uint8_t *xdp_get_tx_buffer(ec_transport_t *transport)
 {
     ec_transport_xdp_t *xdp = transport->priv;
-    uint64_t addr;
 
     if (!xdp) {
         return transport->tx_buffer;
     }
 
-    /* Process completion queue to reclaim frames before allocating new one
-     * This moves variable-time operation out of the TX critical path */
+    /* Drain the completion queue so UMEM frames are reclaimed promptly.
+     * This keeps the pool healthy for xdp_send() allocations. */
     process_completion_queue(xdp, CQ_DRAIN_MAX);
 
-    /* If we don't have a pre-allocated frame, try to get one */
-    if (xdp->tx_frame_addr == INVALID_UMEM_FRAME) {
-        addr = xsk_alloc_umem_frame(xdp);
-        if (addr != INVALID_UMEM_FRAME) {
-            /* Successfully allocated a frame - return direct UMEM pointer for zero-copy */
-            xdp->tx_frame_addr = addr;
-            return (uint8_t *)xsk_umem__get_data(xdp->umem_buffer, addr);
-        }
-        /* Fall through to fallback buffer if allocation failed */
-    } else {
-        /* Already have a pre-allocated frame - return direct UMEM pointer */
-        return (uint8_t *)xsk_umem__get_data(xdp->umem_buffer, xdp->tx_frame_addr);
-    }
-
-    /* Fallback to transport->tx_buffer if UMEM allocation failed */
+    /* Return the stable, pre-initialised fixed buffer.  The Ethernet header
+     * (dst MAC, src MAC, ethertype) was written here once by ec_device_open()
+     * and must not be overwritten by frame-pool churn. */
     return transport->tx_buffer;
 }
 
@@ -382,6 +375,15 @@ static uint8_t *xdp_get_tx_buffer(ec_transport_t *transport)
 
 /**
  * Send frame.
+ *
+ * Allocates a fresh UMEM frame for every send and copies the full frame from
+ * transport->tx_buffer (which includes the stable Ethernet header).  This
+ * avoids the previous bug where a pre-allocated UMEM frame was reused across
+ * cycles: if the completion queue had not yet returned the frame from the
+ * previous cycle a new, uninitialised frame was allocated, resulting in a
+ * garbage Ethernet header (random dst/src MAC, random ethertype) being
+ * transmitted.  EtherCAT slaves forwarded those frames back, and the NIC's
+ * MAC filter rejected or counted them as alignment errors.
  */
 static int xdp_send(ec_transport_t *transport, size_t size)
 {
@@ -389,7 +391,6 @@ static int xdp_send(ec_transport_t *transport, size_t size)
     uint64_t addr;
     uint32_t idx;
     int ret;
-    int is_zero_copy = 0;
 
     if (!xdp || !xdp->xsk) {
         return -ENODEV;
@@ -399,32 +400,22 @@ static int xdp_send(ec_transport_t *transport, size_t size)
         return -EINVAL;
     }
 
-    /* Check if we have a pre-allocated frame (zero-copy path) */
-    if (xdp->tx_frame_addr != INVALID_UMEM_FRAME) {
-        /* Zero-copy path: use the pre-allocated frame directly */
-        addr = xdp->tx_frame_addr;
-        is_zero_copy = 1;
-    } else {
-        /* Fallback path: allocate frame and copy data from transport->tx_buffer */
-        addr = xsk_alloc_umem_frame(xdp);
-        if (addr == INVALID_UMEM_FRAME) {
-            return -ENOMEM;
-        }
-
-        /* Copy data to UMEM */
-        memcpy(xsk_umem__get_data(xdp->umem_buffer, addr),
-               transport->tx_buffer, size);
+    /* Allocate a UMEM frame for this transmission. */
+    addr = xsk_alloc_umem_frame(xdp);
+    if (addr == INVALID_UMEM_FRAME) {
+        return -ENOMEM;
     }
+
+    /* Copy the full frame (Ethernet header + EtherCAT payload) from the
+     * stable transport->tx_buffer into the UMEM frame. */
+    memcpy(xsk_umem__get_data(xdp->umem_buffer, addr),
+           transport->tx_buffer, size);
 
     /* Reserve TX slot */
     ret = xsk_ring_prod__reserve(&xdp->tx, 1, &idx);
     if (ret != 1) {
-        /* TX ring is full, cannot send */
-        if (!is_zero_copy) {
-            /* We just allocated this frame in fallback path, free it */
-            xsk_free_umem_frame(xdp, addr);
-        }
-        /* For zero-copy, keep tx_frame_addr valid so it can be reused */
+        /* TX ring is full - return the frame to the pool and report busy. */
+        xsk_free_umem_frame(xdp, addr);
         return -EBUSY;
     }
 
@@ -432,11 +423,6 @@ static int xdp_send(ec_transport_t *transport, size_t size)
     xsk_ring_prod__tx_desc(&xdp->tx, idx)->addr = addr;
     xsk_ring_prod__tx_desc(&xdp->tx, idx)->len = size;
     xsk_ring_prod__submit(&xdp->tx, 1);
-
-    /* Mark frame as consumed (will be reclaimed from completion queue later) */
-    if (is_zero_copy) {
-        xdp->tx_frame_addr = INVALID_UMEM_FRAME;
-    }
 
     /* Trigger send - critical for immediate transmission in EtherCAT */
     ret = sendto(xsk_socket__fd(xdp->xsk), NULL, 0, MSG_DONTWAIT, NULL, 0);
