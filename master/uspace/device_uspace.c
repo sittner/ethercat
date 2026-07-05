@@ -141,6 +141,7 @@ int ec_device_open(ec_device_t *device)
     /* Transport is already opened in module, just set state */
     device->open = 1;
     device->link_state = 0;
+    device->pal.last_link_check = ec_current_time();
     ec_device_clear_stats(device);
     
     /* Initialize Ethernet header in TX buffer */

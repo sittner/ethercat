@@ -630,12 +630,15 @@ void ec_fsm_master_state_broadcast(
             fsm->state = ec_fsm_master_state_read_state;
         }
     } else {
-        /* The FSM runs in a single thread, so this check-then-set is safe.
-         * Only mark done and wake once; subsequent broadcast cycles without
-         * a rescan will see initial_scan_done already set and skip. */
-        if (!master->initial_scan_done) {
-            master->initial_scan_done = 1;
-            ec_wq_wake_interruptible(&master->scan_queue);
+        /* No slaves found.  Only declare the initial scan complete if the
+         * broadcast datagram was actually received (link was up).  If the
+         * datagram was errored (link down) we haven't actually scanned yet
+         * — keep retrying until the link comes up. */
+        if (datagram->state == EC_DATAGRAM_RECEIVED) {
+            if (!master->initial_scan_done) {
+                master->initial_scan_done = 1;
+                ec_wq_wake_interruptible(&master->scan_queue);
+            }
         }
         ec_fsm_master_restart(fsm);
     }
