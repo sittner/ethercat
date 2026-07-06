@@ -534,13 +534,14 @@ void ec_fsm_pdo_conf_action_check_mapping(
     // check, if slave supports PDO configuration
     if ((fsm->slave->sii.mailbox_protocols & EC_MBOX_COE)
             && fsm->slave->sii.has_general
-            && fsm->slave->sii.coe_details.enable_pdo_configuration) {
+            && fsm->slave->sii.coe_details.enable_pdo_configuration
+            && !ec_pdo_equal_entries(fsm->pdo, &fsm->slave_pdo)) {
 
-        // always write PDO mapping
+        // write PDO mapping only if it differs from current
         ec_fsm_pdo_entry_start_configuration(&fsm->fsm_pdo_entry, fsm->slave,
                 fsm->pdo, &fsm->slave_pdo);
         fsm->state = ec_fsm_pdo_conf_state_mapping;
-        fsm->state(fsm, datagram); // execure immediately
+        fsm->state(fsm, datagram); // execute immediately
         return;
     }
     else if (!ec_pdo_equal_entries(fsm->pdo, &fsm->slave_pdo)) {
@@ -611,9 +612,10 @@ void ec_fsm_pdo_conf_action_check_assignment(
 {
     if ((fsm->slave->sii.mailbox_protocols & EC_MBOX_COE)
             && fsm->slave->sii.has_general
-            && fsm->slave->sii.coe_details.enable_pdo_assign) {
+            && fsm->slave->sii.coe_details.enable_pdo_assign
+            && !ec_pdo_list_equal(&fsm->sync->pdos, &fsm->pdos)) {
 
-        // always write PDO assignment
+        // write PDO assignment only if it differs from current
         if (fsm->slave->master->debug_level) {
             EC_SLAVE_DBG(fsm->slave, 1, "Setting PDO assignment of SM%u:\n",
                     fsm->sync_index);
