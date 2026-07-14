@@ -326,15 +326,25 @@ void ec_pdo_list_print(
         )
 {
     const ec_pdo_t *pdo;
-    int off = 0;
+    size_t off = 0;
+
+    if (!len)
+        return;
 
     if (list_empty(&pl->list)) {
-        snprintf(buf + off, len - off, "(none)");
+        snprintf(buf, len, "(none)");
     } else {
         list_for_each_entry(pdo, &pl->list, list) {
-            off += snprintf(buf + off, len - off, "0x%04X", pdo->index);
-            if (pdo->list.next != &pl->list)
-                off += snprintf(buf + off, len - off, " ");
+            int n = snprintf(buf + off, len - off, "0x%04X", pdo->index);
+            if (n < 0 || (size_t) n >= len - off)
+                break; // truncated: stop before len - off can underflow
+            off += n;
+            if (pdo->list.next != &pl->list) {
+                n = snprintf(buf + off, len - off, " ");
+                if (n < 0 || (size_t) n >= len - off)
+                    break;
+                off += n;
+            }
         }
     }
 }
