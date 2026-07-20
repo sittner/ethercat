@@ -51,6 +51,17 @@
 #define WARMUP_CYCLES 2000
 #define MEASURED_CYCLES 1000
 
+/* Sanitizer runtimes (ASan shadow memory, TSan state) demand-page
+ * their own mappings during the measured window, so the zero-fault
+ * assertion is meaningless under them — skip. */
+#if defined(__SANITIZE_ADDRESS__) || defined(__SANITIZE_THREAD__)
+#define EC_TEST_SANITIZED 1
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer) || __has_feature(thread_sanitizer)
+#define EC_TEST_SANITIZED 1
+#endif
+#endif
+
 static const sim_slave_identity_t identities[1] = {
     { .vendor_id = VENDOR_ID, .product_code = PRODUCT_CODE,
       .revision_number = 1, .serial_number = 9001, .alias = 0,
@@ -143,6 +154,12 @@ int main(void)
     int off_out, off_in;
     unsigned int cycles;
     unsigned long minflt_a, majflt_a, minflt_b, majflt_b;
+
+#ifdef EC_TEST_SANITIZED
+    fprintf(stderr, "test_rt_pagefault: sanitizer build — fault"
+            " accounting is not meaningful; skipping\n");
+    return 77;
+#endif
 
     bus = sim_bus_create(1, identities);
     TEST_CHECK(bus != NULL);
