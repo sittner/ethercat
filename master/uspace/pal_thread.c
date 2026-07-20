@@ -166,6 +166,10 @@ int ecrt_lib_set_thread_scheduling(int policy, int priority)
     if (policy != SCHED_OTHER && policy != SCHED_FIFO && policy != SCHED_RR) {
         return -EINVAL;
     }
+    if (priority < sched_get_priority_min(policy)
+            || priority > sched_get_priority_max(policy)) {
+        return -EINVAL;
+    }
     thread_sched_policy = policy;
     thread_sched_priority = priority;
     return 0;
@@ -193,8 +197,9 @@ int ec_thread_wake(ec_thread_t *task)
 
     /* Explicit scheduling attributes: never inherit the creator's
      * (possibly realtime) policy. If the configured policy cannot be
-     * applied (e.g. missing privileges), fall back to default
-     * attributes rather than failing thread creation. */
+     * applied (e.g. missing privileges), fall back to explicit
+     * SCHED_OTHER — still never inheriting — rather than failing
+     * thread creation. */
     pthread_attr_init(&attr);
     pthread_attr_setstacksize(&attr, EC_THREAD_STACK_SIZE);
     pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
@@ -203,15 +208,22 @@ int ec_thread_wake(ec_thread_t *task)
     pthread_attr_setschedparam(&attr, &param);
 
     ret = pthread_create(&task->thread, &attr, __task_thread_wrapper, task);
-    if (ret != 0) {
-        pthread_attr_destroy(&attr);
-        pthread_attr_init(&attr);
-        pthread_attr_setstacksize(&attr, EC_THREAD_STACK_SIZE);
+    if (ret != 0 && thread_sched_policy != SCHED_OTHER) {
+        ec_log(EC_LOG_WARNING,
+                "Thread %s: policy %d prio %d not applicable (%s),"
+                " falling back to SCHED_OTHER\n",
+                task->name, thread_sched_policy, thread_sched_priority,
+                strerror(ret));
+        pthread_attr_setschedpolicy(&attr, SCHED_OTHER);
+        param.sched_priority = 0;
+        pthread_attr_setschedparam(&attr, &param);
         ret = pthread_create(&task->thread, &attr,
                 __task_thread_wrapper, task);
     }
     pthread_attr_destroy(&attr);
     if (ret != 0) {
+        ec_log(EC_LOG_ERR, "Thread %s: creation failed: %s\n",
+                task->name, strerror(ret));
         pthread_mutex_unlock(&task->lock);
         return 0;
     }
