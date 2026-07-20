@@ -380,9 +380,16 @@ currently documents a pipeline that never runs here.
     master against 3 simulated slaves and verifies the complete scan
     (identities from SII, `slaves_responding`, link state) plus the
     startup/release/cleanup lifecycle — clean under ASan/UBSan/LSan.
-    Next increments: FMMU/logical addressing + SM emulation for domain
-    exchange in OP (activate → cyclic LRD/LWR round-trip), mailbox/CoE
-    for SDO tests, link-down/rescan behavior, DC (ARMW/FRMW).
+    — **second stage done (domain exchange)**: the sim now serves an SII
+    sync-manager category (per-slave SM2/SM3 process-data windows) and
+    executes LRD/LWR/LRW through the FMMU pages the master writes to
+    0x0600, with spec working counters (read +1, write +1, LRW write +2).
+    `test_sim_domain` runs the full application life cycle — explicit PDO
+    config, activate, real cyclic path — to OP with a complete working
+    counter (LRW wc=3) and verifies process data round-trips both
+    directions through the FMMU mapping; clean under ASan/UBSan/LSan.
+    Next increments: mailbox/CoE for SDO tests, link-down/rescan
+    behavior, DC (ARMW/FRMW), multi-slave domains.
 11. T4 RT smoke/latency gate (self-hosted).
 12. F6/F7 lock/teardown hardening; F8 link-check relocation.
 13. Docs refresh (FEATURES, TODO, stale checklist items); T5 hardware rig.

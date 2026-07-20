@@ -5,8 +5,11 @@
  *  See transport_sim.h for the concept. Emulation scope:
  *
  *  - Datagram commands: NOP, APRD/APWR, FPRD/FPWR, BRD (bitwise OR
- *    semantics)/BWR. Logical (FMMU) and DC commands are not implemented
- *    yet; they return working counter 0.
+ *    semantics)/BWR, and the logical commands LRD/LWR/LRW mapped through
+ *    the FMMU configurations the master wrote to 0x0600 (working
+ *    counters: read match +1, write match +1, LRW write match +2).
+ *    DC commands (ARMW/FRMW) are not implemented; they return working
+ *    counter 0.
  *  - Auto-increment addressing: the position field is incremented by
  *    every slave the frame passes; the slave seeing position 0 processes.
  *  - Register space per slave, with side effects on:
@@ -79,6 +82,12 @@ static void sim_wr16(uint8_t *p, uint16_t v)
     p[1] = (uint8_t) (v >> 8);
 }
 
+static uint32_t sim_rd32(const uint8_t *p)
+{
+    return (uint32_t) p[0] | ((uint32_t) p[1] << 8)
+            | ((uint32_t) p[2] << 16) | ((uint32_t) p[3] << 24);
+}
+
 /****************************************************************************/
 
 /** Build the SII EEPROM image for one slave.
@@ -105,7 +114,35 @@ static void sim_slave_init_eeprom(sim_slave_t *slave,
     ee[0x000E] = (uint16_t) id->serial_number;
     ee[0x000F] = (uint16_t) (id->serial_number >> 16);
 
-    ee[0x0040] = 0xFFFF; /* end-of-categories marker */
+    if (id->sm2_len || id->sm3_len) {
+        /* Sync manager category (type 0x29), 4 SMs x 4 words: physical
+         * start, default length, control/status, enable/type. SM0/SM1
+         * are present but disabled (no mailbox); SM2 = process data
+         * output, SM3 = process data input. */
+        uint16_t *cat = ee + 0x0040;
+
+        cat[0] = 0x0029; /* category type */
+        cat[1] = 16;     /* category size in words */
+
+        /* SM0 + SM1: disabled */
+        memset(cat + 2, 0, 8 * sizeof(uint16_t));
+
+        /* SM2: process data output (type 3), buffered mode */
+        cat[10] = id->sm2_phys;
+        cat[11] = id->sm2_len;
+        cat[12] = 0x0064; /* control 0x64, status 0 */
+        cat[13] = 0x0301; /* enable 1, type 3 */
+
+        /* SM3: process data input (type 4), buffered mode */
+        cat[14] = id->sm3_phys;
+        cat[15] = id->sm3_len;
+        cat[16] = 0x0020; /* control 0x20, status 0 */
+        cat[17] = 0x0401; /* enable 1, type 4 */
+
+        cat[18] = 0xFFFF; /* end-of-categories marker */
+    } else {
+        ee[0x0040] = 0xFFFF; /* end-of-categories marker */
+    }
 }
 
 static void sim_slave_init_regs(sim_slave_t *slave, unsigned int pos,
@@ -214,6 +251,58 @@ static unsigned int sim_slave_process(sim_slave_t *slave, uint8_t cmd,
     }
 }
 
+/** Process a logical (FMMU-mapped) command against one slave.
+ *
+ * Walks the FMMU configuration pages the master wrote to 0x0600
+ * (16 bytes each: logical start u32, size u16, start/end bit, physical
+ * start u16, physical start bit, direction, enable) and copies every
+ * overlap between the datagram's logical range and an enabled FMMU's
+ * window. Returns the working counter increment. */
+static unsigned int sim_slave_process_logical(sim_slave_t *slave,
+        uint8_t cmd, uint32_t laddr, uint8_t *data, uint16_t len)
+{
+    unsigned int i, r = 0, w = 0;
+
+    for (i = 0; i < 8; i++) {
+        const uint8_t *fmmu = slave->regs + 0x0600 + 16 * i;
+        uint32_t lstart = sim_rd32(fmmu);
+        uint16_t size = sim_rd16(fmmu + 4);
+        uint16_t phys = sim_rd16(fmmu + 8);
+        uint8_t dir = fmmu[11];
+        uint32_t ov_start, ov_end;
+
+        if (!(sim_rd16(fmmu + 12) & 0x0001) || !size) {
+            continue; /* FMMU not enabled */
+        }
+
+        ov_start = lstart > laddr ? lstart : laddr;
+        ov_end = (lstart + size) < (laddr + len)
+                ? (lstart + size) : (laddr + len);
+        if (ov_start >= ov_end
+                || (size_t) phys + (ov_end - lstart) > SIM_REG_SIZE) {
+            continue;
+        }
+
+        if ((dir & 0x01) && (cmd == 0x0A || cmd == 0x0C)) {
+            /* Input FMMU on LRD/LRW: slave memory -> frame. */
+            memcpy(data + (ov_start - laddr),
+                    slave->regs + phys + (ov_start - lstart),
+                    ov_end - ov_start);
+            r = 1;
+        }
+        if ((dir & 0x02) && (cmd == 0x0B || cmd == 0x0C)) {
+            /* Output FMMU on LWR/LRW: frame -> slave memory. */
+            memcpy(slave->regs + phys + (ov_start - lstart),
+                    data + (ov_start - laddr),
+                    ov_end - ov_start);
+            w = 1;
+        }
+    }
+
+    /* Working counter: reads +1, writes +1 (LWR) or +2 (LRW). */
+    return r + (cmd == 0x0C ? 2 * w : w);
+}
+
 /** Process one datagram against the whole bus (in place). */
 static void sim_bus_process_datagram(sim_bus_t *bus, uint8_t cmd,
         uint8_t *addr, uint8_t *data, uint16_t len, uint8_t *wkc_field)
@@ -263,8 +352,19 @@ static void sim_bus_process_datagram(sim_bus_t *bus, uint8_t cmd,
                 sim_wr16(addr, (uint16_t) pos);
             }
             break;
+        case 0x0A: /* LRD */
+        case 0x0B: /* LWR */
+        case 0x0C: /* LRW */
+            {
+                uint32_t laddr = sim_rd32(addr);
+                for (i = 0; i < bus->nslaves; i++) {
+                    wkc = (uint16_t) (wkc + sim_slave_process_logical(
+                            &bus->slaves[i], cmd, laddr, data, len));
+                }
+            }
+            break;
         default:
-            /* NOP, logical and DC commands: no slave processes. */
+            /* NOP and DC commands: no slave processes. */
             break;
     }
 

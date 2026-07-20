@@ -34,13 +34,23 @@
 
 typedef struct sim_bus sim_bus_t;
 
-/** Identity used to build a slave's SII EEPROM image. */
+/** Identity used to build a slave's SII EEPROM image.
+ *
+ * If \a sm2_len or \a sm3_len is nonzero, the EEPROM contains a sync
+ * manager category describing SM0/SM1 (disabled, no mailbox) and SM2
+ * (process data output) / SM3 (process data input) at the given
+ * physical addresses, so the slave can carry PDOs configured via
+ * ecrt_slave_config_pdos(). */
 typedef struct {
     uint32_t vendor_id;
     uint32_t product_code;
     uint32_t revision_number;
     uint32_t serial_number;
     uint16_t alias;
+    uint16_t sm2_phys; /**< Physical start of the output SM (e.g. 0x1100). */
+    uint16_t sm2_len;  /**< Default length of the output SM (0: no SM2/3). */
+    uint16_t sm3_phys; /**< Physical start of the input SM (e.g. 0x1400). */
+    uint16_t sm3_len;  /**< Default length of the input SM. */
 } sim_slave_identity_t;
 
 /** Create a bus with \a nslaves slaves, each initialized from
