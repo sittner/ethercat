@@ -168,20 +168,6 @@ ec_master_t *ec_master_registry_pop_first(void)
 }
 
 /****************************************************************************/
-/* Helper: copy string into fixed-size ioctl buffer (NUL-terminated).        */
-/****************************************************************************/
-
-static void ipc_strcpy(char *target, const char *source)
-{
-    if (source) {
-        strncpy(target, source, EC_IOCTL_STRING_SIZE);
-        target[EC_IOCTL_STRING_SIZE - 1] = '\0';
-    } else {
-        target[0] = '\0';
-    }
-}
-
-/****************************************************************************/
 /* Helper: send exactly \a len bytes; retry on EINTR.                         */
 /****************************************************************************/
 

@@ -107,6 +107,14 @@ ec_master_t *ecrt_startup_master(unsigned int index,
         return NULL;
     }
 
+#if EC_MAX_NUM_DEVICES < 2
+    if (backup_transport) {
+        ec_log(EC_LOG_ERR, "Backup transport given, but the master was built"
+                " without redundancy support (configure --with-devices)\n");
+        return NULL;
+    }
+#endif
+
     master = malloc(sizeof(ec_master_t));
     if (!master) {
         ec_log(EC_LOG_ERR, "Failed to allocate master context\n");
@@ -172,6 +180,7 @@ ec_master_t *ecrt_startup_master(unsigned int index,
         goto out_clear_master;
     }
 
+#if EC_MAX_NUM_DEVICES > 1
     /* Set up backup device if backup transport is present */
     if (master->pal.backup_transport) {
         master->devices[EC_DEVICE_BACKUP].pal.transport =
@@ -184,6 +193,7 @@ ec_master_t *ecrt_startup_master(unsigned int index,
             goto out_close_main_device;
         }
     }
+#endif
 
     /* Enter idle phase */
     ret = ec_master_enter_idle_phase(master);
@@ -232,10 +242,12 @@ ec_master_t *ecrt_startup_master(unsigned int index,
     return master;
 
 out_close_backup_device:
+#if EC_MAX_NUM_DEVICES > 1
     if (master->pal.backup_transport) {
         ec_device_close(&master->devices[EC_DEVICE_BACKUP]);
     }
 out_close_main_device:
+#endif
     ec_device_close(&master->devices[EC_DEVICE_MAIN]);
 out_clear_master:
     ec_master_clear(master);
@@ -265,9 +277,11 @@ static void release_master_internal(ec_master_t *master)
         ec_master_leave_idle_phase(master);
     }
 
+#if EC_MAX_NUM_DEVICES > 1
     if (master->pal.backup_transport) {
         ec_device_close(&master->devices[EC_DEVICE_BACKUP]);
     }
+#endif
     ec_device_close(&master->devices[EC_DEVICE_MAIN]);
     ec_master_clear(master);
 
