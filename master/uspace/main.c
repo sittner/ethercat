@@ -140,11 +140,11 @@ static int daemonize(void)
     if (pid < 0) return -1;
     if (pid > 0) _exit(0);
 
-    chdir("/");
+    if (chdir("/") < 0) return -1;
 
-    freopen("/dev/null", "r", stdin);
-    freopen("/dev/null", "w", stdout);
-    freopen("/dev/null", "w", stderr);
+    if (!freopen("/dev/null", "r", stdin)) return -1;
+    if (!freopen("/dev/null", "w", stdout)) return -1;
+    if (!freopen("/dev/null", "w", stderr)) return -1;
 
     return 0;
 }
