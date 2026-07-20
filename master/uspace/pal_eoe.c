@@ -171,41 +171,99 @@ int ec_netdev_set_mac(ec_netdev_t *dev, const uint8_t mac[ETH_ALEN])
 }
 
 /****************************************************************************/
-/* Socket Buffer Implementation */
+/* Socket Buffer Implementation                                             */
+/*                                                                          */
+/* Frame buffers come from a preallocated, prefaulted and mlocked pool     */
+/* instead of per-frame heap allocation (issue #175: unbounded malloc in   */
+/* the EoE thread). The pool bounds are known: the TX queue is limited to  */
+/* EC_EOE_TX_QUEUE_SIZE frames per handler and RX has one frame in flight, */
+/* so exhaustion only occurs with many concurrent EoE handlers under full  */
+/* load — then frames are dropped (correct for Ethernet) and counted.     */
 /****************************************************************************/
+
+#define EC_SKB_POOL_SLOTS 128
+#define EC_SKB_POOL_BUF_SIZE 2048 /* covers ETH_FRAME_LEN and the largest
+                                     EoE reassembly (63 * 32 bytes) */
+
+typedef struct ec_skb_slot {
+    ec_skb_t skb;
+    struct ec_skb_slot *next; /**< Freelist link. */
+    uint8_t buf[EC_SKB_POOL_BUF_SIZE];
+} ec_skb_slot_t;
+
+static ec_skb_slot_t *skb_pool; /**< Slot array (ec_rt_zalloc'd). */
+static ec_skb_slot_t *skb_pool_free; /**< Freelist head. */
+static pthread_mutex_t skb_pool_lock = PTHREAD_MUTEX_INITIALIZER;
+static unsigned long skb_pool_dropped;
+static pthread_once_t skb_pool_once = PTHREAD_ONCE_INIT;
+
+static void ec_skb_pool_init(void)
+{
+    unsigned int i;
+
+    skb_pool = ec_rt_zalloc(EC_SKB_POOL_SLOTS * sizeof(ec_skb_slot_t));
+    if (!skb_pool) {
+        return; /* allocation stays disabled; frames are dropped */
+    }
+    for (i = 0; i < EC_SKB_POOL_SLOTS - 1; i++) {
+        skb_pool[i].next = &skb_pool[i + 1];
+    }
+    skb_pool[EC_SKB_POOL_SLOTS - 1].next = NULL;
+    skb_pool_free = &skb_pool[0];
+}
 
 ec_skb_t *ec_skb_alloc(unsigned int size)
 {
-    ec_skb_t *skb;
-    
-    skb = calloc(1, sizeof(*skb));
-    if (!skb) {
+    ec_skb_slot_t *slot;
+
+    if (size > EC_SKB_POOL_BUF_SIZE) {
         return NULL;
     }
-    
-    skb->head = malloc(size);
-    if (!skb->head) {
-        free(skb);
+
+    pthread_once(&skb_pool_once, ec_skb_pool_init);
+
+    pthread_mutex_lock(&skb_pool_lock);
+    slot = skb_pool_free;
+    if (slot) {
+        skb_pool_free = slot->next;
+    } else {
+        skb_pool_dropped++;
+    }
+    pthread_mutex_unlock(&skb_pool_lock);
+
+    if (!slot) {
+        if (ec_log_ratelimit()) {
+            ec_log(EC_LOG_WARNING, "EoE: frame buffer pool exhausted"
+                    " (%lu frame(s) dropped)\n", skb_pool_dropped);
+        }
         return NULL;
     }
-    
-    skb->data = skb->head;
-    skb->tail = skb->head;
-    skb->end = skb->head + size;
-    skb->len = 0;
-    skb->protocol = 0;
-    skb->dev = NULL;
-    skb->ip_summed = EC_CHECKSUM_NONE;
-    
-    return skb;
+
+    slot->skb.head = slot->buf;
+    slot->skb.data = slot->buf;
+    slot->skb.tail = slot->buf;
+    slot->skb.end = slot->buf + size;
+    slot->skb.len = 0;
+    slot->skb.protocol = 0;
+    slot->skb.dev = NULL;
+    slot->skb.ip_summed = EC_CHECKSUM_NONE;
+
+    return &slot->skb;
 }
 
 void ec_skb_free(ec_skb_t *skb)
 {
-    if (skb) {
-        free(skb->head);
-        free(skb);
+    ec_skb_slot_t *slot;
+
+    if (!skb) {
+        return;
     }
+
+    slot = (ec_skb_slot_t *) skb; /* skb is the slot's first member */
+    pthread_mutex_lock(&skb_pool_lock);
+    slot->next = skb_pool_free;
+    skb_pool_free = slot;
+    pthread_mutex_unlock(&skb_pool_lock);
 }
 
 uint8_t *ec_skb_put(ec_skb_t *skb, unsigned int len)
