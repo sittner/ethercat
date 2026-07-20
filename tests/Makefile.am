@@ -37,6 +37,7 @@ check_PROGRAMS = \
 	test_emerg_ring \
 	test_pdo_print \
 	test_shared \
+	test_sim_coe \
 	test_sim_domain \
 	test_sim_scan
 
@@ -51,6 +52,7 @@ test_datagram_SOURCES = test_datagram.c test.h
 test_emerg_ring_SOURCES = test_emerg_ring.c test.h
 test_pdo_print_SOURCES = test_pdo_print.c test.h
 test_shared_SOURCES = test_shared.c test.h
+test_sim_coe_SOURCES = test_sim_coe.c transport_sim.c transport_sim.h test.h
 test_sim_domain_SOURCES = test_sim_domain.c transport_sim.c transport_sim.h \
 	test.h
 test_sim_scan_SOURCES = test_sim_scan.c transport_sim.c transport_sim.h test.h

@@ -51,6 +51,12 @@ typedef struct {
     uint16_t sm2_len;  /**< Default length of the output SM (0: no SM2/3). */
     uint16_t sm3_phys; /**< Physical start of the input SM (e.g. 0x1400). */
     uint16_t sm3_len;  /**< Default length of the input SM. */
+    uint16_t mbox_out_phys; /**< Physical start of the receive (master ->
+                              slave) mailbox / SM0 (e.g. 0x1000). */
+    uint16_t mbox_out_len;  /**< Receive mailbox size (0: no mailbox). */
+    uint16_t mbox_in_phys;  /**< Physical start of the send (slave ->
+                              master) mailbox / SM1 (e.g. 0x1080). */
+    uint16_t mbox_in_len;   /**< Send mailbox size. */
 } sim_slave_identity_t;
 
 /** Create a bus with \a nslaves slaves, each initialized from
@@ -78,5 +84,16 @@ uint8_t *sim_bus_slave_regs(sim_bus_t *bus, unsigned int pos);
 
 /** Number of frames processed by the bus so far. */
 unsigned long sim_bus_frame_count(sim_bus_t *bus);
+
+/** Create or update an object-dictionary entry of slave \a pos (CoE
+ * slaves only; entries serve SDO uploads and accept downloads).
+ * Returns 0 on success. */
+int sim_bus_od_set(sim_bus_t *bus, unsigned int pos, uint16_t index,
+        uint8_t subindex, const void *data, size_t size);
+
+/** Look up an object-dictionary entry; returns the data pointer and
+ * stores the current size in \a size, or NULL if not present. */
+const uint8_t *sim_bus_od_data(sim_bus_t *bus, unsigned int pos,
+        uint16_t index, uint8_t subindex, size_t *size);
 
 #endif

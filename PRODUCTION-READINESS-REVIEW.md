@@ -388,8 +388,19 @@ currently documents a pipeline that never runs here.
     config, activate, real cyclic path — to OP with a complete working
     counter (LRW wc=3) and verifies process data round-trips both
     directions through the FMMU mapping; clean under ASan/UBSan/LSan.
-    Next increments: mailbox/CoE for SDO tests, link-down/rescan
-    behavior, DC (ARMW/FRMW), multi-slave domains.
+    — **third stage done (mailbox/CoE)**: slaves can declare a CoE
+    mailbox (SII words 0x0014-0x001C + SM0/SM1 category entries); requests
+    written into the receive mailbox are answered from a per-slave object
+    dictionary through the real mechanics (SM1 full bit at 0x080D polled
+    via FPRD 0x808, fetch clears it). Expedited and single-segment normal
+    SDO transfers are served; segmented transfers abort. `test_sim_coe`
+    exercises the blocking SDO API end-to-end: expedited and normal
+    up/downloads, OD round-trip verification, and the abort path
+    (0x06020000 for unknown objects); the CoE-capable slave also takes
+    the mailbox-scan and PDO-reading (0x1C1x) paths during startup.
+    Next increments: link-down/rescan behavior, DC (ARMW/FRMW),
+    multi-slave domains, SDO Info service for `ethercat sdos`, CoE-based
+    PDO assignment tests (mailbox + PD slave combined).
 11. T4 RT smoke/latency gate (self-hosted).
 12. F6/F7 lock/teardown hardening; F8 link-check relocation.
 13. Docs refresh (FEATURES, TODO, stale checklist items); T5 hardware rig.

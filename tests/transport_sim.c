@@ -21,6 +21,13 @@
  *  - Base information block (0x0000): 8 FMMUs, 8 sync managers, MII
  *    ports 0/1, no DC support.
  *  - Working counters: +1 per matching slave for read or write commands.
+ *  - CoE mailbox: requests written into the receive mailbox (SM0
+ *    buffer) are answered from a per-slave object dictionary into the
+ *    send mailbox (SM1 buffer), raising the SM1 "mailbox full" status
+ *    bit (0x080D bit 3) that the master polls via FPRD 0x808; fetching
+ *    the send mailbox clears it. Expedited and single-segment normal
+ *    SDO up/downloads are supported; segmented transfers are aborted
+ *    (0x05040001), unknown objects abort with 0x06020000.
  *
  *  Frames are processed synchronously in send() and queued for the next
  *  receive() call — one cycle of latency, like a real bus.
@@ -48,9 +55,25 @@
 #define SIM_DGRAM_HDR_LEN 10
 #define SIM_RXQ_LEN 32
 
+#define SIM_OD_ENTRIES 32
+#define SIM_OD_DATA_SIZE 64
+
+typedef struct {
+    int present;
+    uint16_t index;
+    uint8_t subindex;
+    size_t size;
+    uint8_t data[SIM_OD_DATA_SIZE];
+} sim_od_entry_t;
+
 typedef struct {
     uint8_t regs[SIM_REG_SIZE];
     uint16_t eeprom[SIM_EEPROM_WORDS];
+    uint16_t mbox_out_phys; /**< Receive mailbox (master -> slave). */
+    uint16_t mbox_out_len;
+    uint16_t mbox_in_phys;  /**< Send mailbox (slave -> master). */
+    uint16_t mbox_in_len;
+    sim_od_entry_t od[SIM_OD_ENTRIES];
 } sim_slave_t;
 
 struct sim_bus {
@@ -114,30 +137,60 @@ static void sim_slave_init_eeprom(sim_slave_t *slave,
     ee[0x000E] = (uint16_t) id->serial_number;
     ee[0x000F] = (uint16_t) (id->serial_number >> 16);
 
-    if (id->sm2_len || id->sm3_len) {
+    if (id->mbox_out_len) {
+        /* Bootstrap and standard mailbox configuration + supported
+         * protocols (CoE). */
+        ee[0x0014] = id->mbox_out_phys;
+        ee[0x0015] = id->mbox_out_len;
+        ee[0x0016] = id->mbox_in_phys;
+        ee[0x0017] = id->mbox_in_len;
+        ee[0x0018] = id->mbox_out_phys;
+        ee[0x0019] = id->mbox_out_len;
+        ee[0x001A] = id->mbox_in_phys;
+        ee[0x001B] = id->mbox_in_len;
+        ee[0x001C] = 0x0004; /* EC_MBOX_COE */
+    }
+
+    if (id->mbox_out_len || id->sm2_len || id->sm3_len) {
         /* Sync manager category (type 0x29), 4 SMs x 4 words: physical
-         * start, default length, control/status, enable/type. SM0/SM1
-         * are present but disabled (no mailbox); SM2 = process data
-         * output, SM3 = process data input. */
+         * start, default length, control/status, enable/type.
+         * SM0 = mailbox out, SM1 = mailbox in (disabled slots when the
+         * slave has no mailbox); SM2 = process data output, SM3 =
+         * process data input. */
         uint16_t *cat = ee + 0x0040;
 
         cat[0] = 0x0029; /* category type */
         cat[1] = 16;     /* category size in words */
 
-        /* SM0 + SM1: disabled */
-        memset(cat + 2, 0, 8 * sizeof(uint16_t));
+        memset(cat + 2, 0, 16 * sizeof(uint16_t));
 
-        /* SM2: process data output (type 3), buffered mode */
-        cat[10] = id->sm2_phys;
-        cat[11] = id->sm2_len;
-        cat[12] = 0x0064; /* control 0x64, status 0 */
-        cat[13] = 0x0301; /* enable 1, type 3 */
+        if (id->mbox_out_len) {
+            /* SM0: mailbox out (type 1), one-buffer mode */
+            cat[2] = id->mbox_out_phys;
+            cat[3] = id->mbox_out_len;
+            cat[4] = 0x0026; /* control 0x26, status 0 */
+            cat[5] = 0x0101; /* enable 1, type 1 */
 
-        /* SM3: process data input (type 4), buffered mode */
-        cat[14] = id->sm3_phys;
-        cat[15] = id->sm3_len;
-        cat[16] = 0x0020; /* control 0x20, status 0 */
-        cat[17] = 0x0401; /* enable 1, type 4 */
+            /* SM1: mailbox in (type 2), one-buffer mode */
+            cat[6] = id->mbox_in_phys;
+            cat[7] = id->mbox_in_len;
+            cat[8] = 0x0022; /* control 0x22, status 0 */
+            cat[9] = 0x0201; /* enable 1, type 2 */
+        }
+
+        if (id->sm2_len || id->sm3_len) {
+            /* SM2: process data output (type 3), buffered mode */
+            cat[10] = id->sm2_phys;
+            cat[11] = id->sm2_len;
+            cat[12] = 0x0064; /* control 0x64, status 0 */
+            cat[13] = 0x0301; /* enable 1, type 3 */
+
+            /* SM3: process data input (type 4), buffered mode */
+            cat[14] = id->sm3_phys;
+            cat[15] = id->sm3_len;
+            cat[16] = 0x0020; /* control 0x20, status 0 */
+            cat[17] = 0x0401; /* enable 1, type 4 */
+        }
 
         cat[18] = 0xFFFF; /* end-of-categories marker */
     } else {
@@ -184,6 +237,188 @@ static void sim_slave_init_regs(sim_slave_t *slave, unsigned int pos,
 
 /****************************************************************************/
 
+/****************************************************************************/
+/* CoE mailbox emulation                                                    */
+/****************************************************************************/
+
+static sim_od_entry_t *sim_od_find(sim_slave_t *slave, uint16_t index,
+        uint8_t subindex, int create)
+{
+    unsigned int i;
+    sim_od_entry_t *free_entry = NULL;
+
+    for (i = 0; i < SIM_OD_ENTRIES; i++) {
+        sim_od_entry_t *e = &slave->od[i];
+        if (e->present && e->index == index && e->subindex == subindex) {
+            return e;
+        }
+        if (!e->present && !free_entry) {
+            free_entry = e;
+        }
+    }
+    if (create && free_entry) {
+        free_entry->present = 1;
+        free_entry->index = index;
+        free_entry->subindex = subindex;
+        free_entry->size = 0;
+        return free_entry;
+    }
+    return NULL;
+}
+
+/** Write a CoE response into the send mailbox and raise the SM1
+ * "mailbox full" status bit (0x080D bit 3, polled via FPRD 0x808). */
+static void sim_mbox_respond(sim_slave_t *slave, const uint8_t *payload,
+        uint16_t len)
+{
+    uint8_t *m = slave->regs + slave->mbox_in_phys;
+
+    if ((size_t) slave->mbox_in_phys + 6 + len > SIM_REG_SIZE
+            || 6 + len > slave->mbox_in_len) {
+        return;
+    }
+
+    sim_wr16(m, len); /* mailbox service data length */
+    memcpy(m + 2, slave->regs + 0x0010, 2); /* station address */
+    m[4] = 0x00; /* channel & priority */
+    m[5] = 0x03; /* protocol: CoE */
+    memcpy(m + 6, payload, len);
+
+    slave->regs[0x080D] |= 0x08;
+}
+
+static void sim_coe_abort(sim_slave_t *slave, uint16_t index,
+        uint8_t subindex, uint32_t code)
+{
+    uint8_t rsp[10];
+
+    sim_wr16(rsp, 0x2 << 12); /* SDO request... */
+    rsp[2] = 0x4 << 5; /* ...abort SDO transfer */
+    sim_wr16(rsp + 3, index);
+    rsp[5] = subindex;
+    rsp[6] = (uint8_t) code;
+    rsp[7] = (uint8_t) (code >> 8);
+    rsp[8] = (uint8_t) (code >> 16);
+    rsp[9] = (uint8_t) (code >> 24);
+    sim_mbox_respond(slave, rsp, sizeof(rsp));
+}
+
+/** Handle a CoE SDO request (expedited and single-segment normal
+ * transfers; segmented transfers are aborted). */
+static void sim_coe_request(sim_slave_t *slave, const uint8_t *coe,
+        uint16_t len)
+{
+    uint8_t cs, ccs, subindex;
+    uint16_t index;
+    sim_od_entry_t *entry;
+    uint8_t rsp[10 + SIM_OD_DATA_SIZE];
+
+    if (len < 6 || (sim_rd16(coe) >> 12) != 0x2) {
+        return; /* not an SDO request: ignore */
+    }
+
+    cs = coe[2];
+    ccs = cs >> 5;
+    index = sim_rd16(coe + 3);
+    subindex = (cs & 0x10) ? 0 : coe[5]; /* complete access: subindex 0 */
+
+    switch (ccs) {
+        case 0x1: /* initiate download */
+            {
+                size_t dsize;
+                const uint8_t *src;
+
+                if (cs & 0x02) { /* expedited */
+                    dsize = (cs & 0x01) ? 4 - ((cs >> 2) & 0x03) : 4;
+                    src = coe + 6;
+                } else { /* normal, single segment only */
+                    if (len < 10) {
+                        return;
+                    }
+                    dsize = sim_rd32(coe + 6);
+                    src = coe + 10;
+                    if (dsize > (size_t) (len - 10)) {
+                        /* would need segmented transfer */
+                        sim_coe_abort(slave, index, subindex, 0x05040001);
+                        return;
+                    }
+                }
+                if (dsize > SIM_OD_DATA_SIZE
+                        || !(entry = sim_od_find(slave, index, subindex, 1))) {
+                    sim_coe_abort(slave, index, subindex, 0x06040047);
+                    return;
+                }
+                memcpy(entry->data, src, dsize);
+                entry->size = dsize;
+
+                sim_wr16(rsp, 0x3 << 12); /* SDO response */
+                rsp[2] = 0x3 << 5; /* download response */
+                sim_wr16(rsp + 3, index);
+                rsp[5] = coe[5];
+                memset(rsp + 6, 0, 4);
+                sim_mbox_respond(slave, rsp, 10);
+            }
+            break;
+        case 0x2: /* initiate upload */
+            entry = sim_od_find(slave, index, subindex, 0);
+            if (!entry) {
+                sim_coe_abort(slave, index, subindex,
+                        0x06020000 /* object does not exist */);
+                return;
+            }
+            sim_wr16(rsp, 0x3 << 12); /* SDO response */
+            sim_wr16(rsp + 3, index);
+            rsp[5] = coe[5];
+            if (entry->size <= 4) { /* expedited */
+                rsp[2] = (uint8_t) ((0x2 << 5) | 0x02 | 0x01
+                        | ((4 - entry->size) << 2));
+                memset(rsp + 6, 0, 4);
+                memcpy(rsp + 6, entry->data, entry->size);
+                sim_mbox_respond(slave, rsp, 10);
+            } else { /* normal, single segment */
+                rsp[2] = (0x2 << 5) | 0x01;
+                rsp[6] = (uint8_t) entry->size;
+                rsp[7] = (uint8_t) (entry->size >> 8);
+                rsp[8] = 0;
+                rsp[9] = 0;
+                memcpy(rsp + 10, entry->data, entry->size);
+                sim_mbox_respond(slave, rsp, (uint16_t) (10 + entry->size));
+            }
+            break;
+        default: /* segment transfers etc. are not supported */
+            sim_coe_abort(slave, index, subindex, 0x05040001);
+            break;
+    }
+}
+
+/** Process a request written into the receive mailbox. */
+static void sim_mbox_request(sim_slave_t *slave)
+{
+    const uint8_t *m = slave->regs + slave->mbox_out_phys;
+    uint16_t dlen = sim_rd16(m);
+    uint8_t type = m[5] & 0x0F;
+
+    if (dlen < 2 || 6 + dlen > slave->mbox_out_len) {
+        return;
+    }
+
+    if (type == 0x03) { /* CoE */
+        sim_coe_request(slave, m + 6, dlen);
+    } else {
+        /* Unsupported protocol: mailbox error reply (type 0). */
+        uint8_t *r = slave->regs + slave->mbox_in_phys;
+        sim_wr16(r, 4);
+        memcpy(r + 2, slave->regs + 0x0010, 2);
+        r[4] = 0x00;
+        r[5] = 0x00; /* mailbox error */
+        sim_wr16(r + 6, 0x0001); /* MBXERR command */
+        sim_wr16(r + 8, 0x0001); /* code: syntax error */
+        slave->regs[0x080D] |= 0x08;
+    }
+}
+
+/****************************************************************************/
+
 /** Apply write side effects after data has been copied into the register
  * space. \a adr / \a len describe the written range. */
 static void sim_slave_write_effects(sim_slave_t *slave, uint16_t adr,
@@ -216,6 +451,12 @@ static void sim_slave_write_effects(sim_slave_t *slave, uint16_t adr,
             r[0x0503] = 0x20; /* error on last command */
         }
     }
+
+    /* Receive mailbox (SM0 buffer): process the request. */
+    if (slave->mbox_out_len && adr <= slave->mbox_out_phys
+            && slave->mbox_out_phys < adr + len) {
+        sim_mbox_request(slave);
+    }
 }
 
 /** Process one datagram against one slave. Returns the working counter
@@ -231,6 +472,10 @@ static unsigned int sim_slave_process(sim_slave_t *slave, uint8_t cmd,
         case 0x01: /* APRD */
         case 0x04: /* FPRD */
             memcpy(data, slave->regs + adr, len);
+            /* Fetching the send mailbox empties it. */
+            if (slave->mbox_in_len && adr == slave->mbox_in_phys) {
+                slave->regs[0x080D] &= (uint8_t) ~0x08;
+            }
             return 1;
         case 0x07: /* BRD: bitwise OR of all slaves' data */
             {
@@ -560,8 +805,29 @@ sim_bus_t *sim_bus_create(unsigned int nslaves,
     pthread_mutex_init(&bus->lock, NULL);
 
     for (i = 0; i < nslaves; i++) {
-        sim_slave_init_regs(&bus->slaves[i], i, nslaves);
-        sim_slave_init_eeprom(&bus->slaves[i], &identities[i]);
+        sim_slave_t *slave = &bus->slaves[i];
+
+        sim_slave_init_regs(slave, i, nslaves);
+        sim_slave_init_eeprom(slave, &identities[i]);
+
+        slave->mbox_out_phys = identities[i].mbox_out_phys;
+        slave->mbox_out_len = identities[i].mbox_out_len;
+        slave->mbox_in_phys = identities[i].mbox_in_phys;
+        slave->mbox_in_len = identities[i].mbox_in_len;
+
+        if (slave->mbox_out_len) {
+            /* PDO assignment counts for SM0..SM3 (read by the master's
+             * PDO-reading FSM during scan): no PDOs assigned via CoE. */
+            unsigned int sm;
+            for (sm = 0; sm < 4; sm++) {
+                sim_od_entry_t *e =
+                        sim_od_find(slave, (uint16_t) (0x1C10 + sm), 0, 1);
+                if (e) {
+                    e->data[0] = 0;
+                    e->size = 1;
+                }
+            }
+        }
     }
 
     bus->transport.ops = &sim_transport_ops;
@@ -617,4 +883,47 @@ unsigned long sim_bus_frame_count(sim_bus_t *bus)
     n = bus->frame_count;
     pthread_mutex_unlock(&bus->lock);
     return n;
+}
+
+int sim_bus_od_set(sim_bus_t *bus, unsigned int pos, uint16_t index,
+        uint8_t subindex, const void *data, size_t size)
+{
+    sim_od_entry_t *entry;
+    int ret = -1;
+
+    if (pos >= bus->nslaves || size > SIM_OD_DATA_SIZE) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&bus->lock);
+    entry = sim_od_find(&bus->slaves[pos], index, subindex, 1);
+    if (entry) {
+        memcpy(entry->data, data, size);
+        entry->size = size;
+        ret = 0;
+    }
+    pthread_mutex_unlock(&bus->lock);
+    return ret;
+}
+
+const uint8_t *sim_bus_od_data(sim_bus_t *bus, unsigned int pos,
+        uint16_t index, uint8_t subindex, size_t *size)
+{
+    sim_od_entry_t *entry;
+    const uint8_t *data = NULL;
+
+    if (pos >= bus->nslaves) {
+        return NULL;
+    }
+
+    pthread_mutex_lock(&bus->lock);
+    entry = sim_od_find(&bus->slaves[pos], index, subindex, 0);
+    if (entry) {
+        if (size) {
+            *size = entry->size;
+        }
+        data = entry->data;
+    }
+    pthread_mutex_unlock(&bus->lock);
+    return data;
 }
