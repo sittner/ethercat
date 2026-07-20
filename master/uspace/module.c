@@ -49,8 +49,8 @@ static atomic_flag lib_initialized = ATOMIC_FLAG_INIT;
 int ecrt_lib_init(ec_log_cb_t log_cb, const char *socket_path)
 {
     if (atomic_flag_test_and_set(&lib_initialized)) {
-        ec_log(EC_LOG_WARNING, "ecrt_lib_init() called more than once; ignoring\n");
-        return 0;
+        ec_log(EC_LOG_WARNING, "ecrt_lib_init() called more than once\n");
+        return -EBUSY;
     }
 
     ec_log_set_callback(log_cb);

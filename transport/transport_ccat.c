@@ -477,6 +477,11 @@ static int ccat_send(ec_transport_t *transport, size_t size)
         return -EINVAL;
 
     /* Check TX FIFO level - can we send? */
+    /* TX FIFO still busy: drop the frame (the datagrams time out and
+     * are retried by the FSMs; cyclic domain data is resent next cycle
+     * anyway). Deliberate: blocking here would stall the cyclic path,
+     * and at EtherCAT cycle times the FIFO is empty again long before
+     * the next frame. */
     if (ccat_read8((uint8_t *)ccat->mac + TX_FIFO_LEVEL_OFFSET)
         & TX_FIFO_LEVEL_MASK) {
         return -EBUSY;

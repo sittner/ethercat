@@ -201,9 +201,11 @@ static int raw_send(ec_transport_t *transport, size_t size)
         return -EINVAL;
     }
 
-    ret = sendto(raw->socket_fd, transport->tx_buffer, size, 0,
-                 (struct sockaddr *)&raw->socket_addr,
-                 sizeof(raw->socket_addr));
+    do {
+        ret = sendto(raw->socket_fd, transport->tx_buffer, size, 0,
+                     (struct sockaddr *)&raw->socket_addr,
+                     sizeof(raw->socket_addr));
+    } while (ret < 0 && errno == EINTR);
 
     if (ret < 0) {
         return -errno;

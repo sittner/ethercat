@@ -760,7 +760,8 @@ typedef void (*ec_log_cb_t)(int level, const char *fmt, va_list ap);
  *                     To grant a tool group access, chown() the socket file
  *                     after this call returns (the ec_master daemon does
  *                     this via --socket-group).
- *  \return 0 on success, < 0 on error. */
+ *  \return 0 on success, -EBUSY if already initialized, < 0 on other
+ *          errors. */
 EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb, const char *socket_path);
 
 /** Configure the scheduling of library-created threads (master state

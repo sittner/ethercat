@@ -36,7 +36,9 @@ vim: spelllang=en spell
     application.
 - Pluggable userspace transports (`ectp.h`):
   - Raw socket (AF_PACKET) — works with any network interface.
-  - AF_XDP (SKB and native mode) for reduced latency.
+  - AF_XDP (SKB and native mode) for reduced latency. Both use
+    XDP copy mode for universal driver compatibility (true
+    zero-copy is a possible future optimization).
   - Beckhoff CCAT EIM via direct PCI BAR access (no kernel module).
   - Public transport ops interface for custom transports.
 - Realtime-friendly by construction:
