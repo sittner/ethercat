@@ -423,8 +423,18 @@ currently documents a pipeline that never runs here.
     (AssignActivate 0x0980, cycle time 0x09A0), app-time propagation
     ref→FRMW→slaves (0x0910), `ecrt_master_reference_clock_time()` and
     the 0x092C sync monitor — alongside flowing process data.
-    Next increments: multi-slave domains, SDO Info service for
-    `ethercat sdos`.
+    — **seventh stage done (multi-slave / PSC)**: `test_sim_multi` runs a
+    six-slave mixed bus (three PD, two CoE+PD with concurrent mailbox
+    PDO-assignment writes, one plain) with all five PD slaves in ONE
+    domain: parallel configuration to OP (Parallel Slave Configuration,
+    `ecf9dac8`), shared logical exchange with working counter 15, and
+    per-slave data isolation verified in both directions (no cross-slave
+    corruption in the FMMU logical layout). A deactivate/re-activate
+    cycle returns to OP with zero further SDO downloads on both CoE
+    slaves. Log lines from distinct slave FSMs visibly interleave during
+    configuration — direct evidence of the parallel FSMs (and of the F3
+    concurrent-logging observation).
+    Next increment: SDO Info service for `ethercat sdos`.
 11. T4 RT smoke/latency gate (self-hosted).
 12. F6/F7 lock/teardown hardening; F8 link-check relocation.
 13. Docs refresh (FEATURES, TODO, stale checklist items); T5 hardware rig.

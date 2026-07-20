@@ -41,6 +41,7 @@ check_PROGRAMS = \
 	test_sim_dc \
 	test_sim_domain \
 	test_sim_link \
+	test_sim_multi \
 	test_sim_pdo_assign \
 	test_sim_scan
 
@@ -60,6 +61,8 @@ test_sim_dc_SOURCES = test_sim_dc.c transport_sim.c transport_sim.h test.h
 test_sim_domain_SOURCES = test_sim_domain.c transport_sim.c transport_sim.h \
 	test.h
 test_sim_link_SOURCES = test_sim_link.c transport_sim.c transport_sim.h \
+	test.h
+test_sim_multi_SOURCES = test_sim_multi.c transport_sim.c transport_sim.h \
 	test.h
 test_sim_pdo_assign_SOURCES = test_sim_pdo_assign.c transport_sim.c \
 	transport_sim.h test.h
