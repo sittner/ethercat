@@ -87,7 +87,9 @@ struct ec_fsm_master {
     EC_PAL_SHARED unsigned int slaves_responding[EC_MAX_NUM_DEVICES]; /**< Number of
                                                           responding slaves
                                                           for every device. */
-    unsigned int rescan_required; /**< A bus rescan is required. */
+    EC_PAL_SHARED unsigned int rescan_required; /**< A bus rescan is required.
+                                                  Also set from the tool/IPC
+                                                  thread. */
     EC_PAL_SHARED ec_slave_state_t slave_states[EC_MAX_NUM_DEVICES]; /**< AL states of
                                                          responding slaves for
                                                          every device. */

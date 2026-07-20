@@ -84,16 +84,16 @@ struct ec_device
     EC_PAL_SHARED uint64_t rx_bytes; /**< Number of bytes received. */
     uint64_t last_rx_bytes; /**< Number of bytes received of last statistics cycle.
                         */
-    uint64_t tx_errors; /**< Number of transmit errors. */
-    int32_t tx_frame_rates[EC_RATE_COUNT]; /**< Transmit rates in frames/s for
+    EC_PAL_SHARED uint64_t tx_errors; /**< Number of transmit errors. */
+    EC_PAL_SHARED int32_t tx_frame_rates[EC_RATE_COUNT]; /**< Transmit rates in frames/s for
                                          different statistics cycle periods.
                                         */
-    int32_t rx_frame_rates[EC_RATE_COUNT]; /**< Receive rates in frames/s for
+    EC_PAL_SHARED int32_t rx_frame_rates[EC_RATE_COUNT]; /**< Receive rates in frames/s for
                                          different statistics cycle periods.
                                         */
-    int32_t tx_byte_rates[EC_RATE_COUNT]; /**< Transmit rates in byte/s for
+    EC_PAL_SHARED int32_t tx_byte_rates[EC_RATE_COUNT]; /**< Transmit rates in byte/s for
                                         different statistics cycle periods. */
-    int32_t rx_byte_rates[EC_RATE_COUNT]; /**< Receive rates in byte/s for
+    EC_PAL_SHARED int32_t rx_byte_rates[EC_RATE_COUNT]; /**< Receive rates in byte/s for
                                         different statistics cycle periods. */
 
 #ifdef EC_DEBUG_IF

@@ -1150,7 +1150,12 @@ void ec_master_receive_datagrams(
         // dequeue the received datagram; the atomic state store is the
         // publication point in userspace mode, so all result fields
         // (working counter, data, reception time) must be written
-        // before it
+        // before it. The list_del_init() may safely follow the store:
+        // the queue node is only ever touched by the IO-owning thread
+        // (RT app thread in OP, idle thread in IDLE) — FSM-side
+        // re-queueing goes through the injection_seq / ext_ring
+        // handshake and the list manipulation for it happens on the IO
+        // side in ec_master_inject_external_datagrams().
         datagram->time_received =
             master->devices[EC_DEVICE_MAIN].time_poll;
         datagram->state = EC_DATAGRAM_RECEIVED;
@@ -2278,7 +2283,8 @@ int ecrt_master_send(ec_master_t *master)
                 continue;
             }
 
-            // query link state
+            // drain received frames on the link-down device (link
+            // state itself is watched by ec_pal_check_link_states())
             ec_device_poll(&master->devices[dev_idx]);
 
             // clear frame statistics

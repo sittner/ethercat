@@ -146,17 +146,17 @@ typedef struct {
     uint64_t last_rx_bytes; /**< Number of bytes received of last statistics cycle.
                         */
     uint64_t last_loss; /**< Tx/Rx difference of last statistics cycle. */
-    int32_t tx_frame_rates[EC_RATE_COUNT]; /**< Transmit rates in frames/s for
+    EC_PAL_SHARED int32_t tx_frame_rates[EC_RATE_COUNT]; /**< Transmit rates in frames/s for
                                          different statistics cycle periods.
                                         */
-    int32_t rx_frame_rates[EC_RATE_COUNT]; /**< Receive rates in frames/s for
+    EC_PAL_SHARED int32_t rx_frame_rates[EC_RATE_COUNT]; /**< Receive rates in frames/s for
                                          different statistics cycle periods.
                                         */
-    int32_t tx_byte_rates[EC_RATE_COUNT]; /**< Transmit rates in byte/s for
+    EC_PAL_SHARED int32_t tx_byte_rates[EC_RATE_COUNT]; /**< Transmit rates in byte/s for
                                         different statistics cycle periods. */
-    int32_t rx_byte_rates[EC_RATE_COUNT]; /**< Receive rates in byte/s for
+    EC_PAL_SHARED int32_t rx_byte_rates[EC_RATE_COUNT]; /**< Receive rates in byte/s for
                                         different statistics cycle periods. */
-    int32_t loss_rates[EC_RATE_COUNT]; /**< Frame loss rates for different
+    EC_PAL_SHARED int32_t loss_rates[EC_RATE_COUNT]; /**< Frame loss rates for different
                                      statistics cycle periods. */
     ec_time_t last_cycle; /**< Time of last statistic cycle. */
 } ec_device_stats_t;
@@ -193,7 +193,7 @@ struct ec_master {
 
     ec_fsm_master_t fsm; /**< Master state machine. */
     ec_datagram_t fsm_datagram; /**< Datagram used for state machines. */
-    ec_master_phase_t phase; /**< Master phase. */
+    EC_PAL_SHARED ec_master_phase_t phase; /**< Master phase. */
     EC_PAL_SHARED unsigned int active; /**< Master has been activated. */
     EC_PAL_SHARED unsigned int config_changed; /**< The configuration changed. */
     EC_PAL_SHARED unsigned int injection_seq_fsm; /**< Datagram injection
@@ -233,7 +233,7 @@ struct ec_master {
                                          attempt has completed (either slaves
                                          found and scanned, or no slaves). */
 
-    unsigned int config_busy; /**< State of slave configuration. */
+    EC_PAL_SHARED unsigned int config_busy; /**< State of slave configuration. */
     ec_semaphore_t config_sem; /**< Semaphore protecting the \a config_busy
                                    variable and the allow_config flag. */
     ec_wait_queue_t config_queue; /**< Queue for processes that wait for
