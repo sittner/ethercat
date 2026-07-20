@@ -498,11 +498,23 @@ runtime job.
     ownership contract and leaked every delivered RX frame (LSan);
     and the EoE thread exposed two more handover-flag races
     (`config_changed`, `requested_state` — now `EC_PAL_SHARED`,
-    TSan back to zero). Remaining from checklist §3: the
-    malloc-per-TAP-frame allocation in `ec_eoe_poll_tx` (a pool would
-    be needed for RT-critical EoE use) and the shared-mailbox
-    contention between EoE and CoE FSMs (frames are dropped and
-    retried; visible as "Other mailbox protocol response" warnings).
+    TSan back to zero).
+    **#175 tail closed** in a follow-up: EoE frame buffers now come
+    from a preallocated, mlocked pool (128 × 2 KiB slots, bounded by
+    the TX queue limit; exhaustion drops frames with a rate-limited
+    counter — no more per-frame heap allocation in the EoE thread; the
+    small frame descriptor stays heap-allocated as the shared code
+    frees it with `ec_free`). Also: `sendto()` EINTR retry in the raw
+    transport, over-long transport interface names are rejected instead
+    of silently truncated, double `ecrt_lib_init()` returns -EBUSY, the
+    CCAT `-EBUSY` frame-drop decision is documented in place
+    (drop-and-timeout is correct: blocking would stall the cyclic
+    path), the XDP copy-mode note is in FEATURES.md, the transport
+    open()-error unwinding was audited clean (complete goto ladders in
+    raw/XDP/CCAT), and daemon PID-file removal was verified present on
+    all reachable exit paths. Remaining EoE item: the EoE/CoE
+    shared-mailbox contention (drop-and-retry; a mailbox dispatcher
+    would remove the "Other mailbox protocol response" warnings).
     The datagram-level simulator roadmap is complete.
     — **T3 done (tool over IPC end-to-end)**: `test_tool_ipc` runs the
     real `ethercat` binary against the in-process IPC server on a sim
