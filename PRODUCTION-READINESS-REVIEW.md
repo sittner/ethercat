@@ -336,9 +336,18 @@ currently documents a pipeline that never runs here.
    — all NUL-safe on inspection, `-Wsign-compare` 14) → F2/P1.
 
 **P1 — production hygiene**
-4. CI: build-uspace + build-kernel + distcheck jobs (no tests needed to start —
-   immediately guards both modes).
-5. `make check` skeleton + T1 tests; add `check` + `sanitize` jobs.
+4. ~~CI~~ — **done**: `.github/workflows/ci.yml` with build-uspace
+   (gcc/clang × ±libxdp, `-Wall -Wextra`, unit tests), sanitize (ASan+UBSan),
+   build-kernel (distro headers, guards the retained kernel mode), and dist
+   (`make distcheck`). All four jobs validated locally first; distcheck
+   immediately caught that the uspace *and* kernel `pal_*.h` headers were
+   missing from tarballs (fixed — kernel tarball builds were broken since the
+   PAL split).
+5. ~~`make check` skeleton + T1 tests~~ — **done**: `tests/` with a plain-C
+   harness and four programs (PDO print overflow regression, REAL/LREAL +
+   `EC_READ/WRITE_*` semantics, datagram construction, CoE emergency ring).
+   Mutation-checked: reverting `f5ed03a1` makes `test_pdo_print` fail under
+   ASan with the historical stack-buffer-overflow.
 6. F3: document the RT log-callback requirement; ring-buffer fallback.
 7. F4/F5: document mlockall contract + failure modes; `PTHREAD_EXPLICIT_SCHED` for
    library threads; expose thread scheduling knobs.
