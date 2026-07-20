@@ -30,6 +30,18 @@ endif
 noinst_HEADERS = \
 	kernel/cdev.c kernel/cdev.h \
 	kernel/pal.h \
+	kernel/pal_affinity.h \
+	kernel/pal_alloc.h \
+	kernel/pal_eoe.h \
+	kernel/pal_irq_work.h \
+	kernel/pal_misc.h \
+	kernel/pal_mtx.h \
+	kernel/pal_queue.h \
+	kernel/pal_sem.h \
+	kernel/pal_thread.h \
+	kernel/pal_work.h \
+	kernel/priv.h \
+	kernel/rt_locks.h \
 	coe_emerg_ring.c coe_emerg_ring.h \
 	datagram.c datagram.h \
 	datagram_pair.c datagram_pair.h \

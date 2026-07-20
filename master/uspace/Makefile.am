@@ -119,6 +119,22 @@ if HAVE_XDP
 libethercat_la_LIBADD += -lxdp
 endif
 
+noinst_HEADERS = \
+	cdev.h \
+	pal.h \
+	pal_affinity.h \
+	pal_alloc.h \
+	pal_eoe.h \
+	pal_irq_work.h \
+	pal_list.h \
+	pal_misc.h \
+	pal_mtx.h \
+	pal_queue.h \
+	pal_sem.h \
+	pal_thread.h \
+	pal_work.h \
+	$(top_srcdir)/transport/irq_pin.h
+
 EXTRA_DIST = libethercat.map
 
 bin_PROGRAMS = ec_master
