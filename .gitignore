@@ -69,3 +69,4 @@ tests/test_sim_link
 tests/test_sim_dc
 tests/test_sim_multi
 tests/test_sim_sdo_info
+tests/test_tool_ipc

@@ -44,7 +44,8 @@ check_PROGRAMS = \
 	test_sim_multi \
 	test_sim_pdo_assign \
 	test_sim_scan \
-	test_sim_sdo_info
+	test_sim_sdo_info \
+	test_tool_ipc
 
 TESTS = $(check_PROGRAMS)
 
@@ -70,6 +71,13 @@ test_sim_pdo_assign_SOURCES = test_sim_pdo_assign.c transport_sim.c \
 test_sim_scan_SOURCES = test_sim_scan.c transport_sim.c transport_sim.h test.h
 test_sim_sdo_info_SOURCES = test_sim_sdo_info.c transport_sim.c \
 	transport_sim.h test.h
+test_tool_ipc_SOURCES = test_tool_ipc.c transport_sim.c transport_sim.h \
+	test.h
+
+# test_tool_ipc runs the real ethercat binary against the IPC socket
+# (skips itself if the tool was not built).
+AM_TESTS_ENVIRONMENT = EC_TOOL_BIN='$(abs_top_builddir)/tool/ethercat'; \
+	export EC_TOOL_BIN;
 
 # Self-test TUs for script/rt-effects-check.sh (syntax-only, driven by
 # the script with a pinned clang — not part of make check).

@@ -446,8 +446,19 @@ currently documents a pipeline that never runs here.
     fixed a real test-observable: objects appear in the cache before
     their entries finish fetching, so completion must be awaited on the
     last entry, not on the object count.
-    The datagram-level simulator roadmap is complete; remaining T3 work
-    is the tool binary over the IPC socket end-to-end.
+    The datagram-level simulator roadmap is complete.
+    — **T3 done (tool over IPC end-to-end)**: `test_tool_ipc` runs the
+    real `ethercat` binary against the in-process IPC server on a sim
+    bus (master status, slave listing, SDO upload/download round trip,
+    `sdos` dictionary listing, abort path; skips if the tool isn't
+    built). On its first run it caught a real bug: every
+    `requestTrailingData` user in `tool/MasterDevice.cpp` (SDO up/down,
+    SII, registers, FoE, SoE, domain data — 11 call sites) had its
+    caller-side buffer pointer clobbered by the server's pointer value
+    echoed back in the IPC struct, crashing `ethercat upload` (SIGSEGV)
+    on every uspace SDO read. The kernel/ioctl backend masked this
+    (same address space). Fixed by preserving the local pointer across
+    the request.
 11. T4 RT smoke/latency gate (self-hosted).
 12. F6/F7 lock/teardown hardening; F8 link-check relocation.
 13. Docs refresh (FEATURES, TODO, stale checklist items); T5 hardware rig.

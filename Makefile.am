@@ -39,13 +39,16 @@ endif
 # ENABLE_USPACE_MASTER and ENABLE_KERNEL are mutually exclusive
 # (configure.ac forces enablekernel=0 when --enable-uspace-master is set)
 if ENABLE_USPACE_MASTER
-SUBDIRS += \
-	master \
-	tests
+SUBDIRS += master
 endif
 
 if BUILD_TOOL
 SUBDIRS += tool
+endif
+
+# after tool: the tool-over-IPC test runs the ethercat binary
+if ENABLE_USPACE_MASTER
+SUBDIRS += tests
 endif
 
 if ENABLE_USERLIB
