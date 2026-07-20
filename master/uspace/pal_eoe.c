@@ -246,17 +246,22 @@ int ec_netif_rx(ec_skb_t *skb)
 {
     ec_netdev_t *dev;
     ssize_t ret;
-    
-    if (!skb || !skb->dev) {
+    int err = 0;
+
+    if (!skb) {
         return -EINVAL;
     }
-    
+
+    /* Like the kernel's netif_rx(), this function CONSUMES the buffer
+     * on every path — the caller must not free it (the delivered
+     * buffers leaked before this was enforced). */
+
     dev = skb->dev;
-    
-    if (dev->fd < 0) {
+    if (!dev || dev->fd < 0) {
+        ec_skb_free(skb);
         return -ENODEV;
     }
-    
+
     /* Write complete Ethernet frame to TAP device.
      * The frame includes the Ethernet header at skb->head.
      */
@@ -266,18 +271,20 @@ int ec_netif_rx(ec_skb_t *skb)
             fprintf(stderr, "EoE: TAP write error on %s: %s\n",
                     dev->name, strerror(errno));
             dev->stats.rx_errors++;
-            return -errno;
+            err = -errno;
+        } else {
+            /* Would block - frame dropped */
+            dev->stats.rx_dropped++;
+            err = -EAGAIN;
         }
-        /* Would block - frame dropped */
-        dev->stats.rx_dropped++;
-        return -EAGAIN;
+    } else {
+        /* Update statistics for successful RX */
+        dev->stats.rx_packets++;
+        dev->stats.rx_bytes += ret;
     }
-    
-    /* Update statistics for successful RX */
-    dev->stats.rx_packets++;
-    dev->stats.rx_bytes += ret;
-    
-    return 0;
+
+    ec_skb_free(skb);
+    return err;
 }
 
 ec_skb_t *ec_netdev_rx_from_tap(ec_netdev_t *dev)
