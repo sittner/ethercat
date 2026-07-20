@@ -89,7 +89,11 @@ typedef struct {
 } sim_slave_t;
 
 struct sim_bus {
-    ec_transport_t transport; /**< Embedded transport instance. */
+    ec_transport_t transport; /**< Embedded transport instance (test path). */
+    int transport_owned;      /**< 1: bus built by sim_open() from a file and
+                                owned by the core's transport — freed in
+                                sim_close(). 0: created by sim_bus_create() and
+                                owned by the test, which calls sim_bus_destroy(). */
     sim_slave_t slaves[SIM_MAX_SLAVES];
     unsigned int nslaves;
     int link_up;
@@ -988,23 +992,242 @@ static int sim_bus_process_frame(sim_bus_t *bus, uint8_t *frame, size_t size)
 /* Transport operations                                                     */
 /****************************************************************************/
 
+/* Bus-description file parser (registry path).
+ *
+ * A small line-based format naming the slaves to emulate. Keys apply to
+ * the slave opened by the most recent "slave <pos>" line; numbers accept
+ * decimal, 0x hex and 0-prefixed octal. Example:
+ *
+ *   # one CoE slave, 4 bytes out / 4 bytes in
+ *   slave 0
+ *     vendor   0x00000E17
+ *     product  0x5134000A
+ *     revision 1
+ *     serial   8001
+ *     mbox_out 0x1000 128
+ *     mbox_in  0x1080 128
+ *     sm2      0x1100 4
+ *     sm3      0x1400 4
+ *     dc       1
+ *     od       0x2000 0 4 0xDEADBEEF   # index sub bytelen value (LE)
+ */
+
+#define SIM_MAX_OD_PRESETS 64
+
+typedef struct {
+    unsigned int pos;
+    uint16_t index;
+    uint8_t subindex;
+    size_t size;
+    uint8_t data[SIM_OD_DATA_SIZE];
+} sim_od_preset_t;
+
+static sim_bus_t *sim_bus_create_from_file(const char *path)
+{
+    FILE *f;
+    char line[256];
+    sim_slave_identity_t ids[SIM_MAX_SLAVES];
+    sim_od_preset_t presets[SIM_MAX_OD_PRESETS];
+    unsigned int nslaves = 0, npresets = 0;
+    int cur = -1; /* current slave, -1 until the first "slave" line */
+    sim_bus_t *bus;
+    unsigned int i;
+
+    f = fopen(path, "r");
+    if (!f) {
+        fprintf(stderr, "sim: cannot open bus-description file '%s'\n", path);
+        return NULL;
+    }
+
+    memset(ids, 0, sizeof(ids));
+
+    while (fgets(line, sizeof(line), f)) {
+        char key[32];
+        int off = 0;
+        char *args;
+        char *hash = strchr(line, '#');
+        sim_slave_identity_t *id;
+        int a, b;
+
+        if (hash) {
+            *hash = '\0'; /* strip trailing comment */
+        }
+        if (sscanf(line, "%31s%n", key, &off) < 1) {
+            continue; /* blank line */
+        }
+        args = line + off;
+
+        if (strcmp(key, "slave") == 0) {
+            unsigned long pos = strtoul(args, NULL, 0);
+            if (pos >= SIM_MAX_SLAVES) {
+                fprintf(stderr, "sim: slave position %lu >= %d\n", pos,
+                        SIM_MAX_SLAVES);
+                goto err;
+            }
+            cur = (int) pos;
+            if ((unsigned int) cur + 1 > nslaves) {
+                nslaves = (unsigned int) cur + 1;
+            }
+            continue;
+        }
+
+        if (cur < 0) {
+            fprintf(stderr, "sim: '%s' before any 'slave' line\n", key);
+            goto err;
+        }
+        id = &ids[cur];
+
+        if (strcmp(key, "vendor") == 0) {
+            id->vendor_id = (uint32_t) strtoul(args, NULL, 0);
+        } else if (strcmp(key, "product") == 0) {
+            id->product_code = (uint32_t) strtoul(args, NULL, 0);
+        } else if (strcmp(key, "revision") == 0) {
+            id->revision_number = (uint32_t) strtoul(args, NULL, 0);
+        } else if (strcmp(key, "serial") == 0) {
+            id->serial_number = (uint32_t) strtoul(args, NULL, 0);
+        } else if (strcmp(key, "alias") == 0) {
+            id->alias = (uint16_t) strtoul(args, NULL, 0);
+        } else if (strcmp(key, "dc") == 0) {
+            id->dc_supported = (uint8_t) strtoul(args, NULL, 0);
+        } else if (strcmp(key, "eoe") == 0) {
+            id->eoe = (uint8_t) strtoul(args, NULL, 0);
+        } else if (strcmp(key, "mbox_out") == 0) {
+            if (sscanf(args, "%i %i", &a, &b) != 2) goto badline;
+            id->mbox_out_phys = (uint16_t) a;
+            id->mbox_out_len = (uint16_t) b;
+        } else if (strcmp(key, "mbox_in") == 0) {
+            if (sscanf(args, "%i %i", &a, &b) != 2) goto badline;
+            id->mbox_in_phys = (uint16_t) a;
+            id->mbox_in_len = (uint16_t) b;
+        } else if (strcmp(key, "sm2") == 0) {
+            if (sscanf(args, "%i %i", &a, &b) != 2) goto badline;
+            id->sm2_phys = (uint16_t) a;
+            id->sm2_len = (uint16_t) b;
+        } else if (strcmp(key, "sm3") == 0) {
+            if (sscanf(args, "%i %i", &a, &b) != 2) goto badline;
+            id->sm3_phys = (uint16_t) a;
+            id->sm3_len = (uint16_t) b;
+        } else if (strcmp(key, "od") == 0) {
+            int idx, sub, sz, k;
+            unsigned long val;
+            sim_od_preset_t *pr;
+            if (sscanf(args, "%i %i %i %li", &idx, &sub, &sz, &val) != 4) {
+                goto badline;
+            }
+            if (sz < 0 || (size_t) sz > SIM_OD_DATA_SIZE) {
+                fprintf(stderr, "sim: od bytelen %d out of range\n", sz);
+                goto err;
+            }
+            if (npresets >= SIM_MAX_OD_PRESETS) {
+                fprintf(stderr, "sim: too many od presets (max %d)\n",
+                        SIM_MAX_OD_PRESETS);
+                goto err;
+            }
+            pr = &presets[npresets++];
+            pr->pos = (unsigned int) cur;
+            pr->index = (uint16_t) idx;
+            pr->subindex = (uint8_t) sub;
+            pr->size = (size_t) sz;
+            memset(pr->data, 0, sizeof(pr->data));
+            for (k = 0; k < sz && (size_t) k < sizeof(val); k++) {
+                pr->data[k] = (uint8_t) (val >> (8 * k)); /* little-endian */
+            }
+        } else {
+            fprintf(stderr, "sim: unknown key '%s' in '%s'\n", key, path);
+            goto err;
+        }
+        continue;
+
+badline:
+        fprintf(stderr, "sim: malformed '%s' line in '%s'\n", key, path);
+        goto err;
+    }
+
+    fclose(f);
+    f = NULL;
+
+    if (nslaves == 0) {
+        fprintf(stderr, "sim: no slaves defined in '%s'\n", path);
+        return NULL;
+    }
+
+    bus = sim_bus_create(nslaves, ids);
+    if (!bus) {
+        return NULL;
+    }
+
+    for (i = 0; i < npresets; i++) {
+        if (sim_bus_od_set(bus, presets[i].pos, presets[i].index,
+                    presets[i].subindex, presets[i].data,
+                    presets[i].size) != 0) {
+            fprintf(stderr, "sim: failed to preset OD 0x%04X:%u on slave %u"
+                    " (needs a mailbox/CoE slave)\n", presets[i].index,
+                    presets[i].subindex, presets[i].pos);
+            sim_bus_destroy(bus);
+            return NULL;
+        }
+    }
+
+    return bus;
+
+err:
+    if (f) {
+        fclose(f);
+    }
+    return NULL;
+}
+
 static int sim_open(ec_transport_t *transport, const char *interface)
 {
-    (void) transport;
-    (void) interface;
+    sim_bus_t *bus;
+
+    /* Test path: sim_bus_create() already built the bus and injected it
+     * (transport->priv set); ecrt_startup_master() still calls open(). */
+    if (transport->priv) {
+        return 0;
+    }
+
+    /* Registry path (transportType=sim, interface=<file>): build the
+     * emulated bus from its description file. */
+    if (!interface || !interface[0]) {
+        fprintf(stderr, "sim: no bus-description file"
+                " (set interface=<path>)\n");
+        return -EINVAL;
+    }
+
+    bus = sim_bus_create_from_file(interface);
+    if (!bus) {
+        return -EINVAL;
+    }
+
+    bus->transport_owned = 1;
+    transport->priv = bus;
     return 0;
 }
 
 static void sim_close(ec_transport_t *transport)
 {
-    (void) transport;
+    sim_bus_t *bus = transport->priv;
+
+    if (bus && bus->transport_owned) {
+        transport->priv = NULL;
+        sim_bus_destroy(bus);
+    }
 }
 
+static uint8_t *sim_get_tx_buffer(ec_transport_t *transport) ECRT_RT_ATTR;
 static uint8_t *sim_get_tx_buffer(ec_transport_t *transport)
 {
     return transport->tx_buffer;
 }
 
+/* TRUSTED: the sim transport is an in-process test / dry-run bus, not a
+ * hard-realtime production path (selectable only via transportType=sim).
+ * Its cyclic send()/receive() take a bounded, allocation-free mutex
+ * around a frame memcpy; the function-effects analysis cannot see that
+ * the critical section neither allocates nor blocks unboundedly. */
+static int sim_send(ec_transport_t *transport, size_t size) ECRT_RT_ATTR;
+ECRT_RT_TRUSTED_BEGIN
 static int sim_send(ec_transport_t *transport, size_t size)
 {
     sim_bus_t *bus = transport->priv;
@@ -1037,7 +1260,11 @@ static int sim_send(ec_transport_t *transport, size_t size)
     pthread_mutex_unlock(&bus->lock);
     return 0;
 }
+ECRT_RT_TRUSTED_END
 
+static int sim_receive(ec_transport_t *transport, uint8_t *buffer,
+        size_t max_size) ECRT_RT_ATTR;
+ECRT_RT_TRUSTED_BEGIN
 static int sim_receive(ec_transport_t *transport, uint8_t *buffer,
         size_t max_size)
 {
@@ -1058,6 +1285,7 @@ static int sim_receive(ec_transport_t *transport, uint8_t *buffer,
 
     return (int) len;
 }
+ECRT_RT_TRUSTED_END
 
 static int sim_get_link_state(ec_transport_t *transport)
 {
@@ -1096,7 +1324,7 @@ static int sim_get_fd(ec_transport_t *transport)
     return -1;
 }
 
-static const ec_transport_ops_t sim_transport_ops = {
+const ec_transport_ops_t ec_transport_sim_ops = {
     .name = "sim",
     .open = sim_open,
     .close = sim_close,
@@ -1175,7 +1403,7 @@ sim_bus_t *sim_bus_create(unsigned int nslaves,
         }
     }
 
-    bus->transport.ops = &sim_transport_ops;
+    bus->transport.ops = &ec_transport_sim_ops;
     bus->transport.priv = bus;
     snprintf(bus->transport.interface, sizeof(bus->transport.interface),
             "sim0");
