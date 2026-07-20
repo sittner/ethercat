@@ -391,14 +391,34 @@ int main(int argc, char *argv[])
 
     /* The library creates the socket with mode 0660, owner only. Grant the
      * requested group access. Until the chown takes effect group members
-     * cannot connect; non-members never can. */
+     * cannot connect; non-members never can.
+     * Swap hardening: pin the path with O_PATH|O_NOFOLLOW, verify the
+     * pinned inode is a socket, and chown through /proc/self/fd — so a
+     * symlink or file swapped in concurrently (only possible if the
+     * admin pointed --socket into a world-writable directory) cannot
+     * redirect the chown to an arbitrary file. */
     if (g_socket_path && socket_gid != (gid_t)-1) {
-        if (chown(g_socket_path, (uid_t)-1, socket_gid) < 0) {
-            main_log(EC_LOG_ERR, "Failed to set group \"%s\" on %s: %s\n",
-                    g_socket_group, g_socket_path, strerror(errno));
+        char proc_path[64];
+        struct stat st;
+        int pfd = open(g_socket_path, O_PATH | O_NOFOLLOW | O_CLOEXEC);
+
+        if (pfd < 0 || fstat(pfd, &st) < 0 || !S_ISSOCK(st.st_mode)) {
+            main_log(EC_LOG_ERR, "%s is not the expected socket: %s\n",
+                    g_socket_path, pfd < 0 ? strerror(errno) : "not a socket");
+            if (pfd >= 0)
+                close(pfd);
             ret = 1;
             goto out_release_masters;
         }
+        snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", pfd);
+        if (chown(proc_path, (uid_t)-1, socket_gid) < 0) {
+            main_log(EC_LOG_ERR, "Failed to set group \"%s\" on %s: %s\n",
+                    g_socket_group, g_socket_path, strerror(errno));
+            close(pfd);
+            ret = 1;
+            goto out_release_masters;
+        }
+        close(pfd);
     }
 
     /* Start all masters (transports[] and backup_transports[] are already NULL) */

@@ -565,9 +565,17 @@ typedef struct {
 
 /****************************************************************************/
 
+/** IPC wire version: the ioctl version magic plus the pointer width.
+ * The wire structs carry native size_t/pointer members, so a 32-bit
+ * tool talking to a 64-bit daemon (or vice versa) would silently
+ * misparse every struct — fold the word size into the magic so the
+ * skew is rejected with a clear version error instead. */
+#define EC_IPC_VERSION_MAGIC \
+    (EC_IOCTL_VERSION_MAGIC | ((uint32_t)sizeof(void *) << 16))
+
 /** IPC request header (tool → userspace master server). */
 typedef struct {
-    uint32_t version_magic; /**< EC_IOCTL_VERSION_MAGIC */
+    uint32_t version_magic; /**< EC_IPC_VERSION_MAGIC */
     uint32_t cmd;           /**< ec_tool_cmd enum value */
     uint32_t master_index;  /**< Which master to address */
     uint32_t data_size;     /**< Payload size in bytes */
