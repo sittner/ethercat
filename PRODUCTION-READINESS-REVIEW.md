@@ -434,7 +434,20 @@ currently documents a pipeline that never runs here.
     slaves. Log lines from distinct slave FSMs visibly interleave during
     configuration — direct evidence of the parallel FSMs (and of the F3
     concurrent-logging observation).
-    Next increment: SDO Info service for `ethercat sdos`.
+    — **eighth stage done (SDO Information Service)**: the sim serves OD
+    list, object description and entry description requests from its
+    object dictionary (single-fragment; deterministic names
+    `SimObj%04X`/`Entry%02X`), and CoE slaves now advertise
+    enable_sdo_info, so the master fetches the dictionary automatically
+    3 s after PREOP. `test_sim_sdo_info` waits for the fetch and verifies
+    the cached dictionary through `ecrt_tool_get_slave_sdo(_entry)` — the
+    surface `ethercat sdos` uses over IPC: object count, names,
+    max subindex, per-entry data types/bit lengths/access rights. Also
+    fixed a real test-observable: objects appear in the cache before
+    their entries finish fetching, so completion must be awaited on the
+    last entry, not on the object count.
+    The datagram-level simulator roadmap is complete; remaining T3 work
+    is the tool binary over the IPC socket end-to-end.
 11. T4 RT smoke/latency gate (self-hosted).
 12. F6/F7 lock/teardown hardening; F8 link-check relocation.
 13. Docs refresh (FEATURES, TODO, stale checklist items); T5 hardware rig.

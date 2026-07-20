@@ -68,3 +68,4 @@ tests/test_sim_pdo_assign
 tests/test_sim_link
 tests/test_sim_dc
 tests/test_sim_multi
+tests/test_sim_sdo_info

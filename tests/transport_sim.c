@@ -33,7 +33,10 @@
  *    bit (0x080D bit 3) that the master polls via FPRD 0x808; fetching
  *    the send mailbox clears it. Expedited and single-segment normal
  *    SDO up/downloads are supported; segmented transfers are aborted
- *    (0x05040001), unknown objects abort with 0x06020000.
+ *    (0x05040001), unknown objects abort with 0x06020000. The SDO
+ *    Information Service (OD list, object and entry descriptions) is
+ *    served from the same dictionary in single fragments; object names
+ *    are "SimObj%04X", entry descriptions "Entry%02X".
  *
  *  Frames are processed synchronously in send() and queued for the next
  *  receive() call — one cycle of latency, like a real bus.
@@ -168,8 +171,9 @@ static void sim_slave_init_eeprom(sim_slave_t *slave,
         cat[0] = 0x001E; /* category type */
         cat[1] = 16;     /* category size in words */
         memset(cat + 2, 0, 16 * sizeof(uint16_t));
-        cat[4] = 0x0D00; /* data byte 5 = 0x0D: enable_sdo |
-                            enable_pdo_assign | enable_pdo_configuration */
+        cat[4] = 0x0F00; /* data byte 5 = 0x0F: enable_sdo |
+                            enable_sdo_info | enable_pdo_assign |
+                            enable_pdo_configuration */
         cat += 18;
     }
 
@@ -324,6 +328,142 @@ static void sim_coe_abort(sim_slave_t *slave, uint16_t index,
     sim_mbox_respond(slave, rsp, sizeof(rsp));
 }
 
+/** Map an object-dictionary entry size to a CoE data type. */
+static uint16_t sim_od_data_type(size_t size)
+{
+    switch (size) {
+        case 1: return 0x0005; /* USINT */
+        case 2: return 0x0006; /* UINT */
+        case 4: return 0x0007; /* UDINT */
+        default: return 0x0009; /* VISIBLE_STRING */
+    }
+}
+
+static void sim_sdo_info_error(sim_slave_t *slave, uint32_t code)
+{
+    uint8_t rsp[10];
+
+    sim_wr16(rsp, 0x8 << 12); /* SDO information */
+    rsp[2] = 0x07; /* error response */
+    rsp[3] = 0;
+    sim_wr16(rsp + 4, 0); /* fragments left */
+    rsp[6] = (uint8_t) code;
+    rsp[7] = (uint8_t) (code >> 8);
+    rsp[8] = (uint8_t) (code >> 16);
+    rsp[9] = (uint8_t) (code >> 24);
+    sim_mbox_respond(slave, rsp, sizeof(rsp));
+}
+
+/** Handle a CoE SDO Information Service request (opcode in the low 7
+ * bits of the third byte): OD list, object description and entry
+ * description, all served from the object dictionary in one fragment. */
+static void sim_coe_sdo_info(sim_slave_t *slave, const uint8_t *coe,
+        uint16_t len)
+{
+    uint8_t opcode = coe[2] & 0x7F;
+    uint8_t rsp[6 + 10 + SIM_OD_DATA_SIZE];
+    unsigned int i, j, n;
+    uint16_t index;
+
+    if (len < 8) {
+        return;
+    }
+
+    switch (opcode) {
+        case 0x01: /* Get OD List request */
+            {
+                uint16_t list_type = sim_rd16(coe + 6);
+
+                sim_wr16(rsp, 0x8 << 12);
+                rsp[2] = 0x02; /* Get OD List response */
+                rsp[3] = 0;
+                sim_wr16(rsp + 4, 0); /* fragments left */
+                sim_wr16(rsp + 6, list_type);
+                n = 0;
+                for (i = 0; i < SIM_OD_ENTRIES; i++) {
+                    if (!slave->od[i].present) {
+                        continue;
+                    }
+                    for (j = 0; j < i; j++) { /* only once per index */
+                        if (slave->od[j].present
+                                && slave->od[j].index == slave->od[i].index) {
+                            break;
+                        }
+                    }
+                    if (j == i) {
+                        sim_wr16(rsp + 8 + 2 * n, slave->od[i].index);
+                        n++;
+                    }
+                }
+                sim_mbox_respond(slave, rsp, (uint16_t) (8 + 2 * n));
+            }
+            break;
+        case 0x03: /* Get object description request */
+            {
+                const sim_od_entry_t *first = NULL;
+                uint8_t max_sub = 0;
+
+                index = sim_rd16(coe + 6);
+                for (i = 0; i < SIM_OD_ENTRIES; i++) {
+                    const sim_od_entry_t *e = &slave->od[i];
+                    if (e->present && e->index == index) {
+                        if (!first) {
+                            first = e;
+                        }
+                        if (e->subindex > max_sub) {
+                            max_sub = e->subindex;
+                        }
+                    }
+                }
+                if (!first) {
+                    sim_sdo_info_error(slave, 0x06020000);
+                    return;
+                }
+                sim_wr16(rsp, 0x8 << 12);
+                rsp[2] = 0x04; /* object description response */
+                rsp[3] = 0;
+                sim_wr16(rsp + 4, 0);
+                sim_wr16(rsp + 6, index);
+                sim_wr16(rsp + 8, sim_od_data_type(first->size));
+                rsp[10] = max_sub;
+                rsp[11] = max_sub ? 0x09 : 0x07; /* ARRAY / VAR */
+                n = (unsigned int) snprintf((char *) rsp + 12,
+                        sizeof(rsp) - 12, "SimObj%04X", index);
+                sim_mbox_respond(slave, rsp, (uint16_t) (12 + n));
+            }
+            break;
+        case 0x05: /* Get entry description request */
+            {
+                const sim_od_entry_t *entry;
+                uint8_t subindex = coe[8];
+
+                index = sim_rd16(coe + 6);
+                entry = sim_od_find(slave, index, subindex, 0);
+                if (!entry) {
+                    sim_sdo_info_error(slave, 0x06090011);
+                    return;
+                }
+                sim_wr16(rsp, 0x8 << 12);
+                rsp[2] = 0x06; /* entry description response */
+                rsp[3] = 0;
+                sim_wr16(rsp + 4, 0);
+                sim_wr16(rsp + 6, index);
+                rsp[8] = subindex;
+                rsp[9] = coe[9]; /* value info echo */
+                sim_wr16(rsp + 10, sim_od_data_type(entry->size));
+                sim_wr16(rsp + 12, (uint16_t) (entry->size * 8));
+                sim_wr16(rsp + 14, 0x003F); /* r/w in all states */
+                n = (unsigned int) snprintf((char *) rsp + 16,
+                        sizeof(rsp) - 16, "Entry%02X", subindex);
+                sim_mbox_respond(slave, rsp, (uint16_t) (16 + n));
+            }
+            break;
+        default:
+            sim_sdo_info_error(slave, 0x05040001);
+            break;
+    }
+}
+
 /** Handle a CoE SDO request (expedited and single-segment normal
  * transfers; segmented transfers are aborted). */
 static void sim_coe_request(sim_slave_t *slave, const uint8_t *coe,
@@ -333,6 +473,11 @@ static void sim_coe_request(sim_slave_t *slave, const uint8_t *coe,
     uint16_t index;
     sim_od_entry_t *entry;
     uint8_t rsp[10 + SIM_OD_DATA_SIZE];
+
+    if (len >= 8 && (sim_rd16(coe) >> 12) == 0x8) {
+        sim_coe_sdo_info(slave, coe, len);
+        return;
+    }
 
     if (len < 6 || (sim_rd16(coe) >> 12) != 0x2) {
         return; /* not an SDO request: ignore */
