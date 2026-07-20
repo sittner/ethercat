@@ -524,5 +524,13 @@ currently documents a pipeline that never runs here.
     (a missed semaphore-style use would trip EPERM instead of silently
     corrupting). Kernel mode keeps `struct semaphore` untouched.
     Validated: full suite with asserts armed, TSan, ASan, distcheck.
-    Still open: F8 link-check relocation.
+    **F8 link-check relocation done**: the 1 Hz transport link query
+    (`ioctl(SIOCGIFFLAGS)` on the raw transport, potentially
+    lock-taking in custom transports) no longer runs in
+    `ec_device_poll()` — i.e. in the application's cyclic receive path
+    during OP — but in the master threads via a new
+    `ec_pal_check_link_states()` PAL hook (kernel: no-op, link state
+    comes from the NIC driver). Covers all devices including the
+    backup, and no longer stalls if the application stops cycling.
+    The cyclic path is now entirely free of ioctls.
 13. Docs refresh (FEATURES, TODO, stale checklist items); T5 hardware rig.

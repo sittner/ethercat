@@ -1413,6 +1413,8 @@ static int ec_master_idle_thread(void *priv_data)
         ec_mutex_unlock(&master->io_mutex);
 
         ec_master_idle_thread_schedule(master, sent_bytes);
+
+        ec_pal_check_link_states(master);
     }
 
     EC_MASTER_DBG(master, 1, "Master IDLE thread exiting...\n");
@@ -1458,6 +1460,7 @@ static int ec_master_operation_thread(void *priv_data)
         ec_master_operation_thread_schedule(master);
 
         ec_pal_check_irq_affinity(master);
+        ec_pal_check_link_states(master);
     }
 
     EC_MASTER_DBG(master, 1, "Master OP thread exiting...\n");

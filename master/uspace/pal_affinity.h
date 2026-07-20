@@ -40,6 +40,13 @@ static inline void ec_pal_record_rt_cpu(ec_master_t *master)
                           memory_order_relaxed);
 }
 
+/** Periodically refresh the devices' link state from the transports
+ * (1 Hz, implemented in device_uspace.c). Runs in the master threads:
+ * the transport link query is a syscall (e.g. ioctl(SIOCGIFFLAGS) on
+ * the raw transport) and must not run in the application's cyclic
+ * receive path. */
+void ec_pal_check_link_states(ec_master_t *master);
+
 /** Check if RT CPU changed and re-pin transport IRQs accordingly. */
 static inline void ec_pal_check_irq_affinity(ec_master_t *master)
 {
