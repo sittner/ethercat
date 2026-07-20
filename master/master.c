@@ -80,7 +80,8 @@ void ec_master_thread_stop(ec_master_t *);
 void ec_master_inject_external_datagrams(ec_master_t *);
 ec_datagram_t *ec_master_get_external_datagram(ec_master_t *);
 void ec_master_exec_slave_fsms(ec_master_t *);
-int ec_master_send_datagrams(ec_master_t *, ec_device_index_t);
+int ec_master_send_datagrams(ec_master_t *, ec_device_index_t)
+        EC_RT_ATTR;
 int ec_master_calc_topology_rec(ec_master_t *, ec_slave_t *, unsigned int *);
 void ec_master_calc_topology(ec_master_t *);
 void ec_master_calc_transmission_delays(ec_master_t *);
@@ -91,7 +92,7 @@ static int ec_master_eoe_thread(void *);
 #endif
 void ec_master_find_dc_ref_clock(ec_master_t *);
 void ec_master_clear_device_stats(ec_master_t *);
-void ec_master_update_device_stats(ec_master_t *);
+void ec_master_update_device_stats(ec_master_t *) EC_RT_ATTR;
 static void sc_reset_task_kicker(ec_irq_work_t *work);
 static void sc_reset_task(ec_work_t *work);
 
@@ -604,10 +605,16 @@ void ec_master_leave_idle_phase(ec_master_t *master /**< EtherCAT master */)
 
     master->phase = EC_ORPHANED;
 
+    /* Stop (join) the idle thread BEFORE the EoE thread — the same
+     * order ecrt_master_deactivate() uses. The idle thread's FSM
+     * calls ec_master_eoe_stop()/..._start() itself on link loss and
+     * rescan, so stopping EoE while the idle thread still runs races
+     * two ec_thread_stop() calls on the same thread (double join and
+     * double free of the task struct). */
+    ec_master_thread_stop(master);
 #ifdef EC_EOE
     ec_master_eoe_stop(master);
 #endif
-    ec_master_thread_stop(master);
 
     ec_sem_down(&master->master_sem);
     ec_master_clear_slaves(master);
@@ -1146,10 +1153,18 @@ void ec_master_receive_datagrams(
         datagram->working_counter = EC_READ_U16(cur_data);
         cur_data += EC_DATAGRAM_FOOTER_SIZE;
 
-        // dequeue the received datagram
-        datagram->state = EC_DATAGRAM_RECEIVED;
+        // dequeue the received datagram; the atomic state store is the
+        // publication point in userspace mode, so all result fields
+        // (working counter, data, reception time) must be written
+        // before it. The list_del_init() may safely follow the store:
+        // the queue node is only ever touched by the IO-owning thread
+        // (RT app thread in OP, idle thread in IDLE) — FSM-side
+        // re-queueing goes through the injection_seq / ext_ring
+        // handshake and the list manipulation for it happens on the IO
+        // side in ec_master_inject_external_datagrams().
         datagram->time_received =
             master->devices[EC_DEVICE_MAIN].time_poll;
+        datagram->state = EC_DATAGRAM_RECEIVED;
         list_del_init(&datagram->queue);
     }
 }
@@ -1410,6 +1425,8 @@ static int ec_master_idle_thread(void *priv_data)
         ec_mutex_unlock(&master->io_mutex);
 
         ec_master_idle_thread_schedule(master, sent_bytes);
+
+        ec_pal_check_link_states(master);
     }
 
     EC_MASTER_DBG(master, 1, "Master IDLE thread exiting...\n");
@@ -1455,6 +1472,7 @@ static int ec_master_operation_thread(void *priv_data)
         ec_master_operation_thread_schedule(master);
 
         ec_pal_check_irq_affinity(master);
+        ec_pal_check_link_states(master);
     }
 
     EC_MASTER_DBG(master, 1, "Master OP thread exiting...\n");
@@ -2271,7 +2289,8 @@ int ecrt_master_send(ec_master_t *master)
                 continue;
             }
 
-            // query link state
+            // drain received frames on the link-down device (link
+            // state itself is watched by ec_pal_check_link_states())
             ec_device_poll(&master->devices[dev_idx]);
 
             // clear frame statistics

@@ -1506,6 +1506,7 @@ AC_CONFIG_FILES([
         master/Makefile
         master/uspace/Makefile
         script/Makefile
+        tests/Makefile
         tool/Makefile
         tty/Kbuild
         tty/Makefile

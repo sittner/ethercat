@@ -1,0 +1,190 @@
+#-----------------------------------------------------------------------------
+#  CI for the userspace master port and the retained kernel mode.
+#
+#  Jobs:
+#    build-uspace  gcc/clang x with/without libxdp; build + unit tests
+#    sanitize      unit tests under AddressSanitizer + UBSan
+#    tsan          unit tests under ThreadSanitizer (race-free baseline)
+#    rt-effects    ECRT_RT_ATTR contract via clang function-effects
+#    build-kernel  kernel modules against the distro's kernel headers
+#    dist          make distcheck (tarball completeness, VPATH build)
+#-----------------------------------------------------------------------------
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-uspace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+        xdp: [xdp, no-xdp]
+    name: uspace ${{ matrix.cc }} (${{ matrix.xdp }})
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool
+          if [ "${{ matrix.xdp }}" = "xdp" ]; then
+            sudo apt-get install -y libxdp-dev libbpf-dev
+          fi
+      - name: Configure
+        run: |
+          ./bootstrap
+          ./configure --enable-uspace-master \
+              CC=${{ matrix.cc }} CFLAGS="-O2 -g -Wall -Wextra"
+      - name: Verify XDP detection
+        run: |
+          if [ "${{ matrix.xdp }}" = "xdp" ]; then
+            grep -q '#define HAVE_XDP 1' config.h
+          else
+            ! grep -q '#define HAVE_XDP 1' config.h
+          fi
+      - name: Build
+        run: make -j"$(nproc)"
+      - name: Unit tests
+        run: |
+          make -C tests check \
+              || { cat tests/test-suite.log tests/*.log; exit 1; }
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}-${{ matrix.cc }}-${{ matrix.xdp }}
+          path: |
+            tests/test-suite.log
+            tests/*.log
+          if-no-files-found: ignore
+
+  sanitize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    name: unit tests (ASan+UBSan)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool
+      - name: Configure
+        run: |
+          ./bootstrap
+          ./configure --enable-uspace-master \
+              CFLAGS="-O1 -g -Wall -fsanitize=address,undefined \
+                      -fno-omit-frame-pointer -fno-sanitize-recover=all"
+      - name: Build
+        run: make -j"$(nproc)"
+      - name: Unit tests
+        run: |
+          make -C tests check \
+              || { cat tests/test-suite.log tests/*.log; exit 1; }
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}
+          path: |
+            tests/test-suite.log
+            tests/*.log
+          if-no-files-found: ignore
+
+  tsan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    name: unit tests (ThreadSanitizer)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool clang
+      - name: Configure
+        run: |
+          ./bootstrap
+          ./configure --enable-uspace-master \
+              CC=clang CFLAGS="-O1 -g -fsanitize=thread"
+      - name: Build
+        run: make -j"$(nproc)"
+      - name: Unit tests
+        run: |
+          make -C tests check \
+              || { cat tests/test-suite.log tests/*.log; exit 1; }
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}
+          path: |
+            tests/test-suite.log
+            tests/*.log
+          if-no-files-found: ignore
+
+  rt-effects:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    name: RT function-effects check
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool \
+              libxdp-dev libbpf-dev
+      - name: Cache pinned clang
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ethercat-rt-clang
+          key: rt-clang-22.1.8-${{ runner.arch }}
+      - name: Configure
+        run: |
+          ./bootstrap
+          ./configure --enable-uspace-master
+      - name: RT effects check
+        run: script/rt-effects-check.sh
+
+  build-kernel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    name: kernel modules (distro headers)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool \
+              linux-headers-generic
+      - name: Configure
+        run: |
+          KDIR=$(find /usr/src -maxdepth 1 -type d \
+              -name 'linux-headers-*-generic' | sort -V | tail -1)
+          echo "Using kernel headers: $KDIR"
+          ./bootstrap
+          ./configure --with-linux-dir="$KDIR" \
+              --disable-8139too --enable-generic
+      - name: Build modules
+        run: make -j"$(nproc)" modules
+
+  dist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    name: distcheck
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool
+      - name: distcheck
+        run: |
+          ./bootstrap
+          ./configure --enable-uspace-master
+          make distcheck \
+              DISTCHECK_CONFIGURE_FLAGS="--enable-uspace-master" \
+              || { find . -name test-suite.log -exec cat {} +; exit 1; }

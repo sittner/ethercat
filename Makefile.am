@@ -46,6 +46,11 @@ if BUILD_TOOL
 SUBDIRS += tool
 endif
 
+# after tool: the tool-over-IPC test runs the ethercat binary
+if ENABLE_USPACE_MASTER
+SUBDIRS += tests
+endif
+
 if ENABLE_USERLIB
 # userspace examples depend on lib/
 SUBDIRS += \

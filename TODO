@@ -44,6 +44,9 @@ Future issues:
 * External memory for SDO transfers.
 * Move master threads, slave handlers and state machines into a user
   space daemon.
+  -> Done on the uspace branch: the full master core builds as a
+     userspace shared library (--enable-uspace-master) with a
+     standalone ec_master daemon; see USERSPACE-MASTER-IMPL.md.
 * Allow master requesting when in ORPHANED phase
 * Mailbox gateway.
 * Separate CoE debugging.
@@ -51,6 +54,8 @@ Future issues:
 * Optimize alignment of process data.
 * Interface/buffers for asynchronous domain IO.
 * Make scanning and configuration run parallel (each).
+  -> Slave configuration runs parallel on the uspace branch (Parallel
+     Slave Configuration, PSC).
 * ethercat tool:
     - Add a -n (numeric) switch.
 	- Check for unwanted options.

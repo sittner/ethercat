@@ -54,6 +54,38 @@ examples.
 
 ---
 
+# Userspace master
+
+To build the master as a userspace shared library instead of a kernel
+module (see FEATURES.md, "Userspace Master"):
+
+```bash
+./bootstrap
+./configure --enable-uspace-master
+make
+make install    # as root
+```
+
+This installs `libethercat.so.2`, the `ec_master` standalone daemon, the
+`ethercat` command-line tool, and pkg-config/CMake package files. Note
+that the userspace library's soname (`.so.2`) deliberately differs from
+the kernel-mode client library's (`.so.1`): the two are not ABI
+compatible and cannot be mixed up at runtime.
+
+Run a standalone master (the tool connects over a Unix domain socket,
+created with mode 0660; grant a tool group with `--socket-group`):
+
+```bash
+# ec_master -i eth0 --socket-group ethercat
+$ ethercat slaves
+```
+
+Applications embedding the library should read the realtime notes at
+`ecrt_lib_init()` in `ecrt.h` (memory locking and `RLIMIT_MEMLOCK`,
+nonblocking log callback, thread scheduling) and `RT-SYSTEM-TEST.md`.
+
+---
+
 Have fun!
 
 ---

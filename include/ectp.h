@@ -52,6 +52,16 @@ typedef enum ec_transport_type ec_transport_type_t;
 
 /****************************************************************************/
 
+/* Realtime function-effect annotation macros, shared with ecrt.h (see
+ * ecrt_rt.h). The cyclic transport operations (get_tx_buffer/send/
+ * receive) carry ECRT_RT_ATTR as part of their function-pointer types:
+ * custom transport implementations are thereby subject to clang's
+ * function-effects analysis (clang >= 20, -Wfunction-effects) when it
+ * is enabled. */
+#include "ecrt_rt.h"
+
+/****************************************************************************/
+
 /* Forward declarations */
 typedef struct ec_transport ec_transport_t;
 typedef struct ec_transport_ops ec_transport_ops_t;
@@ -72,14 +82,15 @@ struct ec_transport_ops {
     /** Close transport */
     void (*close)(ec_transport_t *transport);
     
-    /** Get TX buffer pointer */
-    uint8_t *(*get_tx_buffer)(ec_transport_t *transport);
-    
-    /** Send frame */
-    int (*send)(ec_transport_t *transport, size_t size);
-    
-    /** Receive frame (non-blocking) */
-    int (*receive)(ec_transport_t *transport, uint8_t *buffer, size_t max_size);
+    /** Get TX buffer pointer (realtime context) */
+    uint8_t *(*get_tx_buffer)(ec_transport_t *transport) ECRT_RT_ATTR;
+
+    /** Send frame (realtime context, must not block) */
+    int (*send)(ec_transport_t *transport, size_t size) ECRT_RT_ATTR;
+
+    /** Receive frame (realtime context, must not block) */
+    int (*receive)(ec_transport_t *transport, uint8_t *buffer,
+            size_t max_size) ECRT_RT_ATTR;
     
     /** Get link state (1 = up, 0 = down) */
     int (*get_link_state)(ec_transport_t *transport);
@@ -168,7 +179,8 @@ void ec_transport_close(ec_transport_t *transport);
  * @param transport Transport instance
  * @return Pointer to TX buffer
  */
-uint8_t *ec_transport_get_tx_buffer(ec_transport_t *transport);
+uint8_t *ec_transport_get_tx_buffer(ec_transport_t *transport)
+        ECRT_RT_ATTR;
 
 /**
  * Send frame.
@@ -177,7 +189,8 @@ uint8_t *ec_transport_get_tx_buffer(ec_transport_t *transport);
  * @param size Frame size in bytes
  * @return 0 on success, negative error code on failure
  */
-int ec_transport_send(ec_transport_t *transport, size_t size);
+int ec_transport_send(ec_transport_t *transport, size_t size)
+        ECRT_RT_ATTR;
 
 /**
  * Receive frame (non-blocking).
@@ -187,7 +200,8 @@ int ec_transport_send(ec_transport_t *transport, size_t size);
  * @param max_size Maximum buffer size
  * @return Number of bytes received, 0 if no data available, negative error code on failure
  */
-int ec_transport_receive(ec_transport_t *transport, uint8_t *buffer, size_t max_size);
+int ec_transport_receive(ec_transport_t *transport, uint8_t *buffer,
+        size_t max_size) ECRT_RT_ATTR;
 
 /**
  * Get link state.

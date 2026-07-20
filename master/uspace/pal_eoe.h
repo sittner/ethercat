@@ -40,6 +40,10 @@ typedef struct ec_netdev {
     
     /* Private data storage */
     void *priv;                 /**< Private data pointer */
+
+    unsigned int pool_reserved; /**< Buffer/descriptor pool slots reserved
+                                  for this handler; given back on
+                                  destroy. */
 } ec_netdev_t;
 
 /** Allocate and initialize a network device
@@ -231,6 +235,10 @@ void ec_eoe_netdev_destroy(struct ec_eoe *eoe);
 
 /* TX polling (userspace pull model) */
 void ec_eoe_poll_tx(struct ec_eoe *eoe);
+
+/* Return a TX frame descriptor to the preallocated pool (descriptors
+ * are allocated pool-backed in ec_eoe_poll_tx()). */
+void ec_eoe_frame_free(void *frame);
 
 /* Net_device queue operations */
 static inline void ec_eoe_netdev_tx_lock(ec_eoe_netdev_t dev) {

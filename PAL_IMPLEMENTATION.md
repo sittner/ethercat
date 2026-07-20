@@ -191,7 +191,9 @@ Once shared code uses only `ec_eoe_*` PAL names, remove the kernel-name-mimickin
 
 - [x] `system_wq` is NULL, never initialized → ~~crash on first `schedule_work()` call~~ fixed: initialized in `master_main.c`, stale `//TODO` removed from `pal.c`
 - [x] `irq_work_queue_global` is NULL, never initialized → ~~crash~~ fixed: initialized in `master_main.c`, stale `//TODO` removed from `pal.c`
-- [ ] `ec_master_pal_t` is empty struct with `// TODO` (`uspace/pal.h:111-113`)
+- [x] `ec_master_pal_t` is empty struct with `// TODO` — since populated with
+  the transport/backup-transport pointers, MAC storage and the RT-CPU/IRQ
+  affinity fields (`uspace/pal.h`)
 - [x] `kthread_bind()` dead code → fixed: `ec_thread_bind_cpu` now implements actual CPU affinity via `pthread_setaffinity_np()`
 - [x] Implement `pthread_mutex_destroy()` calls for rt_mutex cleanup → `ec_mutex_destroy()` added to both PAL sides
 - [x] `uspace/cdev.h` is a stub (`//TODO struct cdev`) — implemented as Unix domain socket IPC server in `uspace/cdev.c`
@@ -222,7 +224,7 @@ Once shared code uses `ec_` names, balance the kernel side to match uspace struc
 - [x] Rename `master/uspace/master_main.c` → `master/uspace/main.c` (standalone `ec_master` executable entry point)
 - [x] Remove `master/globals.h.gch` (does not exist)
 - [x] Keep `master/kernel/module.c` as-is (kernel module entry point naming is already correct)
-- [ ] Add `master/uspace/module.c` to expose `ecrt_*` functions as shared library symbols for userspace applications (mirroring the kernel `module.c` API surface role)
+- [x] Add `master/uspace/module.c` to expose `ecrt_*` functions as shared library symbols for userspace applications — implemented (library lifecycle `ecrt_lib_init`/`ecrt_startup_master`/`ecrt_release_master`/`ecrt_lib_cleanup`, symbol versioning via `libethercat.map`)
 
 ---
 

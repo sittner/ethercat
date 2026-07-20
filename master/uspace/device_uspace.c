@@ -117,19 +117,53 @@ void ec_device_poll(ec_device_t *device)
         }
     }
 
-    /* Periodically update link state */
-    if (device->time_poll > device->pal.last_link_check + ec_ms_to_time(1000)) {
-        int link_state = ec_transport_get_link_state(device->pal.transport);
-        if (link_state >= 0 && link_state != device->pal.last_link_state) {
-            device->link_state = (uint8_t)link_state;
-            device->pal.last_link_state = link_state;
-            if (link_state) {
-                ec_log(EC_LOG_INFO, "Device %s: Link is up\n", device->name ? device->name : "?");
-            } else {
-                ec_log(EC_LOG_WARNING, "Device %s: Link is down\n", device->name ? device->name : "?");
-            }
+}
+
+/** Refresh the link state from the transport (rate-limited to 1 Hz).
+ *
+ * Runs in the master (FSM) threads, NOT in the receive path: the
+ * transport link query is a syscall (ioctl(SIOCGIFFLAGS) on the raw
+ * transport) and may take locks in custom transports, so it must not
+ * run in the application's cyclic thread.
+ */
+static void ec_device_check_link(ec_device_t *device)
+{
+    ec_time_t now;
+    int link_state;
+
+    if (!device->open || !device->pal.transport) {
+        return;
+    }
+
+    now = ec_current_time();
+    if (now <= device->pal.last_link_check + ec_ms_to_time(1000)) {
+        return;
+    }
+    device->pal.last_link_check = now;
+
+    link_state = ec_transport_get_link_state(device->pal.transport);
+    if (link_state >= 0 && link_state != device->pal.last_link_state) {
+        device->link_state = (uint8_t)link_state;
+        device->pal.last_link_state = link_state;
+        if (link_state) {
+            ec_log(EC_LOG_INFO, "Device %s: Link is up\n",
+                    device->name ? device->name : "?");
+        } else {
+            ec_log(EC_LOG_WARNING, "Device %s: Link is down\n",
+                    device->name ? device->name : "?");
         }
-        device->pal.last_link_check = device->time_poll;
+    }
+}
+
+/** Check the link state of all devices (PAL hook, called from the
+ * master threads). */
+void ec_pal_check_link_states(ec_master_t *master)
+{
+    ec_device_index_t dev_idx;
+
+    for (dev_idx = EC_DEVICE_MAIN; dev_idx < ec_master_num_devices(master);
+            dev_idx++) {
+        ec_device_check_link(&master->devices[dev_idx]);
     }
 }
 

@@ -135,28 +135,28 @@ typedef struct {
 /** Device statistics.
  */
 typedef struct {
-    uint64_t tx_count; /**< Number of frames sent. */
+    EC_PAL_SHARED uint64_t tx_count; /**< Number of frames sent. */
     uint64_t last_tx_count; /**< Number of frames sent of last statistics cycle. */
-    uint64_t rx_count; /**< Number of frames received. */
+    EC_PAL_SHARED uint64_t rx_count; /**< Number of frames received. */
     uint64_t last_rx_count; /**< Number of frames received of last statistics
                          cycle. */
-    uint64_t tx_bytes; /**< Number of bytes sent. */
+    EC_PAL_SHARED uint64_t tx_bytes; /**< Number of bytes sent. */
     uint64_t last_tx_bytes; /**< Number of bytes sent of last statistics cycle. */
-    uint64_t rx_bytes; /**< Number of bytes received. */
+    EC_PAL_SHARED uint64_t rx_bytes; /**< Number of bytes received. */
     uint64_t last_rx_bytes; /**< Number of bytes received of last statistics cycle.
                         */
     uint64_t last_loss; /**< Tx/Rx difference of last statistics cycle. */
-    int32_t tx_frame_rates[EC_RATE_COUNT]; /**< Transmit rates in frames/s for
+    EC_PAL_SHARED int32_t tx_frame_rates[EC_RATE_COUNT]; /**< Transmit rates in frames/s for
                                          different statistics cycle periods.
                                         */
-    int32_t rx_frame_rates[EC_RATE_COUNT]; /**< Receive rates in frames/s for
+    EC_PAL_SHARED int32_t rx_frame_rates[EC_RATE_COUNT]; /**< Receive rates in frames/s for
                                          different statistics cycle periods.
                                         */
-    int32_t tx_byte_rates[EC_RATE_COUNT]; /**< Transmit rates in byte/s for
+    EC_PAL_SHARED int32_t tx_byte_rates[EC_RATE_COUNT]; /**< Transmit rates in byte/s for
                                         different statistics cycle periods. */
-    int32_t rx_byte_rates[EC_RATE_COUNT]; /**< Receive rates in byte/s for
+    EC_PAL_SHARED int32_t rx_byte_rates[EC_RATE_COUNT]; /**< Receive rates in byte/s for
                                         different statistics cycle periods. */
-    int32_t loss_rates[EC_RATE_COUNT]; /**< Frame loss rates for different
+    EC_PAL_SHARED int32_t loss_rates[EC_RATE_COUNT]; /**< Frame loss rates for different
                                      statistics cycle periods. */
     ec_time_t last_cycle; /**< Time of last statistic cycle. */
 } ec_device_stats_t;
@@ -193,23 +193,25 @@ struct ec_master {
 
     ec_fsm_master_t fsm; /**< Master state machine. */
     ec_datagram_t fsm_datagram; /**< Datagram used for state machines. */
-    ec_master_phase_t phase; /**< Master phase. */
-    unsigned int active; /**< Master has been activated. */
-    unsigned int config_changed; /**< The configuration changed. */
-    unsigned int injection_seq_fsm; /**< Datagram injection sequence number
-                                      for the FSM side. */
-    unsigned int injection_seq_rt; /**< Datagram injection sequence number
-                                     for the realtime side. */
+    EC_PAL_SHARED ec_master_phase_t phase; /**< Master phase. */
+    EC_PAL_SHARED unsigned int active; /**< Master has been activated. */
+    EC_PAL_SHARED unsigned int config_changed; /**< The configuration changed. */
+    EC_PAL_SHARED unsigned int injection_seq_fsm; /**< Datagram injection
+                                      sequence number for the FSM side. */
+    EC_PAL_SHARED unsigned int injection_seq_rt; /**< Datagram injection
+                                     sequence number for the realtime side. */
 
     ec_slave_t *slaves; /**< Array of slaves on the bus. */
-    unsigned int slave_count; /**< Number of slaves on the bus. */
+    EC_PAL_SHARED unsigned int slave_count; /**< Number of slaves on the
+                                              bus. Written during scan,
+                                              read by the app/tool. */
 
     /* Configuration applied by the application. */
     struct list_head configs; /**< List of slave configurations. */
     struct list_head domains; /**< List of domains. */
 
-    uint64_t app_time; /**< Time of the last ecrt_master_sync() call. */
-    uint64_t dc_ref_time; /**< Common reference timestamp for DC start times. */
+    EC_PAL_SHARED uint64_t app_time; /**< Time of the last ecrt_master_sync() call. */
+    EC_PAL_SHARED uint64_t dc_ref_time; /**< Common reference timestamp for DC start times. */
     ec_datagram_t ref_sync_datagram; /**< Datagram used for synchronizing the
                                        reference clock to the master clock. */
     ec_datagram_t sync_datagram; /**< Datagram used for DC drift
@@ -220,18 +222,18 @@ struct ec_master {
                                         clock slave config. */
     ec_slave_t *dc_ref_clock; /**< DC reference clock slave. */
 
-    unsigned int scan_busy; /**< Current scan state. */
-    unsigned int scan_index; /**< Index of slave currently scanned. */
-    unsigned int allow_scan; /**< \a True, if slave scanning is allowed. */
+    EC_PAL_SHARED unsigned int scan_busy; /**< Current scan state. */
+    EC_PAL_SHARED unsigned int scan_index; /**< Index of slave currently scanned. */
+    EC_PAL_SHARED unsigned int allow_scan; /**< \a True, if slave scanning is allowed. */
     ec_semaphore_t scan_sem; /**< Semaphore protecting the \a scan_busy
                                  variable and the \a allow_scan flag. */
     ec_wait_queue_t scan_queue; /**< Queue for processes that wait for
                                     slave scanning. */
-    unsigned int initial_scan_done; /**< Nonzero after the first bus scan
+    EC_PAL_SHARED unsigned int initial_scan_done; /**< Nonzero after the first bus scan
                                          attempt has completed (either slaves
                                          found and scanned, or no slaves). */
 
-    unsigned int config_busy; /**< State of slave configuration. */
+    EC_PAL_SHARED unsigned int config_busy; /**< State of slave configuration. */
     ec_semaphore_t config_sem; /**< Semaphore protecting the \a config_busy
                                    variable and the allow_config flag. */
     ec_wait_queue_t config_queue; /**< Queue for processes that wait for
@@ -247,10 +249,10 @@ struct ec_master {
 
     ec_datagram_t ext_datagram_ring[EC_EXT_RING_SIZE]; /**< External datagram
                                                          ring. */
-    unsigned int ext_ring_idx_rt; /**< Index in external datagram ring for RT
-                                    side. */
-    unsigned int ext_ring_idx_fsm; /**< Index in external datagram ring for
-                                     FSM side. */
+    EC_PAL_SHARED unsigned int ext_ring_idx_rt; /**< Index in external
+                                    datagram ring for RT side. */
+    EC_PAL_SHARED unsigned int ext_ring_idx_fsm; /**< Index in external
+                                     datagram ring for FSM side. */
     unsigned int send_interval; /**< Interval between two calls to
                                   ecrt_master_send(). */
     size_t max_queue_size; /**< Maximum size of datagram queue */
@@ -324,8 +326,8 @@ void ec_master_eoe_stop(ec_master_t *);
 
 // datagram IO
 void ec_master_receive_datagrams(ec_master_t *, ec_device_t *,
-        const uint8_t *, size_t);
-void ec_master_queue_datagram(ec_master_t *, ec_datagram_t *);
+        const uint8_t *, size_t) EC_RT_ATTR;
+void ec_master_queue_datagram(ec_master_t *, ec_datagram_t *) EC_RT_ATTR;
 void ec_master_queue_datagram_ext(ec_master_t *, ec_datagram_t *);
 
 // misc.
@@ -334,7 +336,7 @@ void ec_master_attach_slave_configs(ec_master_t *);
 ec_slave_t *ec_master_find_slave(ec_master_t *, uint16_t, uint16_t);
 const ec_slave_t *ec_master_find_slave_const(const ec_master_t *, uint16_t,
         uint16_t);
-void ec_master_output_stats(ec_master_t *);
+void ec_master_output_stats(ec_master_t *) EC_RT_ATTR;
 #ifdef EC_EOE
 void ec_master_clear_eoe_handlers(ec_master_t *);
 #endif
@@ -369,7 +371,7 @@ void ec_master_internal_receive_cb(void *);
 void ec_master_idle_thread_schedule(ec_master_t *master, int sent_bytes);
 void ec_master_operation_thread_schedule(ec_master_t *master);
 
-ec_time_t ec_current_time(void);
+ec_time_t ec_current_time(void) EC_RT_ATTR;
 
 extern const unsigned int rate_intervals[EC_RATE_COUNT]; // see master.c
 

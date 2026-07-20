@@ -36,6 +36,11 @@
 #include <net/ethernet.h>
 #include <arpa/inet.h>
 #include <linux/if_link.h>
+
+/* After the network headers (pal.h pulls linux/if.h, which must come
+ * after net/if.h): ec_log for nonblocking logging from the cyclic
+ * path. */
+#include "pal.h"
 #include <xdp/xsk.h>
 
 #include "pal_alloc.h"
@@ -118,7 +123,10 @@ static uint64_t xsk_alloc_umem_frame(ec_transport_xdp_t *xdp)
 static void xsk_free_umem_frame(ec_transport_xdp_t *xdp, uint64_t frame)
 {
     if (xdp->umem_frame_free >= NUM_FRAMES) {
-        fprintf(stderr, "Warning: UMEM frame pool overflow - frame will be leaked\n");
+        /* Reachable from the cyclic path: ec_log is nonblocking there
+         * (lock-free ring / application callback), fprintf is not. */
+        ec_log(EC_LOG_WARNING,
+                "XDP: UMEM frame pool overflow - frame will be leaked\n");
         return;
     }
     xdp->umem_frame_addr[xdp->umem_frame_free++] = frame;
@@ -354,6 +362,8 @@ static void xdp_close(ec_transport_t *transport)
  * uninitialized header caused by UMEM frame pool churn.
  */
 static uint8_t *xdp_get_tx_buffer(ec_transport_t *transport)
+        ECRT_RT_ATTR;
+static uint8_t *xdp_get_tx_buffer(ec_transport_t *transport)
 {
     ec_transport_xdp_t *xdp = transport->priv;
 
@@ -385,6 +395,12 @@ static uint8_t *xdp_get_tx_buffer(ec_transport_t *transport)
  * transmitted.  EtherCAT slaves forwarded those frames back, and the NIC's
  * MAC filter rejected or counted them as alignment errors.
  */
+/* TRUSTED: the TX ring kick is sendto(MSG_DONTWAIT) and the ring
+ * operations are lock-free; the function-effects analysis cannot
+ * see that the syscall does not block. */
+static int xdp_send(ec_transport_t *transport, size_t size)
+        ECRT_RT_ATTR;
+ECRT_RT_TRUSTED_BEGIN
 static int xdp_send(ec_transport_t *transport, size_t size)
 {
     ec_transport_xdp_t *xdp = transport->priv;
@@ -432,6 +448,7 @@ static int xdp_send(ec_transport_t *transport, size_t size)
 
     return 0;
 }
+ECRT_RT_TRUSTED_END
 
 /****************************************************************************/
 
@@ -474,6 +491,12 @@ static void xdp_drain_deferred_refills(ec_transport_xdp_t *xdp)
 /**
  * Receive frame (non-blocking).
  */
+/* TRUSTED: ring peek/release are lock-free and the optional wakeup
+ * is recvfrom(MSG_DONTWAIT); the function-effects analysis cannot
+ * see that the syscall does not block. */
+static int xdp_receive(ec_transport_t *transport, uint8_t *buffer,
+        size_t max_size) ECRT_RT_ATTR;
+ECRT_RT_TRUSTED_BEGIN
 static int xdp_receive(ec_transport_t *transport, uint8_t *buffer, size_t max_size)
 {
     ec_transport_xdp_t *xdp = transport->priv;
@@ -533,6 +556,7 @@ static int xdp_receive(ec_transport_t *transport, uint8_t *buffer, size_t max_si
 
     return (int)len;
 }
+ECRT_RT_TRUSTED_END
 
 /****************************************************************************/
 

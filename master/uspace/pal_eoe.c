@@ -171,41 +171,175 @@ int ec_netdev_set_mac(ec_netdev_t *dev, const uint8_t mac[ETH_ALEN])
 }
 
 /****************************************************************************/
-/* Socket Buffer Implementation */
+/* Socket Buffer Implementation                                             */
+/*                                                                          */
+/* Frame buffers and TX frame descriptors come from a preallocated,        */
+/* prefaulted and mlocked pool instead of per-frame heap allocation        */
+/* (issue #175: unbounded malloc in the EoE thread). Capacity is reserved  */
+/* per handler when its net_device is created (non-cyclic context): a full */
+/* TX queue plus the in-flight TX frame, the RX reassembly buffer and      */
+/* margin. The pool grows to the peak concurrent-handler demand and is     */
+/* never shrunk — slots may still be in flight when a handler goes away.  */
+/* Exhaustion (only possible while a reserve failed) drops frames          */
+/* (correct for Ethernet) and counts them.                                 */
 /****************************************************************************/
+
+#define EC_SKB_POOL_BUF_SIZE 2048 /* covers ETH_FRAME_LEN and the largest
+                                     EoE reassembly (63 * 32 bytes) */
+
+typedef struct ec_skb_slot {
+    ec_skb_t skb;
+    struct ec_skb_slot *next; /**< Freelist link. */
+    uint8_t buf[EC_SKB_POOL_BUF_SIZE];
+} ec_skb_slot_t;
+
+typedef struct ec_frame_slot {
+    ec_eoe_frame_t frame;
+    struct ec_frame_slot *next; /**< Freelist link. */
+} ec_frame_slot_t;
+
+static ec_skb_slot_t *skb_pool_free; /**< Buffer freelist head. */
+static ec_frame_slot_t *frame_pool_free; /**< Descriptor freelist head. */
+static pthread_mutex_t skb_pool_lock = PTHREAD_MUTEX_INITIALIZER;
+static unsigned long skb_pool_dropped;
+static unsigned int skb_pool_capacity; /**< Slots ever allocated. */
+static unsigned int skb_pool_target; /**< Current per-handler demand. */
+
+/** Slots one handler can hold at once: a full TX queue, the in-flight
+ * TX frame, the RX reassembly buffer, plus margin. */
+#define EC_SKB_POOL_HANDLER_SLOTS(eoe) ((eoe)->tx_queue_size + 4)
+
+/** Grow the pool so capacity covers the new demand. Handler-creation
+ * context only (allocates and mlocks). */
+static int ec_skb_pool_reserve(unsigned int nslots)
+{
+    ec_skb_slot_t *slots;
+    ec_frame_slot_t *frames;
+    unsigned int add, i;
+
+    pthread_mutex_lock(&skb_pool_lock);
+    skb_pool_target += nslots;
+    if (skb_pool_capacity >= skb_pool_target) {
+        pthread_mutex_unlock(&skb_pool_lock);
+        return 0;
+    }
+    add = skb_pool_target - skb_pool_capacity;
+    pthread_mutex_unlock(&skb_pool_lock);
+
+    slots = ec_rt_zalloc((size_t)add * sizeof(*slots));
+    frames = ec_rt_zalloc((size_t)add * sizeof(*frames));
+    if (!slots || !frames) {
+        ec_rt_free(slots, (size_t)add * sizeof(*slots));
+        ec_rt_free(frames, (size_t)add * sizeof(*frames));
+        pthread_mutex_lock(&skb_pool_lock);
+        skb_pool_target -= nslots;
+        pthread_mutex_unlock(&skb_pool_lock);
+        return -ENOMEM;
+    }
+
+    pthread_mutex_lock(&skb_pool_lock);
+    for (i = 0; i < add; i++) {
+        slots[i].next = skb_pool_free;
+        skb_pool_free = &slots[i];
+        frames[i].next = frame_pool_free;
+        frame_pool_free = &frames[i];
+    }
+    skb_pool_capacity += add;
+    pthread_mutex_unlock(&skb_pool_lock);
+    return 0;
+}
+
+/** Give back a handler's reservation. Capacity stays allocated (slots
+ * may be in flight); it is reused by the next handler. */
+static void ec_skb_pool_unreserve(unsigned int nslots)
+{
+    pthread_mutex_lock(&skb_pool_lock);
+    skb_pool_target -= nslots;
+    pthread_mutex_unlock(&skb_pool_lock);
+}
 
 ec_skb_t *ec_skb_alloc(unsigned int size)
 {
-    ec_skb_t *skb;
-    
-    skb = calloc(1, sizeof(*skb));
-    if (!skb) {
+    ec_skb_slot_t *slot;
+    unsigned long dropped = 0;
+
+    if (size > EC_SKB_POOL_BUF_SIZE) {
         return NULL;
     }
-    
-    skb->head = malloc(size);
-    if (!skb->head) {
-        free(skb);
+
+    pthread_mutex_lock(&skb_pool_lock);
+    slot = skb_pool_free;
+    if (slot) {
+        skb_pool_free = slot->next;
+    } else {
+        dropped = ++skb_pool_dropped;
+    }
+    pthread_mutex_unlock(&skb_pool_lock);
+
+    if (!slot) {
+        if (ec_log_ratelimit()) {
+            ec_log(EC_LOG_WARNING, "EoE: frame buffer pool exhausted"
+                    " (%lu frame(s) dropped)\n", dropped);
+        }
         return NULL;
     }
-    
-    skb->data = skb->head;
-    skb->tail = skb->head;
-    skb->end = skb->head + size;
-    skb->len = 0;
-    skb->protocol = 0;
-    skb->dev = NULL;
-    skb->ip_summed = EC_CHECKSUM_NONE;
-    
-    return skb;
+
+    slot->skb.head = slot->buf;
+    slot->skb.data = slot->buf;
+    slot->skb.tail = slot->buf;
+    slot->skb.end = slot->buf + size;
+    slot->skb.len = 0;
+    slot->skb.protocol = 0;
+    slot->skb.dev = NULL;
+    slot->skb.ip_summed = EC_CHECKSUM_NONE;
+
+    return &slot->skb;
 }
 
 void ec_skb_free(ec_skb_t *skb)
 {
-    if (skb) {
-        free(skb->head);
-        free(skb);
+    ec_skb_slot_t *slot;
+
+    if (!skb) {
+        return;
     }
+
+    slot = (ec_skb_slot_t *) skb; /* skb is the slot's first member */
+    pthread_mutex_lock(&skb_pool_lock);
+    slot->next = skb_pool_free;
+    skb_pool_free = slot;
+    pthread_mutex_unlock(&skb_pool_lock);
+}
+
+/** Allocate a TX frame descriptor from the pool (EoE thread). */
+static ec_eoe_frame_t *ec_eoe_frame_alloc(void)
+{
+    ec_frame_slot_t *slot;
+
+    pthread_mutex_lock(&skb_pool_lock);
+    slot = frame_pool_free;
+    if (slot) {
+        frame_pool_free = slot->next;
+    }
+    pthread_mutex_unlock(&skb_pool_lock);
+
+    return slot ? &slot->frame : NULL;
+}
+
+/** Return a frame descriptor to the pool. Called from the shared EoE
+ * code, which pairs every descriptor with exactly one pooled buffer. */
+void ec_eoe_frame_free(void *frame)
+{
+    ec_frame_slot_t *slot = (ec_frame_slot_t *)frame; /* first member */
+
+    if (!frame) {
+        return;
+    }
+
+    pthread_mutex_lock(&skb_pool_lock);
+    slot->next = frame_pool_free;
+    frame_pool_free = slot;
+    pthread_mutex_unlock(&skb_pool_lock);
 }
 
 uint8_t *ec_skb_put(ec_skb_t *skb, unsigned int len)
@@ -246,17 +380,22 @@ int ec_netif_rx(ec_skb_t *skb)
 {
     ec_netdev_t *dev;
     ssize_t ret;
-    
-    if (!skb || !skb->dev) {
+    int err = 0;
+
+    if (!skb) {
         return -EINVAL;
     }
-    
+
+    /* Like the kernel's netif_rx(), this function CONSUMES the buffer
+     * on every path — the caller must not free it (the delivered
+     * buffers leaked before this was enforced). */
+
     dev = skb->dev;
-    
-    if (dev->fd < 0) {
+    if (!dev || dev->fd < 0) {
+        ec_skb_free(skb);
         return -ENODEV;
     }
-    
+
     /* Write complete Ethernet frame to TAP device.
      * The frame includes the Ethernet header at skb->head.
      */
@@ -266,18 +405,20 @@ int ec_netif_rx(ec_skb_t *skb)
             fprintf(stderr, "EoE: TAP write error on %s: %s\n",
                     dev->name, strerror(errno));
             dev->stats.rx_errors++;
-            return -errno;
+            err = -errno;
+        } else {
+            /* Would block - frame dropped */
+            dev->stats.rx_dropped++;
+            err = -EAGAIN;
         }
-        /* Would block - frame dropped */
-        dev->stats.rx_dropped++;
-        return -EAGAIN;
+    } else {
+        /* Update statistics for successful RX */
+        dev->stats.rx_packets++;
+        dev->stats.rx_bytes += ret;
     }
-    
-    /* Update statistics for successful RX */
-    dev->stats.rx_packets++;
-    dev->stats.rx_bytes += ret;
-    
-    return 0;
+
+    ec_skb_free(skb);
+    return err;
 }
 
 ec_skb_t *ec_netdev_rx_from_tap(ec_netdev_t *dev)
@@ -324,12 +465,24 @@ int ec_eoe_netdev_create(struct ec_eoe *eoe, const char *name)
 {
     ec_eoe_t **priv;
     uint8_t mac_addr[ETH_ALEN] = {0x00, 0x11, 0x22, 0x33, 0x44, 0x55};
+    unsigned int pool_slots = EC_SKB_POOL_HANDLER_SLOTS(eoe);
     int ret;
+
+    /* Reserve the handler's buffer/descriptor pool capacity up front,
+     * in this non-cyclic context — not lazily at first traffic (which
+     * would allocate and mlock inside the EoE thread). Without
+     * buffers the handler would only drop frames, so fail creation. */
+    ret = ec_skb_pool_reserve(pool_slots);
+    if (ret) {
+        return ret;
+    }
 
     eoe->dev = ec_netdev_alloc(name, sizeof(ec_eoe_t *));
     if (!eoe->dev) {
+        ec_skb_pool_unreserve(pool_slots);
         return -ENOMEM;
     }
+    eoe->dev->pool_reserved = pool_slots;
 
     ec_netdev_set_mac(eoe->dev, mac_addr);
 
@@ -338,6 +491,7 @@ int ec_eoe_netdev_create(struct ec_eoe *eoe, const char *name)
 
     ret = ec_netdev_register(eoe->dev);
     if (ret) {
+        ec_skb_pool_unreserve(eoe->dev->pool_reserved);
         ec_netdev_free(eoe->dev);
         eoe->dev = NULL;
         return ret;
@@ -362,6 +516,7 @@ void ec_eoe_netdev_destroy(struct ec_eoe *eoe)
     if (eoe->dev) {
         eoe->opened = 0;
         eoe->tx_queue_active = 0;
+        ec_skb_pool_unreserve(eoe->dev->pool_reserved);
         ec_netdev_unregister(eoe->dev);
         ec_netdev_free(eoe->dev);
         eoe->dev = NULL;
@@ -392,7 +547,7 @@ void ec_eoe_poll_tx(ec_eoe_t *eoe)
             break;
         }
 
-        frame = malloc(sizeof(ec_eoe_frame_t));
+        frame = ec_eoe_frame_alloc();
         if (!frame) {
             ec_skb_free(skb);
             break;

@@ -26,6 +26,7 @@
 
 /****************************************************************************/
 
+#include <errno.h>
 #include <stdlib.h>
 #include <string.h>
 #include <pthread.h>
@@ -145,11 +146,44 @@ ec_thread_t *__ec_thread_create(
 
 /****************************************************************************/
 
+/** Scheduling applied to library-created threads. Defaults to explicit
+ * SCHED_OTHER so library threads never silently inherit a realtime
+ * policy from the creating (application) thread; configurable via
+ * ecrt_lib_set_thread_scheduling(). */
+static int thread_sched_policy = SCHED_OTHER;
+static int thread_sched_priority = 0;
+
+/** Stack size for library threads. The FSMs keep their state in the
+ * master structure, so the threads need little stack; a small size
+ * keeps the mlockall() footprint of an RT application low (the glibc
+ * default of 8 MiB per thread exceeds common RLIMIT_MEMLOCK settings
+ * on its own). */
+#define EC_THREAD_STACK_SIZE (512 * 1024)
+
+__attribute__((visibility("default")))
+int ecrt_lib_set_thread_scheduling(int policy, int priority)
+{
+    if (policy != SCHED_OTHER && policy != SCHED_FIFO && policy != SCHED_RR) {
+        return -EINVAL;
+    }
+    if (priority < sched_get_priority_min(policy)
+            || priority > sched_get_priority_max(policy)) {
+        return -EINVAL;
+    }
+    thread_sched_policy = policy;
+    thread_sched_priority = priority;
+    return 0;
+}
+
+/****************************************************************************/
+
 /**
  * ec_thread_wake - start or wake a created thread
  */
 int ec_thread_wake(ec_thread_t *task)
 {
+    pthread_attr_t attr;
+    struct sched_param param;
     int ret;
 
     pthread_mutex_lock(&task->lock);
@@ -161,8 +195,35 @@ int ec_thread_wake(ec_thread_t *task)
         return 0;
     }
 
-    ret = pthread_create(&task->thread, NULL, __task_thread_wrapper, task);
+    /* Explicit scheduling attributes: never inherit the creator's
+     * (possibly realtime) policy. If the configured policy cannot be
+     * applied (e.g. missing privileges), fall back to explicit
+     * SCHED_OTHER — still never inheriting — rather than failing
+     * thread creation. */
+    pthread_attr_init(&attr);
+    pthread_attr_setstacksize(&attr, EC_THREAD_STACK_SIZE);
+    pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
+    pthread_attr_setschedpolicy(&attr, thread_sched_policy);
+    param.sched_priority = thread_sched_priority;
+    pthread_attr_setschedparam(&attr, &param);
+
+    ret = pthread_create(&task->thread, &attr, __task_thread_wrapper, task);
+    if (ret != 0 && thread_sched_policy != SCHED_OTHER) {
+        ec_log(EC_LOG_WARNING,
+                "Thread %s: policy %d prio %d not applicable (%s),"
+                " falling back to SCHED_OTHER\n",
+                task->name, thread_sched_policy, thread_sched_priority,
+                strerror(ret));
+        pthread_attr_setschedpolicy(&attr, SCHED_OTHER);
+        param.sched_priority = 0;
+        pthread_attr_setschedparam(&attr, &param);
+        ret = pthread_create(&task->thread, &attr,
+                __task_thread_wrapper, task);
+    }
+    pthread_attr_destroy(&attr);
     if (ret != 0) {
+        ec_log(EC_LOG_ERR, "Thread %s: creation failed: %s\n",
+                task->name, strerror(ret));
         pthread_mutex_unlock(&task->lock);
         return 0;
     }

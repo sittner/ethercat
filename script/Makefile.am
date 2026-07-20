@@ -37,7 +37,9 @@ script_templates = \
 EXTRA_DIST = \
 	$(script_templates) \
 	ethercat.bash_completion \
-	ifup-eoe.sh
+	ifup-eoe.sh \
+	rt-clang.sh \
+	rt-effects-check.sh
 
 CLEANFILES = \
 	ethercatctl \

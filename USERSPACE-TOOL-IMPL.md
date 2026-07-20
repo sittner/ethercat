@@ -562,10 +562,18 @@ The Unix socket should be created with permissions matching the kernel
 character device convention: owner `root`, group `ethercat`, mode `0660`.
 This ensures only authorized users can issue commands to the master.
 
-**Not in scope for this change.** The initial implementation creates the
-socket with default permissions. Access control will be added as a
-follow-up, consistent with how `/dev/EtherCATN` permissions are managed
-by the init scripts and udev rules.
+**Implemented.** `ec_ipc_server_start()` restricts the socket to mode
+0660 between `bind()` and `listen()` (race-free: connections cannot be
+established before `listen()`), and fails closed if `chmod()` fails.
+Group access is granted by `chown()`ing the socket file after
+`ecrt_lib_init()` returns; the `ec_master` daemon exposes this as
+`-g`/`--socket-group <group>` (resolved via `getgrnam()` before
+daemonizing so a typo fails fast). The chown pins the path with
+`O_PATH|O_NOFOLLOW`, verifies the inode is a socket and operates
+through `/proc/self/fd`, so a concurrent path swap (relevant only if
+the admin points `--socket` into a world-writable directory) cannot
+redirect it to an arbitrary file. Over-long socket paths are rejected
+(`-ENAMETOOLONG`) instead of silently truncated.
 
 ### 2. `ec_master` Daemon Socket Path
 

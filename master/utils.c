@@ -186,6 +186,10 @@ int ec_mac_parse(uint8_t *mac, const char *src, int allow_empty)
  * If the data block is larger than 256 bytes, only the first 128
  * and the last 128 bytes will be shown
  */
+/* TRUSTED: debug hexdump on the frame-error paths — a bounded
+ * loop of snprintf into a stack buffer plus nonblocking ec_log
+ * calls; the analysis cannot see that snprintf does not block. */
+EC_RT_TRUSTED_BEGIN
 void ec_print_data(const uint8_t *data, /**< pointer to data */
                    size_t size /**< number of bytes to output */
                    )
@@ -210,6 +214,7 @@ void ec_print_data(const uint8_t *data, /**< pointer to data */
         }
     }
 }
+EC_RT_TRUSTED_END
 
 /****************************************************************************/
 

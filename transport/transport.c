@@ -91,8 +91,17 @@ ec_transport_t *ec_transport_create(ec_transport_type_t type,
     transport->ops = ops;
     transport->priv = NULL;
 
-    /* Store interface name at creation time (may be NULL) */
+    /* Store interface name at creation time (may be NULL). Reject
+     * names that would be silently truncated (the field matches
+     * IFNAMSIZ; PCI BDFs for the CCAT transport fit as well). */
     if (interface) {
+        if (strlen(interface) >= sizeof(transport->interface)) {
+            fprintf(stderr, "Transport interface name too long: %s"
+                    " (maximum %zu characters)\n", interface,
+                    sizeof(transport->interface) - 1);
+            free(transport);
+            return NULL;
+        }
         strncpy(transport->interface, interface,
                 sizeof(transport->interface) - 1);
         transport->interface[sizeof(transport->interface) - 1] = '\0';

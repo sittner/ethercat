@@ -49,15 +49,24 @@ static atomic_flag lib_initialized = ATOMIC_FLAG_INIT;
 int ecrt_lib_init(ec_log_cb_t log_cb, const char *socket_path)
 {
     if (atomic_flag_test_and_set(&lib_initialized)) {
-        ec_log(EC_LOG_WARNING, "ecrt_lib_init() called more than once; ignoring\n");
-        return 0;
+        ec_log(EC_LOG_WARNING, "ecrt_lib_init() called more than once\n");
+        return -EBUSY;
     }
 
     ec_log_set_callback(log_cb);
     ec_master_init_static();
 
+    /* Without an application log callback, RT-context messages go
+     * through the lock-free ring drained by this thread; failure to
+     * start it is non-fatal (falls back to direct stderr). */
+    if (!log_cb && ec_pal_log_start() != 0) {
+        ec_log(EC_LOG_WARNING, "Failed to start log drainer thread;"
+                " falling back to direct stderr logging\n");
+    }
+
     if (ec_pal_work_init() != 0) {
         ec_log(EC_LOG_ERR, "Failed to create system workqueue\n");
+        ec_pal_log_stop();
         atomic_flag_clear(&lib_initialized);
         return -1;
     }
@@ -106,6 +115,14 @@ ec_master_t *ecrt_startup_master(unsigned int index,
         ec_log(EC_LOG_ERR, "Main transport interface name must not be empty\n");
         return NULL;
     }
+
+#if EC_MAX_NUM_DEVICES < 2
+    if (backup_transport) {
+        ec_log(EC_LOG_ERR, "Backup transport given, but the master was built"
+                " without redundancy support (configure --with-devices)\n");
+        return NULL;
+    }
+#endif
 
     master = malloc(sizeof(ec_master_t));
     if (!master) {
@@ -172,6 +189,7 @@ ec_master_t *ecrt_startup_master(unsigned int index,
         goto out_clear_master;
     }
 
+#if EC_MAX_NUM_DEVICES > 1
     /* Set up backup device if backup transport is present */
     if (master->pal.backup_transport) {
         master->devices[EC_DEVICE_BACKUP].pal.transport =
@@ -184,6 +202,7 @@ ec_master_t *ecrt_startup_master(unsigned int index,
             goto out_close_main_device;
         }
     }
+#endif
 
     /* Enter idle phase */
     ret = ec_master_enter_idle_phase(master);
@@ -232,10 +251,12 @@ ec_master_t *ecrt_startup_master(unsigned int index,
     return master;
 
 out_close_backup_device:
+#if EC_MAX_NUM_DEVICES > 1
     if (master->pal.backup_transport) {
         ec_device_close(&master->devices[EC_DEVICE_BACKUP]);
     }
 out_close_main_device:
+#endif
     ec_device_close(&master->devices[EC_DEVICE_MAIN]);
 out_clear_master:
     ec_master_clear(master);
@@ -265,9 +286,11 @@ static void release_master_internal(ec_master_t *master)
         ec_master_leave_idle_phase(master);
     }
 
+#if EC_MAX_NUM_DEVICES > 1
     if (master->pal.backup_transport) {
         ec_device_close(&master->devices[EC_DEVICE_BACKUP]);
     }
+#endif
     ec_device_close(&master->devices[EC_DEVICE_MAIN]);
     ec_master_clear(master);
 
@@ -315,6 +338,7 @@ void ecrt_lib_cleanup(void)
     ec_ipc_server_stop();
     ec_pal_irq_work_cleanup();
     ec_pal_work_cleanup();
+    ec_pal_log_stop(); /* last: drains remaining messages */
     atomic_flag_clear(&lib_initialized);
 }
 

@@ -922,7 +922,7 @@ int ecrt_tool_foe_read(ec_master_t *master, ec_tool_slave_foe_t *data)
     if (!master || !data || !data->buffer || !data->buffer_size)
         return -EINVAL;
 
-    ec_foe_request_init(&request, data->file_name);
+    ec_foe_request_init(&request, (uint8_t *) data->file_name);
     ret = ec_foe_request_alloc(&request, 10000); /* TODO: dynamic */
     if (ret) {
         ec_foe_request_clear(&request);
@@ -992,7 +992,7 @@ int ecrt_tool_foe_write(ec_master_t *master, ec_tool_slave_foe_t *data)
     if (!master || !data || !data->buffer || !data->buffer_size)
         return -EINVAL;
 
-    ec_foe_request_init(&request, data->file_name);
+    ec_foe_request_init(&request, (uint8_t *) data->file_name);
     ret = ec_foe_request_alloc(&request, data->buffer_size);
     if (ret) {
         ec_foe_request_clear(&request);

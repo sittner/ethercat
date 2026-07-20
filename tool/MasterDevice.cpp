@@ -273,10 +273,16 @@ void MasterDevice::getData(ec_ioctl_domain_data_t *data,
     data->data_size = dataSize;
     data->target = mem;
 
+    /* The struct is echoed back over IPC with the server's
+     * pointer value; preserve the local pointer and null it in
+     * the sent copy so no tool heap address goes on the wire. */
+    uint8_t *ptr_save = data->target;
+    data->target = NULL;
     int ret = backend->requestTrailingData(EC_CMD_DOMAIN_DATA,
             data, sizeof(*data),
             NULL, 0,
             mem, dataSize);
+    data->target = ptr_save;
     if (ret < 0) {
         errno = -ret;
         stringstream err;
@@ -439,10 +445,16 @@ void MasterDevice::readSii(
         ec_ioctl_slave_sii_t *data
         )
 {
+    /* The struct is echoed back over IPC with the server's
+     * pointer value; preserve the local pointer and null it in
+     * the sent copy so no tool heap address goes on the wire. */
+    uint16_t *ptr_save = data->words;
+    data->words = NULL;
     int ret = backend->requestTrailingData(EC_CMD_SLAVE_SII_READ,
             data, sizeof(*data),
             NULL, 0,
-            data->words, data->nwords * 2);
+            ptr_save, data->nwords * 2);
+    data->words = ptr_save;
     if (ret < 0) {
         errno = -ret;
         stringstream err;
@@ -457,10 +469,16 @@ void MasterDevice::writeSii(
         ec_ioctl_slave_sii_t *data
         )
 {
+    /* The struct is echoed back over IPC with the server's
+     * pointer value; preserve the local pointer and null it in
+     * the sent copy so no tool heap address goes on the wire. */
+    uint16_t *ptr_save = data->words;
+    data->words = NULL;
     int ret = backend->requestTrailingData(EC_CMD_SLAVE_SII_WRITE,
             data, sizeof(*data),
-            data->words, data->nwords * 2,
+            ptr_save, data->nwords * 2,
             NULL, 0);
+    data->words = ptr_save;
     if (ret < 0) {
         errno = -ret;
         stringstream err;
@@ -475,10 +493,16 @@ void MasterDevice::readReg(
         ec_ioctl_slave_reg_t *data
         )
 {
+    /* The struct is echoed back over IPC with the server's
+     * pointer value; preserve the local pointer and null it in
+     * the sent copy so no tool heap address goes on the wire. */
+    uint8_t *ptr_save = data->data;
+    data->data = NULL;
     int ret = backend->requestTrailingData(EC_CMD_SLAVE_REG_READ,
             data, sizeof(*data),
             NULL, 0,
-            data->data, data->size);
+            ptr_save, data->size);
+    data->data = ptr_save;
     if (ret < 0) {
         errno = -ret;
         stringstream err;
@@ -493,10 +517,16 @@ void MasterDevice::writeReg(
         ec_ioctl_slave_reg_t *data
         )
 {
+    /* The struct is echoed back over IPC with the server's
+     * pointer value; preserve the local pointer and null it in
+     * the sent copy so no tool heap address goes on the wire. */
+    uint8_t *ptr_save = data->data;
+    data->data = NULL;
     int ret = backend->requestTrailingData(EC_CMD_SLAVE_REG_WRITE,
             data, sizeof(*data),
-            data->data, data->size,
+            ptr_save, data->size,
             NULL, 0);
+    data->data = ptr_save;
     if (ret < 0) {
         errno = -ret;
         stringstream err;
@@ -511,10 +541,16 @@ void MasterDevice::readFoe(
         ec_ioctl_slave_foe_t *data
         )
 {
+    /* The struct is echoed back over IPC with the server's
+     * pointer value; preserve the local pointer and null it in
+     * the sent copy so no tool heap address goes on the wire. */
+    uint8_t *ptr_save = data->buffer;
+    data->buffer = NULL;
     int ret = backend->requestTrailingData(EC_CMD_SLAVE_FOE_READ,
             data, sizeof(*data),
             NULL, 0,
-            data->buffer, data->buffer_size);
+            ptr_save, data->buffer_size);
+    data->buffer = ptr_save;
     if (ret < 0) {
         errno = -ret;
         stringstream err;
@@ -529,10 +565,16 @@ void MasterDevice::writeFoe(
         ec_ioctl_slave_foe_t *data
         )
 {
+    /* The struct is echoed back over IPC with the server's
+     * pointer value; preserve the local pointer and null it in
+     * the sent copy so no tool heap address goes on the wire. */
+    uint8_t *ptr_save = data->buffer;
+    data->buffer = NULL;
     int ret = backend->requestTrailingData(EC_CMD_SLAVE_FOE_WRITE,
             data, sizeof(*data),
-            data->buffer, data->buffer_size,
+            ptr_save, data->buffer_size,
             NULL, 0);
+    data->buffer = ptr_save;
     if (ret < 0) {
         errno = -ret;
         stringstream err;
@@ -571,10 +613,16 @@ void MasterDevice::rescan()
 
 void MasterDevice::sdoDownload(ec_ioctl_slave_sdo_download_t *data)
 {
+    /* The struct is echoed back over IPC with the server's
+     * pointer value; preserve the local pointer and null it in
+     * the sent copy so no tool heap address goes on the wire. */
+    uint8_t *ptr_save = data->data;
+    data->data = NULL;
     int ret = backend->requestTrailingData(EC_CMD_SLAVE_SDO_DOWNLOAD,
             data, sizeof(*data),
-            data->data, data->data_size,
+            ptr_save, data->data_size,
             NULL, 0);
+    data->data = ptr_save;
     if (ret < 0) {
         errno = -ret;
         if (errno == EIO && data->abort_code) {
@@ -591,10 +639,16 @@ void MasterDevice::sdoDownload(ec_ioctl_slave_sdo_download_t *data)
 
 void MasterDevice::sdoUpload(ec_ioctl_slave_sdo_upload_t *data)
 {
+    /* The struct is echoed back over IPC with the server's
+     * pointer value; preserve the local pointer and null it in
+     * the sent copy so no tool heap address goes on the wire. */
+    uint8_t *ptr_save = data->target;
+    data->target = NULL;
     int ret = backend->requestTrailingData(EC_CMD_SLAVE_SDO_UPLOAD,
             data, sizeof(*data),
             NULL, 0,
-            data->target, data->target_size);
+            ptr_save, data->target_size);
+    data->target = ptr_save;
     if (ret < 0) {
         errno = -ret;
         if (errno == EIO && data->abort_code) {
@@ -636,10 +690,16 @@ void MasterDevice::requestState(
 
 void MasterDevice::readSoe(ec_ioctl_slave_soe_read_t *data)
 {
+    /* The struct is echoed back over IPC with the server's
+     * pointer value; preserve the local pointer and null it in
+     * the sent copy so no tool heap address goes on the wire. */
+    uint8_t *ptr_save = data->data;
+    data->data = NULL;
     int ret = backend->requestTrailingData(EC_CMD_SLAVE_SOE_READ,
             data, sizeof(*data),
             NULL, 0,
-            data->data, data->mem_size);
+            ptr_save, data->mem_size);
+    data->data = ptr_save;
     if (ret < 0) {
         errno = -ret;
         if (errno == EIO && data->error_code) {
@@ -656,10 +716,16 @@ void MasterDevice::readSoe(ec_ioctl_slave_soe_read_t *data)
 
 void MasterDevice::writeSoe(ec_ioctl_slave_soe_write_t *data)
 {
+    /* The struct is echoed back over IPC with the server's
+     * pointer value; preserve the local pointer and null it in
+     * the sent copy so no tool heap address goes on the wire. */
+    uint8_t *ptr_save = data->data;
+    data->data = NULL;
     int ret = backend->requestTrailingData(EC_CMD_SLAVE_SOE_WRITE,
             data, sizeof(*data),
-            data->data, data->data_size,
+            ptr_save, data->data_size,
             NULL, 0);
+    data->data = ptr_save;
     if (ret < 0) {
         errno = -ret;
         if (errno == EIO && data->error_code) {

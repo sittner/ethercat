@@ -46,6 +46,7 @@
 #include "../ec_ioctl_data.h"
 
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <poll.h>
 #include <unistd.h>
@@ -60,11 +61,25 @@
 #define UNIX_PATH_MAX (sizeof(((struct sockaddr_un *)0)->sun_path))
 #endif
 
+/** Maximum payload size we are willing to receive (protect against OOM). */
+#define EC_IPC_MAX_PAYLOAD 65536U
+
+/** Maximum response payload the daemon allocates on behalf of a client.
+ * Sized for the largest legitimate consumers (FoE file reads, big
+ * domain images); primarily a cap so a crafted size field cannot make
+ * the (mlocked) master process malloc up to 4 GiB. All length checks
+ * against client-supplied sizes are computed in uint64_t so oversized
+ * 32-bit fields cannot wrap them. */
+#define EC_IPC_MAX_RESPONSE (16U * 1024U * 1024U)
+
+/** Maximum number of concurrent tool connections. */
+#define EC_IPC_MAX_CLIENTS 16
+
 /****************************************************************************/
 
 /** Global singleton IPC server state. */
 typedef struct {
-    int              sock_fd;        /**< Listening socket fd (-1 if inactive). */
+    _Atomic int      sock_fd;        /**< Listening socket fd (-1 if inactive). Handshake between listener thread and ec_ipc_server_stop(). */
     char             sock_path[UNIX_PATH_MAX]; /**< Unix socket filesystem path. */
     ec_thread_t     *thread;         /**< Listener thread handle. */
     atomic_int       shutdown;       /**< Non-zero to request shutdown. */
@@ -164,20 +179,6 @@ ec_master_t *ec_master_registry_pop_first(void)
     pthread_rwlock_unlock(&registry_rwlock);
 
     return master;
-}
-
-/****************************************************************************/
-/* Helper: copy string into fixed-size ioctl buffer (NUL-terminated).        */
-/****************************************************************************/
-
-static void ipc_strcpy(char *target, const char *source)
-{
-    if (source) {
-        strncpy(target, source, EC_IOCTL_STRING_SIZE);
-        target[EC_IOCTL_STRING_SIZE - 1] = '\0';
-    } else {
-        target[0] = '\0';
-    }
 }
 
 /****************************************************************************/
@@ -653,7 +654,7 @@ static int dispatch_domain_data(int fd, ec_master_t *master,
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (!io.data_size)
+    if (!io.data_size || io.data_size > EC_IPC_MAX_RESPONSE)
         return send_response(fd, -EINVAL, NULL, 0);
 
     buf = malloc(io.data_size);
@@ -685,7 +686,7 @@ static int dispatch_slave_sdo_upload(int fd, ec_master_t *master,
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (!io.target_size)
+    if (!io.target_size || io.target_size > EC_IPC_MAX_RESPONSE)
         return send_response(fd, -EINVAL, NULL, 0);
 
     target = malloc(io.target_size);
@@ -717,7 +718,7 @@ static int dispatch_slave_sdo_download(int fd, ec_master_t *master,
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (req_size < sizeof(io) + io.data_size)
+    if ((uint64_t)req_size < sizeof(io) + (uint64_t)io.data_size)
         return send_response(fd, -EINVAL, NULL, 0);
 
     io.data = (uint8_t *)(req + sizeof(io));
@@ -737,10 +738,10 @@ static int dispatch_slave_sii_read(int fd, ec_master_t *master,
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (!io.nwords)
+    if (!io.nwords || io.nwords > EC_IPC_MAX_RESPONSE / 2)
         return send_response(fd, -EINVAL, NULL, 0);
 
-    words = malloc(io.nwords * 2);
+    words = malloc((size_t)io.nwords * 2);
     if (!words)
         return send_response(fd, -ENOMEM, NULL, 0);
 
@@ -771,7 +772,7 @@ static int dispatch_slave_sii_write(int fd, ec_master_t *master,
     if (!io.nwords)
         return send_response(fd, 0, NULL, 0);
 
-    if (req_size < sizeof(io) + (uint32_t)io.nwords * 2)
+    if ((uint64_t)req_size < sizeof(io) + (uint64_t)io.nwords * 2)
         return send_response(fd, -EINVAL, NULL, 0);
 
     io.words = (uint16_t *)(req + sizeof(io));
@@ -793,6 +794,8 @@ static int dispatch_slave_reg_read(int fd, ec_master_t *master,
 
     if (!io.size)
         return send_response(fd, 0, NULL, 0);
+    if (io.size > EC_IPC_MAX_RESPONSE)
+        return send_response(fd, -EINVAL, NULL, 0);
 
     data = malloc(io.size);
     if (!data)
@@ -825,7 +828,7 @@ static int dispatch_slave_reg_write(int fd, ec_master_t *master,
     if (!io.size)
         return send_response(fd, 0, NULL, 0);
 
-    if (req_size < sizeof(io) + io.size)
+    if ((uint64_t)req_size < sizeof(io) + (uint64_t)io.size)
         return send_response(fd, -EINVAL, NULL, 0);
 
     io.data = (uint8_t *)(req + sizeof(io));
@@ -845,7 +848,7 @@ static int dispatch_slave_foe_read(int fd, ec_master_t *master,
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (!io.buffer_size)
+    if (!io.buffer_size || io.buffer_size > EC_IPC_MAX_RESPONSE)
         return send_response(fd, -EINVAL, NULL, 0);
 
     buffer = malloc(io.buffer_size);
@@ -877,7 +880,7 @@ static int dispatch_slave_foe_write(int fd, ec_master_t *master,
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (req_size < sizeof(io) + io.buffer_size)
+    if ((uint64_t)req_size < sizeof(io) + (uint64_t)io.buffer_size)
         return send_response(fd, -EINVAL, NULL, 0);
 
     io.buffer = (uint8_t *)(req + sizeof(io));
@@ -897,7 +900,7 @@ static int dispatch_slave_soe_read(int fd, ec_master_t *master,
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (!io.mem_size)
+    if (!io.mem_size || io.mem_size > EC_IPC_MAX_RESPONSE)
         return send_response(fd, -EINVAL, NULL, 0);
 
     data = malloc(io.mem_size);
@@ -928,7 +931,7 @@ static int dispatch_slave_soe_write(int fd, ec_master_t *master,
         return send_response(fd, -EINVAL, NULL, 0);
     memcpy(&io, req, sizeof(io));
 
-    if (req_size < sizeof(io) + io.data_size)
+    if ((uint64_t)req_size < sizeof(io) + (uint64_t)io.data_size)
         return send_response(fd, -EINVAL, NULL, 0);
 
     io.data = (uint8_t *)(req + sizeof(io));
@@ -939,12 +942,6 @@ static int dispatch_slave_soe_write(int fd, ec_master_t *master,
 /****************************************************************************/
 /* Poll-based event loop                                                       */
 /****************************************************************************/
-
-/** Maximum payload size we are willing to receive (protect against OOM). */
-#define EC_IPC_MAX_PAYLOAD 65536U
-
-/** Maximum number of concurrent tool connections. */
-#define EC_IPC_MAX_CLIENTS 16
 
 /**
  * Handle exactly one request from a connected client fd.
@@ -967,10 +964,10 @@ static int handle_client_request(int fd, uint8_t **payload,
         return 1; /* client disconnected or error */
 
     /* Validate version magic. */
-    if (req.version_magic != EC_IOCTL_VERSION_MAGIC) {
+    if (req.version_magic != EC_IPC_VERSION_MAGIC) {
         ec_log(EC_LOG_WARNING,
                 "IPC: version magic mismatch (%u vs %u); dropping client\n",
-                req.version_magic, EC_IOCTL_VERSION_MAGIC);
+                req.version_magic, EC_IPC_VERSION_MAGIC);
         send_response(fd, -EINVAL, NULL, 0);
         return 1;
     }
@@ -1141,7 +1138,8 @@ static int handle_client_request(int fd, uint8_t **payload,
  * On new connection: accept(), set SO_SNDTIMEO and SO_RCVTIMEO, add to poll array.
  * On client data:    read one full request, dispatch, send response.
  * On client error:   close fd and remove from poll array.
- * On shutdown:       exit the loop; close remaining client fds and listening socket.
+ * On shutdown:       exit the loop; close remaining client fds (the
+ *                    listening socket is closed by ec_ipc_server_stop()).
  */
 static int listener_fn(void *arg)
 {
@@ -1240,11 +1238,10 @@ static int listener_fn(void *arg)
     for (i = 1; i < nfds; i++)
         close(fds[i].fd);
 
-    /* Close the listening socket here so ec_ipc_server_stop() does not race
-     * with accept() on the same fd.  ec_ipc_server_stop() only calls
-     * shutdown() to wake poll() and then joins this thread. */
-    close(cdev->sock_fd);
-    cdev->sock_fd = -1;
+    /* The listening socket is NOT closed here: ec_ipc_server_stop() owns
+     * it and closes it after joining this thread. A close here could
+     * race stop()'s shutdown() wakeup — the kernel may reuse the fd
+     * number for an unrelated descriptor in between. */
 
     free(payload);
     return 0;
@@ -1272,6 +1269,14 @@ int ec_ipc_server_start(const char *socket_path)
     if (cdev->sock_fd != -1)
         return 0; /* already running */
 
+    /* A path that does not fit sun_path would be silently truncated and
+     * the socket would appear somewhere else — reject it instead. */
+    if (strlen(socket_path) >= sizeof(cdev->sock_path)) {
+        ec_log(EC_LOG_ERR, "IPC: socket path too long (max %zu): %s\n",
+                sizeof(cdev->sock_path) - 1, socket_path);
+        return -ENAMETOOLONG;
+    }
+
     snprintf(cdev->sock_path, sizeof(cdev->sock_path), "%s", socket_path);
     cdev->thread   = NULL;
     atomic_store(&cdev->shutdown, 0);
@@ -1295,6 +1300,21 @@ int ec_ipc_server_start(const char *socket_path)
         ec_log(EC_LOG_ERR, "IPC: bind() to %s failed: %s\n",
                 cdev->sock_path, strerror(errno));
         close(sock_fd);
+        return ret;
+    }
+
+    /* The tool API includes write operations (SDO download, state changes,
+     * register/SII writes), so the socket must not be world-connectable.
+     * Permissions are checked at connect() time and no connection can be
+     * established before listen(), so restricting here is race-free.
+     * Access for a tool group is granted by chown()ing the socket file
+     * after startup (see ec_master --socket-group). */
+    if (chmod(cdev->sock_path, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP) < 0) {
+        ret = -errno;
+        ec_log(EC_LOG_ERR, "IPC: chmod() of %s failed: %s\n",
+                cdev->sock_path, strerror(errno));
+        close(sock_fd);
+        unlink(cdev->sock_path);
         return ret;
     }
 
@@ -1329,10 +1349,10 @@ int ec_ipc_server_start(const char *socket_path)
  *
  * Signals the listener thread to stop by setting the shutdown flag and calling
  * shutdown() on the listening socket (which wakes poll()), then waits for the
- * single listener thread to exit.  The listener thread closes all client fds
- * and the listening socket itself before it exits, avoiding any race between
- * close() and accept() on the same fd.  The socket file is removed from the
- * filesystem after the thread has joined.
+ * single listener thread to exit.  The listening fd is owned and closed
+ * exclusively by this function, after the join — the listener thread never
+ * closes it, so shutdown() here can never hit a reused fd number.  The
+ * socket file is removed from the filesystem after the thread has joined.
  */
 void ec_ipc_server_stop(void)
 {
@@ -1345,15 +1365,16 @@ void ec_ipc_server_stop(void)
     atomic_store(&cdev->shutdown, 1);
 
     /* Wake poll() on the listening socket so the listener thread sees the
-     * shutdown flag quickly.  Do NOT close() here — the listener thread
-     * closes sock_fd itself to avoid a race with accept().
-     * Guard against sock_fd already being -1 if the listener exited early. */
-    if (cdev->sock_fd != -1)
-        shutdown(cdev->sock_fd, SHUT_RDWR);
+     * shutdown flag quickly.  sock_fd stays valid until we close it below,
+     * after the join. */
+    shutdown(cdev->sock_fd, SHUT_RDWR);
 
     /* Wait for the listener thread to exit (it closes client fds itself). */
     ec_thread_stop(cdev->thread);
     cdev->thread = NULL;
+
+    close(cdev->sock_fd);
+    cdev->sock_fd = -1;
 
     /* Remove the socket file. */
     unlink(cdev->sock_path);

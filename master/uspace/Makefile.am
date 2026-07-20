@@ -107,7 +107,13 @@ endif
 # - If any interfaces have been removed or changed since the last public
 #   release, then set age to 0.
 #
-libethercat_la_LDFLAGS = -version-info 0:0:0 \
+# The userspace master library starts at 2:0:0 (soname libethercat.so.2)
+# so it can never be confused at runtime with the kernel-mode ioctl
+# client library from lib/ (3:0:2 -> soname libethercat.so.1): the two
+# are intentionally NOT ABI compatible (different version node sets,
+# different lifecycle API).
+#
+libethercat_la_LDFLAGS = -version-info 2:0:0 \
 	-Wl,--version-script=$(srcdir)/libethercat.map \
 	-fvisibility=hidden
 
@@ -116,8 +122,44 @@ libethercat_la_DEPENDENCIES = libethercat.map
 libethercat_la_LIBADD = -lpthread
 
 if HAVE_XDP
-libethercat_la_LIBADD += -lxdp
+# -lbpf: transport_xdp.c calls bpf_xdp_detach() directly; the explicit
+# dependency is required for static links of the convenience library
+# (e.g. the unit tests), which do not resolve libxdp's transitive
+# DT_NEEDED entries.
+libethercat_la_LIBADD += -lxdp -lbpf
 endif
+
+# pkg-config and CMake package files (the templates in lib/ are
+# mode-independent: same -lethercat, same installed headers).
+pkgconfig_DATA = $(top_builddir)/lib/libethercat.pc
+
+cmakedir = $(libdir)/cmake/ethercat
+
+cmake_DATA = ethercat-config.cmake
+
+CLEANFILES = $(cmake_DATA)
+
+# we need to replace the variables manually, because autotools does not
+# expand them.
+ethercat-config.cmake: $(top_srcdir)/lib/ethercat-config.cmake.in Makefile
+	$(SED) -e 's,%libdir%,$(libdir),' -e 's,%includedir%,$(includedir),' \
+		$< > $@
+
+noinst_HEADERS = \
+	cdev.h \
+	pal.h \
+	pal_affinity.h \
+	pal_alloc.h \
+	pal_eoe.h \
+	pal_irq_work.h \
+	pal_list.h \
+	pal_misc.h \
+	pal_mtx.h \
+	pal_queue.h \
+	pal_sem.h \
+	pal_thread.h \
+	pal_work.h \
+	$(top_srcdir)/transport/irq_pin.h
 
 EXTRA_DIST = libethercat.map
 

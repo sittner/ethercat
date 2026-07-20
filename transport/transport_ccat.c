@@ -447,6 +447,8 @@ static void ccat_close(ec_transport_t *transport)
  * The actual copy to CCAT hardware happens in send().
  */
 static uint8_t *ccat_get_tx_buffer(ec_transport_t *transport)
+        ECRT_RT_ATTR;
+static uint8_t *ccat_get_tx_buffer(ec_transport_t *transport)
 {
     return transport->tx_buffer;
 }
@@ -459,6 +461,8 @@ static uint8_t *ccat_get_tx_buffer(ec_transport_t *transport)
  * Copies frame data into the current TX slot in CCAT memory-mapped region,
  * then kicks the TX FIFO register.
  */
+static int ccat_send(ec_transport_t *transport, size_t size)
+        ECRT_RT_ATTR;
 static int ccat_send(ec_transport_t *transport, size_t size)
 {
     ec_transport_ccat_t *ccat = transport->priv;
@@ -473,6 +477,11 @@ static int ccat_send(ec_transport_t *transport, size_t size)
         return -EINVAL;
 
     /* Check TX FIFO level - can we send? */
+    /* TX FIFO still busy: drop the frame (the datagrams time out and
+     * are retried by the FSMs; cyclic domain data is resent next cycle
+     * anyway). Deliberate: blocking here would stall the cyclic path,
+     * and at EtherCAT cycle times the FIFO is empty again long before
+     * the next frame. */
     if (ccat_read8((uint8_t *)ccat->mac + TX_FIFO_LEVEL_OFFSET)
         & TX_FIFO_LEVEL_MASK) {
         return -EBUSY;
@@ -513,6 +522,8 @@ static int ccat_send(ec_transport_t *transport, size_t size)
  * Returns number of bytes received, 0 if no frame available, or negative
  * error code.
  */
+static int ccat_receive(ec_transport_t *transport, uint8_t *buffer,
+        size_t max_size) ECRT_RT_ATTR;
 static int ccat_receive(ec_transport_t *transport, uint8_t *buffer,
                         size_t max_size)
 {

@@ -39,6 +39,9 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <grp.h>
+#include <errno.h>
+#include <string.h>
 
 /****************************************************************************/
 
@@ -68,6 +71,9 @@ static int g_log_stdout = 0;
 
 /** IPC socket path (NULL disables IPC server) */
 static const char *g_socket_path = EC_IPC_DEFAULT_SOCKET_PATH;
+
+/** Group granted access to the IPC socket (NULL = owner only) */
+static const char *g_socket_group = NULL;
 
 /****************************************************************************/
 
@@ -191,14 +197,15 @@ int main(int argc, char *argv[])
         {"backup",     required_argument, 0, 'b'},
         {"cpu",        required_argument, 0, 'c'},
         {"debug",      required_argument, 0, 'd'},
-        {"socket",     required_argument, 0, 's'},
+        {"socket",       required_argument, 0, 's'},
+        {"socket-group", required_argument, 0, 'g'},
         {"foreground", no_argument,       0, 'f'},
         {"log-stdout", no_argument,       0, 'l'},
         {"help",       no_argument,       0, 'h'},
         {0, 0, 0, 0}
     };
 
-    while ((c = getopt_long(argc, argv, "i:t:b:c:d:s:flh",
+    while ((c = getopt_long(argc, argv, "i:t:b:c:d:s:g:flh",
                     long_options, NULL)) != -1) {
         switch (c) {
             case 'i':
@@ -258,6 +265,9 @@ int main(int argc, char *argv[])
             case 's':
                 g_socket_path = optarg;
                 break;
+            case 'g':
+                g_socket_group = optarg;
+                break;
             case 'f':
                 g_foreground = 1;
                 break;
@@ -286,6 +296,9 @@ int main(int argc, char *argv[])
                 fprintf(stdout,
                         "  -s, --socket <path>       IPC socket path"
                         " (default: " EC_IPC_DEFAULT_SOCKET_PATH ")\n");
+                fprintf(stdout,
+                        "  -g, --socket-group <grp>  Grant this group access"
+                        " to the IPC socket\n");
                 fprintf(stdout,
                         "  -f, --foreground          Do not daemonize\n");
                 fprintf(stdout,
@@ -332,6 +345,17 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    /* Resolve the socket group before daemonizing so a typo fails fast. */
+    gid_t socket_gid = (gid_t)-1;
+    if (g_socket_group) {
+        struct group *grp = getgrnam(g_socket_group);
+        if (!grp) {
+            fprintf(stderr, "Error: unknown group \"%s\"\n", g_socket_group);
+            return 1;
+        }
+        socket_gid = grp->gr_gid;
+    }
+
     /* Set up logging */
     ec_log_cb_t log_cb = g_log_stdout ? log_to_stderr : log_to_syslog;
     if (!g_log_stdout)
@@ -363,6 +387,38 @@ int main(int argc, char *argv[])
         transports[i] = NULL;
         backup_transports[i] = NULL;
         masters[i] = NULL;
+    }
+
+    /* The library creates the socket with mode 0660, owner only. Grant the
+     * requested group access. Until the chown takes effect group members
+     * cannot connect; non-members never can.
+     * Swap hardening: pin the path with O_PATH|O_NOFOLLOW, verify the
+     * pinned inode is a socket, and chown through /proc/self/fd — so a
+     * symlink or file swapped in concurrently (only possible if the
+     * admin pointed --socket into a world-writable directory) cannot
+     * redirect the chown to an arbitrary file. */
+    if (g_socket_path && socket_gid != (gid_t)-1) {
+        char proc_path[64];
+        struct stat st;
+        int pfd = open(g_socket_path, O_PATH | O_NOFOLLOW | O_CLOEXEC);
+
+        if (pfd < 0 || fstat(pfd, &st) < 0 || !S_ISSOCK(st.st_mode)) {
+            main_log(EC_LOG_ERR, "%s is not the expected socket: %s\n",
+                    g_socket_path, pfd < 0 ? strerror(errno) : "not a socket");
+            if (pfd >= 0)
+                close(pfd);
+            ret = 1;
+            goto out_release_masters;
+        }
+        snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", pfd);
+        if (chown(proc_path, (uid_t)-1, socket_gid) < 0) {
+            main_log(EC_LOG_ERR, "Failed to set group \"%s\" on %s: %s\n",
+                    g_socket_group, g_socket_path, strerror(errno));
+            close(pfd);
+            ret = 1;
+            goto out_release_masters;
+        }
+        close(pfd);
     }
 
     /* Start all masters (transports[] and backup_transports[] are already NULL) */

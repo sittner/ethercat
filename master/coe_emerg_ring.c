@@ -75,8 +75,10 @@ int ec_coe_emerg_ring_size(
 {
     ring->size = 0;
 
-    if (size < 0) {
-        size = 0;
+    /* size + 1 messages are allocated below; reject sizes where the
+     * allocation size calculation would overflow. */
+    if (size > (size_t)-1 / sizeof(ec_coe_emerg_msg_t) - 1) {
+        return -EINVAL;
     }
 
     ring->read_index = ring->write_index = 0;

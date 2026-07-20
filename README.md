@@ -8,6 +8,14 @@ Contents:
 
 This is an open-source EtherCAT master implementation for Linux 2.6 or newer.
 
+This tree additionally provides a **userspace master**: the complete
+master core built as a shared library running inside the application
+process (`./configure --enable-uspace-master`) — no kernel module and no
+patched network drivers required, while kernel mode remains fully
+supported. See [FEATURES.md](FEATURES.md) ("Userspace Master"),
+[INSTALL.md](INSTALL.md) and
+[USERSPACE-MASTER-IMPL.md](USERSPACE-MASTER-IMPL.md).
+
 See the [features file](FEATURES.md) for a list of features. For more
 information, see https://etherlab.org/ethercat.
 

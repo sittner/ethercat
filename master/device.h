@@ -67,33 +67,33 @@ struct ec_device
     ec_master_t *master; /**< EtherCAT master */
     const char *name; /**< device name */
     uint8_t open; /**< true, if the net_device has been opened */
-    uint8_t link_state; /**< device link state */
+    EC_PAL_SHARED uint8_t link_state; /**< device link state */
 #ifdef EC_DEBUG_RING
     struct timeval timeval_poll;
 #endif
     ec_time_t time_poll; /**< Timestamp of last poll */
 
     // Frame statistics
-    uint64_t tx_count; /**< Number of frames sent. */
+    EC_PAL_SHARED uint64_t tx_count; /**< Number of frames sent. */
     uint64_t last_tx_count; /**< Number of frames sent of last statistics cycle. */
-    uint64_t rx_count; /**< Number of frames received. */
+    EC_PAL_SHARED uint64_t rx_count; /**< Number of frames received. */
     uint64_t last_rx_count; /**< Number of frames received of last statistics
                          cycle. */
-    uint64_t tx_bytes; /**< Number of bytes sent. */
+    EC_PAL_SHARED uint64_t tx_bytes; /**< Number of bytes sent. */
     uint64_t last_tx_bytes; /**< Number of bytes sent of last statistics cycle. */
-    uint64_t rx_bytes; /**< Number of bytes received. */
+    EC_PAL_SHARED uint64_t rx_bytes; /**< Number of bytes received. */
     uint64_t last_rx_bytes; /**< Number of bytes received of last statistics cycle.
                         */
-    uint64_t tx_errors; /**< Number of transmit errors. */
-    int32_t tx_frame_rates[EC_RATE_COUNT]; /**< Transmit rates in frames/s for
+    EC_PAL_SHARED uint64_t tx_errors; /**< Number of transmit errors. */
+    EC_PAL_SHARED int32_t tx_frame_rates[EC_RATE_COUNT]; /**< Transmit rates in frames/s for
                                          different statistics cycle periods.
                                         */
-    int32_t rx_frame_rates[EC_RATE_COUNT]; /**< Receive rates in frames/s for
+    EC_PAL_SHARED int32_t rx_frame_rates[EC_RATE_COUNT]; /**< Receive rates in frames/s for
                                          different statistics cycle periods.
                                         */
-    int32_t tx_byte_rates[EC_RATE_COUNT]; /**< Transmit rates in byte/s for
+    EC_PAL_SHARED int32_t tx_byte_rates[EC_RATE_COUNT]; /**< Transmit rates in byte/s for
                                         different statistics cycle periods. */
-    int32_t rx_byte_rates[EC_RATE_COUNT]; /**< Receive rates in byte/s for
+    EC_PAL_SHARED int32_t rx_byte_rates[EC_RATE_COUNT]; /**< Receive rates in byte/s for
                                         different statistics cycle periods. */
 
 #ifdef EC_DEBUG_IF
@@ -114,16 +114,16 @@ void ec_device_clear(ec_device_t *);
 int ec_device_open(ec_device_t *);
 int ec_device_close(ec_device_t *);
 
-void ec_device_poll(ec_device_t *);
-uint8_t *ec_device_tx_data(ec_device_t *);
-void ec_device_send(ec_device_t *, size_t);
-void ec_device_clear_stats(ec_device_t *);
-void ec_device_update_stats(ec_device_t *);
+void ec_device_poll(ec_device_t *) EC_RT_ATTR;
+uint8_t *ec_device_tx_data(ec_device_t *) EC_RT_ATTR;
+void ec_device_send(ec_device_t *, size_t) EC_RT_ATTR;
+void ec_device_clear_stats(ec_device_t *) EC_RT_ATTR;
+void ec_device_update_stats(ec_device_t *) EC_RT_ATTR;
 void ec_device_init_common(ec_device_t *, ec_master_t *);
 void ec_device_clear_common(ec_device_t *);
-void ec_device_account_tx(ec_device_t *, size_t);
-void ec_device_account_tx_error(ec_device_t *);
-void ec_device_account_rx(ec_device_t *, size_t);
+void ec_device_account_tx(ec_device_t *, size_t) EC_RT_ATTR;
+void ec_device_account_tx_error(ec_device_t *) EC_RT_ATTR;
+void ec_device_account_rx(ec_device_t *, size_t) EC_RT_ATTR;
 
 #ifdef EC_DEBUG_RING
 void ec_device_debug_ring_append(ec_device_t *, ec_debug_frame_dir_t,

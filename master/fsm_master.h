@@ -84,11 +84,13 @@ struct ec_fsm_master {
     ec_time_t scan_time; /**< beginning of slave scanning */
     uint8_t link_state[EC_MAX_NUM_DEVICES]; /**< Last link state for every
                                               device. */
-    unsigned int slaves_responding[EC_MAX_NUM_DEVICES]; /**< Number of
+    EC_PAL_SHARED unsigned int slaves_responding[EC_MAX_NUM_DEVICES]; /**< Number of
                                                           responding slaves
                                                           for every device. */
-    unsigned int rescan_required; /**< A bus rescan is required. */
-    ec_slave_state_t slave_states[EC_MAX_NUM_DEVICES]; /**< AL states of
+    EC_PAL_SHARED unsigned int rescan_required; /**< A bus rescan is required.
+                                                  Also set from the tool/IPC
+                                                  thread. */
+    EC_PAL_SHARED ec_slave_state_t slave_states[EC_MAX_NUM_DEVICES]; /**< AL states of
                                                          responding slaves for
                                                          every device. */
     ec_slave_t *slave; /**< current slave */
@@ -116,7 +118,7 @@ void ec_fsm_master_clear(ec_fsm_master_t *);
 void ec_fsm_master_reset(ec_fsm_master_t *);
 
 int ec_fsm_master_exec(ec_fsm_master_t *);
-int ec_fsm_master_queue_datagram(ec_fsm_master_t *);
+int ec_fsm_master_queue_datagram(ec_fsm_master_t *) EC_RT_ATTR;
 int ec_fsm_master_idle(const ec_fsm_master_t *);
 
 /****************************************************************************/

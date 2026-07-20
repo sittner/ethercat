@@ -150,7 +150,7 @@ class MasterDeviceUspace : public MasterDeviceBackend
                 size_t size, uint32_t arg = 0)
         {
             ec_ipc_request_t req;
-            req.version_magic = EC_IOCTL_VERSION_MAGIC;
+            req.version_magic = EC_IPC_VERSION_MAGIC;
             req.cmd = cmd;
             req.master_index = masterIndex;
 
@@ -225,7 +225,7 @@ class MasterDeviceUspace : public MasterDeviceBackend
                 void *trailingOut, size_t trailingOutSize)
         {
             ec_ipc_request_t req;
-            req.version_magic = EC_IOCTL_VERSION_MAGIC;
+            req.version_magic = EC_IPC_VERSION_MAGIC;
             req.cmd = cmd;
             req.master_index = masterIndex;
             req.data_size = static_cast<uint32_t>(size + trailingInSize);
@@ -234,7 +234,9 @@ class MasterDeviceUspace : public MasterDeviceBackend
             if (ret < 0)
                 return ret;
 
-            /* Send the struct with pointer field zeroed on the wire. */
+            /* Send the struct. Callers null its pointer members before
+             * the call (MasterDevice.cpp), so no tool heap address goes
+             * on the wire; the server substitutes its own pointers. */
             if (data && size > 0) {
                 ret = send_all(sockfd, data, size);
                 if (ret < 0)
