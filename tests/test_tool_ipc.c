@@ -54,7 +54,9 @@ static int run_tool(const char *args, char *out, size_t out_size)
     size_t used = 0, n;
     int status;
 
-    snprintf(cmd, sizeof(cmd), "%s --socket %s %s 2>&1",
+    /* Quote the interpolated paths so a TMPDIR/builddir with spaces
+     * fails loudly in the tool instead of confusing the shell. */
+    snprintf(cmd, sizeof(cmd), "\"%s\" --socket \"%s\" %s 2>&1",
             tool_bin, sock_path, args);
     p = popen(cmd, "r");
     if (!p) {
@@ -80,6 +82,11 @@ int main(void)
     unsigned int waited;
     size_t od_size;
     const uint8_t *od;
+
+    /* Watchdog: if the tool or the IPC server wedges, fail the test
+     * after two minutes instead of hanging a CI runner (the tool's
+     * fread() on the pipe has no timeout of its own). */
+    alarm(120);
 
     tool_bin = getenv("EC_TOOL_BIN");
     if (!tool_bin || access(tool_bin, X_OK)) {

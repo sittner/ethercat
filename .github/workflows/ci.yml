@@ -19,6 +19,7 @@ on:
 jobs:
   build-uspace:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -52,9 +53,19 @@ jobs:
         run: |
           make -C tests check \
               || { cat tests/test-suite.log tests/*.log; exit 1; }
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}-${{ matrix.cc }}-${{ matrix.xdp }}
+          path: |
+            tests/test-suite.log
+            tests/*.log
+          if-no-files-found: ignore
 
   sanitize:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     name: unit tests (ASan+UBSan)
     steps:
       - uses: actions/checkout@v4
@@ -74,9 +85,19 @@ jobs:
         run: |
           make -C tests check \
               || { cat tests/test-suite.log tests/*.log; exit 1; }
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}
+          path: |
+            tests/test-suite.log
+            tests/*.log
+          if-no-files-found: ignore
 
   tsan:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     name: unit tests (ThreadSanitizer)
     steps:
       - uses: actions/checkout@v4
@@ -95,9 +116,19 @@ jobs:
         run: |
           make -C tests check \
               || { cat tests/test-suite.log tests/*.log; exit 1; }
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ github.job }}
+          path: |
+            tests/test-suite.log
+            tests/*.log
+          if-no-files-found: ignore
 
   rt-effects:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     name: RT function-effects check
     steps:
       - uses: actions/checkout@v4
@@ -120,6 +151,7 @@ jobs:
 
   build-kernel:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     name: kernel modules (distro headers)
     steps:
       - uses: actions/checkout@v4
@@ -141,6 +173,7 @@ jobs:
 
   dist:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     name: distcheck
     steps:
       - uses: actions/checkout@v4

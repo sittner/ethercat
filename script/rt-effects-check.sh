@@ -71,14 +71,16 @@ if "$CLANG" $CFLAGS "$TOP/tests/rt-effects/rt_bad.c" 2>"$BAD_LOG"; then
     echo "rt-effects-check: FAIL rt_bad.c compiled clean (annotations inert?)" >&2
     fail=1
 else
+    bad_fail=0
     for callee in ecrt_master_sdo_download ecrt_master_sdo_upload \
             ecrt_slave_config_sdo8 malloc; do
         if ! grep -q "non-'nonblocking' function '$callee'" "$BAD_LOG"; then
             echo "rt-effects-check: FAIL rt_bad.c: no diagnostic for $callee" >&2
+            bad_fail=1
             fail=1
         fi
     done
-    if [ "$fail" -eq 0 ]; then
+    if [ "$bad_fail" -eq 0 ]; then
         echo "rt-effects-check: PASS rt_bad.c (all violations diagnosed)"
     fi
 fi

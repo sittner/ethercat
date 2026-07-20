@@ -88,6 +88,11 @@ uint8_t *sim_bus_slave_regs(sim_bus_t *bus, unsigned int pos);
 /** Number of frames processed by the bus so far. */
 unsigned long sim_bus_frame_count(sim_bus_t *bus);
 
+/** Number of link-state polls (transport get_link calls) so far —
+ * lets tests synchronize on "the master is running and watching the
+ * link" instead of wall-clock sleeps. */
+unsigned long sim_bus_link_polls(sim_bus_t *bus);
+
 /** Create or update an object-dictionary entry of slave \a pos (CoE
  * slaves only; entries serve SDO uploads and accept downloads).
  * Returns 0 on success. */

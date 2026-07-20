@@ -23,6 +23,7 @@
  ****************************************************************************/
 
 #include <pthread.h>
+#include <stdatomic.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -80,18 +81,30 @@ static ec_sync_info_t syncs[] = {
     { 0xff }
 };
 
-static void *link_up_later(void *arg)
-{
-    usleep(1500000);
-    sim_bus_set_link(arg, 1);
-    return NULL;
-}
-
 static uint64_t now_ms(void)
 {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t) ts.tv_sec * 1000 + (uint64_t) ts.tv_nsec / 1000000;
+}
+
+static _Atomic uint64_t link_up_at_ms;
+
+static void *link_up_later(void *arg)
+{
+    sim_bus_t *bus = arg;
+
+    /* Wait until the master's startup loop demonstrably runs and polls
+     * the (down) link a few times — event-based instead of a fixed
+     * wall-clock sleep, which would race the 5 s scan-progress timeout
+     * on a badly loaded CI machine. */
+    while (sim_bus_link_polls(bus) < 3) {
+        usleep(10000);
+    }
+    usleep(100000); /* let it observe the down link a little longer */
+    link_up_at_ms = now_ms();
+    sim_bus_set_link(bus, 1);
+    return NULL;
 }
 
 int main(void)
@@ -102,7 +115,7 @@ int main(void)
     ec_master_state_t state;
     ec_slave_info_t slave;
     pthread_t tid;
-    uint64_t start;
+    uint64_t start, end;
 
     bus = sim_bus_create(2, identities);
     TEST_CHECK(bus != NULL);
@@ -120,6 +133,7 @@ int main(void)
 
     start = now_ms();
     master = ecrt_startup_master(0, sim_bus_transport(bus), NULL, 0, -1);
+    end = now_ms();
     TEST_CHECK(master != NULL);
     pthread_join(tid, NULL);
     if (!master) {
@@ -127,7 +141,7 @@ int main(void)
     }
 
     /* The scan cannot have finished before the link came up. */
-    TEST_CHECK(now_ms() - start >= 1000);
+    TEST_CHECK(start <= link_up_at_ms && link_up_at_ms <= end);
     TEST_CHECK_EQ(0, ecrt_master(master, &info));
     TEST_CHECK_EQ(2, info.slave_count);
 

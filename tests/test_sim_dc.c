@@ -116,7 +116,7 @@ int main(void)
     TEST_CHECK(off_in >= 0);
 
     /* SYNC0 generation, 1 ms cycle. */
-    ecrt_slave_config_dc(sc, 0x0300, 1000000, 0, 0, 0);
+    TEST_CHECK_EQ(0, ecrt_slave_config_dc(sc, 0x0300, 1000000, 0, 0, 0));
 
     TEST_CHECK_EQ(0, ecrt_master_activate(master));
     pd = ecrt_domain_data(domain);

@@ -8,8 +8,8 @@
  *    semantics)/BWR, and the logical commands LRD/LWR/LRW mapped through
  *    the FMMU configurations the master wrote to 0x0600 (working
  *    counters: read match +1, write match +1, LRW write match +2).
- *    DC commands (ARMW/FRMW) are not implemented; they return working
- *    counter 0.
+ *    DC commands (ARMW/FRMW) are implemented — see "Distributed
+ *    clocks" below.
  *  - Auto-increment addressing: the position field is incremented by
  *    every slave the frame passes; the slave seeing position 0 processes.
  *  - Register space per slave, with side effects on:
@@ -93,6 +93,7 @@ struct sim_bus {
     sim_slave_t slaves[SIM_MAX_SLAVES];
     unsigned int nslaves;
     int link_up;
+    unsigned long link_polls; /**< get_link calls (see sim_bus_link_polls). */
     unsigned long frame_count;
     pthread_mutex_t lock;
 
@@ -447,8 +448,13 @@ static void sim_coe_sdo_info(sim_slave_t *slave, const uint8_t *coe,
         case 0x05: /* Get entry description request */
             {
                 const sim_od_entry_t *entry;
-                uint8_t subindex = coe[8];
+                uint8_t subindex;
 
+                if (len < 10) { /* needs index + subindex + value info */
+                    sim_sdo_info_error(slave, 0x05040001);
+                    return;
+                }
+                subindex = coe[8];
                 index = sim_rd16(coe + 6);
                 entry = sim_od_find(slave, index, subindex, 0);
                 if (!entry) {
@@ -511,6 +517,9 @@ static void sim_coe_request(sim_slave_t *slave, const uint8_t *coe,
                 if (cs & 0x02) { /* expedited */
                     dsize = (cs & 0x01) ? 4 - ((cs >> 2) & 0x03) : 4;
                     src = coe + 6;
+                    if (len < 6 + dsize) { /* short request: ignore */
+                        return;
+                    }
                 } else { /* normal, single segment only */
                     if (len < 10) {
                         return;
@@ -616,7 +625,11 @@ static void sim_eoe_request(sim_slave_t *slave, const uint8_t *data,
         uint16_t size_blocks = (uint16_t) (slave->eoe_len / 32 + 1);
 
         if (4 + slave->eoe_len + 6 > slave->mbox_in_len) {
-            return; /* would need fragmentation: not emulated */
+            /* Slave->master fragmentation is not emulated; be loud so
+             * a future MTU-sized test does not just time out. */
+            fprintf(stderr, "sim: EoE echo of %zu bytes needs"
+                    " fragmentation — frame dropped\n", slave->eoe_len);
+            return;
         }
         rsp[0] = 0x00; /* fragment request */
         rsp[1] = 0x01; /* last fragment */
@@ -1053,8 +1066,19 @@ static int sim_get_link_state(ec_transport_t *transport)
 
     pthread_mutex_lock(&bus->lock);
     up = bus->link_up;
+    bus->link_polls++;
     pthread_mutex_unlock(&bus->lock);
     return up;
+}
+
+unsigned long sim_bus_link_polls(sim_bus_t *bus)
+{
+    unsigned long n;
+
+    pthread_mutex_lock(&bus->lock);
+    n = bus->link_polls;
+    pthread_mutex_unlock(&bus->lock);
+    return n;
 }
 
 static int sim_get_mac(ec_transport_t *transport, uint8_t mac[6])
@@ -1110,6 +1134,23 @@ sim_bus_t *sim_bus_create(unsigned int nslaves,
 
     for (i = 0; i < nslaves; i++) {
         sim_slave_t *slave = &bus->slaves[i];
+
+        /* The mailbox/SM emulation trusts these offsets, so reject
+         * geometry that reaches outside the register array. */
+        if ((size_t) identities[i].mbox_out_phys + identities[i].mbox_out_len
+                    > SIM_REG_SIZE
+                || (size_t) identities[i].mbox_in_phys
+                    + identities[i].mbox_in_len > SIM_REG_SIZE
+                || (size_t) identities[i].sm2_phys + identities[i].sm2_len
+                    > SIM_REG_SIZE
+                || (size_t) identities[i].sm3_phys + identities[i].sm3_len
+                    > SIM_REG_SIZE) {
+            fprintf(stderr, "sim: slave %u mailbox/SM geometry exceeds"
+                    " SIM_REG_SIZE\n", i);
+            pthread_mutex_destroy(&bus->lock);
+            free(bus);
+            return NULL;
+        }
 
         sim_slave_init_regs(slave, i, nslaves, &identities[i]);
         sim_slave_init_eeprom(slave, &identities[i]);
@@ -1174,6 +1215,11 @@ unsigned int sim_bus_slave_al_state(sim_bus_t *bus, unsigned int pos)
     return state;
 }
 
+/* NOTE: returns an unlocked pointer. Safe only while no master thread
+ * processes frames concurrently — in practice: after
+ * ecrt_master_activate() returned (the idle thread is joined there and
+ * the OP thread does not touch the transport) or before startup.
+ * Touching regs during the idle phase would be a data race. */
 uint8_t *sim_bus_slave_regs(sim_bus_t *bus, unsigned int pos)
 {
     return pos < bus->nslaves ? bus->slaves[pos].regs : NULL;

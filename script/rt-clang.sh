@@ -70,12 +70,18 @@ echo "rt-clang.sh: ${LLVM_URL}" >&2
 
 mkdir -p "$CACHE_DIR"
 TMP_TAR="${CACHE_DIR}/${LLVM_TAR}.part"
-trap 'rm -f "$TMP_TAR"' EXIT
 
+# On download failure the partial file is deliberately kept so the next
+# run's -C - resumes it; a complete-but-corrupt file is deleted below
+# after the digest check.
 curl -fsSL -o "$TMP_TAR" -C - "$LLVM_URL" || curl -fsSL -o "$TMP_TAR" "$LLVM_URL"
 
 echo "rt-clang.sh: verifying sha256..." >&2
-echo "${LLVM_SHA256}  ${TMP_TAR}" | sha256sum -c - >&2
+if ! echo "${LLVM_SHA256}  ${TMP_TAR}" | sha256sum -c - >&2; then
+    rm -f "$TMP_TAR"
+    echo "rt-clang.sh: digest mismatch — corrupt download removed" >&2
+    exit 1
+fi
 
 echo "rt-clang.sh: extracting compiler frontend..." >&2
 tar -xJf "$TMP_TAR" -C "$CACHE_DIR" \
