@@ -52,38 +52,13 @@ typedef enum ec_transport_type ec_transport_type_t;
 
 /****************************************************************************/
 
-/** Realtime function-effect annotation (self-contained copy of the
- * ECRT_RT_ATTR definition in ecrt.h so this header stands alone — keep
- * the version gates in sync). The cyclic transport operations
- * (get_tx_buffer/send/receive) carry it as part of their
- * function-pointer types: custom transport implementations are thereby
- * subject to clang's function-effects analysis (clang >= 20,
- * -Wfunction-effects) when it is enabled. */
-#ifndef ECRT_RT_ATTR
-# if defined(__clang__) && (__clang_major__ >= 20) && defined(__has_attribute)
-#  if __has_attribute(nonblocking)
-#   define ECRT_RT_ATTR __attribute__((nonblocking))
-#  endif
-# endif
-# ifndef ECRT_RT_ATTR
-#  define ECRT_RT_ATTR
-# endif
-#endif
-#ifndef ECRT_RT_TRUSTED_BEGIN
-# if defined(__clang__) && (__clang_major__ >= 20) && defined(__has_attribute)
-#  if __has_attribute(nonblocking)
-#   define ECRT_RT_TRUSTED_BEGIN \
-    _Pragma("clang diagnostic push") \
-    _Pragma("clang diagnostic ignored \"-Wfunction-effects\"")
-#   define ECRT_RT_TRUSTED_END \
-    _Pragma("clang diagnostic pop")
-#  endif
-# endif
-# ifndef ECRT_RT_TRUSTED_BEGIN
-#  define ECRT_RT_TRUSTED_BEGIN
-#  define ECRT_RT_TRUSTED_END
-# endif
-#endif
+/* Realtime function-effect annotation macros, shared with ecrt.h (see
+ * ecrt_rt.h). The cyclic transport operations (get_tx_buffer/send/
+ * receive) carry ECRT_RT_ATTR as part of their function-pointer types:
+ * custom transport implementations are thereby subject to clang's
+ * function-effects analysis (clang >= 20, -Wfunction-effects) when it
+ * is enabled. */
+#include "ecrt_rt.h"
 
 /****************************************************************************/
 
