@@ -605,10 +605,16 @@ void ec_master_leave_idle_phase(ec_master_t *master /**< EtherCAT master */)
 
     master->phase = EC_ORPHANED;
 
+    /* Stop (join) the idle thread BEFORE the EoE thread — the same
+     * order ecrt_master_deactivate() uses. The idle thread's FSM
+     * calls ec_master_eoe_stop()/..._start() itself on link loss and
+     * rescan, so stopping EoE while the idle thread still runs races
+     * two ec_thread_stop() calls on the same thread (double join and
+     * double free of the task struct). */
+    ec_master_thread_stop(master);
 #ifdef EC_EOE
     ec_master_eoe_stop(master);
 #endif
-    ec_master_thread_stop(master);
 
     ec_sem_down(&master->master_sem);
     ec_master_clear_slaves(master);

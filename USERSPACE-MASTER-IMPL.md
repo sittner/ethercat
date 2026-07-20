@@ -527,6 +527,6 @@ stay non-blocking, but the shared resource remains a limitation.
 
 ### `ecrt_lib_init()` Idempotency
 
-Calling `ecrt_lib_init()` more than once is a no-op: it returns 0 with a
-warning and does not re-initialize global state. Any `socket_path` provided on
-subsequent calls is ignored.
+Calling `ecrt_lib_init()` more than once returns `-EBUSY` and does not
+re-initialize global state (see the API documentation in `ecrt.h`). Call
+`ecrt_lib_cleanup()` first if a re-initialization is really intended.
