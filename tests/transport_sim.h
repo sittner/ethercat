@@ -58,6 +58,8 @@ typedef struct {
                               master) mailbox / SM1 (e.g. 0x1080). */
     uint16_t mbox_in_len;   /**< Send mailbox size. */
     uint8_t dc_supported;   /**< Advertise distributed clocks (32 bit). */
+    uint8_t eoe;            /**< Advertise EoE (requires mailbox);
+                              received frames are echoed back. */
 } sim_slave_identity_t;
 
 /** Create a bus with \a nslaves slaves, each initialized from

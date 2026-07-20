@@ -72,3 +72,4 @@ tests/test_sim_sdo_info
 tests/test_tool_ipc
 tests/test_rt_pagefault
 master/uspace/ethercat-config.cmake
+tests/test_sim_eoe

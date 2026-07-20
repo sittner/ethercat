@@ -485,6 +485,24 @@ runtime job.
     fixed a real test-observable: objects appear in the cache before
     their entries finish fetching, so completion must be awaited on the
     last entry, not on the object count.
+    — **ninth stage done (EoE)**: EoE-advertising sim slaves echo every
+    reassembled Ethernet frame back through the mailbox.
+    `test_sim_eoe` validates the complete datapath — a frame sent into
+    the master's TAP netdevice travels TAP → EoE thread → mailbox
+    fragments → sim echo → TAP and is received back on a packet socket
+    — self-re-executing under `unshare -rn` when TAP creation needs
+    privileges (skips otherwise). First-run findings, all fixed:
+    `ecrt_master_callbacks()`/`ecrt_master_send_ext()` were exported
+    but kernel-guarded in ecrt.h (uspace applications could not enable
+    EoE at all); `ec_netif_rx()` violated the kernel `netif_rx`
+    ownership contract and leaked every delivered RX frame (LSan);
+    and the EoE thread exposed two more handover-flag races
+    (`config_changed`, `requested_state` — now `EC_PAL_SHARED`,
+    TSan back to zero). Remaining from checklist §3: the
+    malloc-per-TAP-frame allocation in `ec_eoe_poll_tx` (a pool would
+    be needed for RT-critical EoE use) and the shared-mailbox
+    contention between EoE and CoE FSMs (frames are dropped and
+    retried; visible as "Other mailbox protocol response" warnings).
     The datagram-level simulator roadmap is complete.
     — **T3 done (tool over IPC end-to-end)**: `test_tool_ipc` runs the
     real `ethercat` binary against the in-process IPC server on a sim

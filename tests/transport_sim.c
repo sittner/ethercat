@@ -84,6 +84,8 @@ typedef struct {
     uint16_t mbox_in_len;
     sim_od_entry_t od[SIM_OD_ENTRIES];
     unsigned long od_downloads; /**< Number of SDO download requests. */
+    uint8_t eoe_frame[1600]; /**< EoE frame reassembly buffer. */
+    size_t eoe_len; /**< Bytes assembled so far. */
 } sim_slave_t;
 
 struct sim_bus {
@@ -159,6 +161,9 @@ static void sim_slave_init_eeprom(sim_slave_t *slave,
         ee[0x001A] = id->mbox_in_phys;
         ee[0x001B] = id->mbox_in_len;
         ee[0x001C] = 0x0004; /* EC_MBOX_COE */
+        if (id->eoe) {
+            ee[0x001C] |= 0x0002; /* EC_MBOX_EOE */
+        }
     }
 
     uint16_t *cat = ee + 0x0040;
@@ -291,10 +296,10 @@ static sim_od_entry_t *sim_od_find(sim_slave_t *slave, uint16_t index,
     return NULL;
 }
 
-/** Write a CoE response into the send mailbox and raise the SM1
+/** Write a mailbox response into the send mailbox and raise the SM1
  * "mailbox full" status bit (0x080D bit 3, polled via FPRD 0x808). */
-static void sim_mbox_respond(sim_slave_t *slave, const uint8_t *payload,
-        uint16_t len)
+static void sim_mbox_respond_type(sim_slave_t *slave, uint8_t type,
+        const uint8_t *payload, uint16_t len)
 {
     uint8_t *m = slave->regs + slave->mbox_in_phys;
 
@@ -306,10 +311,17 @@ static void sim_mbox_respond(sim_slave_t *slave, const uint8_t *payload,
     sim_wr16(m, len); /* mailbox service data length */
     memcpy(m + 2, slave->regs + 0x0010, 2); /* station address */
     m[4] = 0x00; /* channel & priority */
-    m[5] = 0x03; /* protocol: CoE */
+    m[5] = type;
     memcpy(m + 6, payload, len);
 
     slave->regs[0x080D] |= 0x08;
+}
+
+/** CoE response convenience wrapper. */
+static void sim_mbox_respond(sim_slave_t *slave, const uint8_t *payload,
+        uint16_t len)
+{
+    sim_mbox_respond_type(slave, 0x03, payload, len);
 }
 
 static void sim_coe_abort(sim_slave_t *slave, uint16_t index,
@@ -559,6 +571,64 @@ static void sim_coe_request(sim_slave_t *slave, const uint8_t *coe,
     }
 }
 
+/** Handle an EoE fragment (mailbox type 2): reassemble the Ethernet
+ * frame and, on the last fragment, echo it back to the master as a
+ * single slave-to-master EoE fragment — as if the slave's network
+ * stack looped the frame. Wire format (ethernet.c): byte 0 frame type
+ * (0 = fragment request), byte 1 bit 0 = last fragment, u16 at 2 =
+ * fragment number (0-5) | offset/complete-size in 32-byte blocks
+ * (6-11) | frame number (12-15). */
+static void sim_eoe_request(sim_slave_t *slave, const uint8_t *data,
+        uint16_t len)
+{
+    uint8_t frame_type, last;
+    uint16_t word2, frag, off32, frame_no;
+    size_t payload_len, pos;
+
+    if (len < 4) {
+        return;
+    }
+    frame_type = data[0] & 0x0F;
+    last = data[1] & 0x01;
+    word2 = sim_rd16(data + 2);
+    frag = word2 & 0x3F;
+    off32 = (word2 >> 6) & 0x3F;
+    frame_no = (word2 >> 12) & 0x0F;
+    payload_len = len - 4;
+
+    if (frame_type != 0x00) {
+        return; /* only fragment requests are emulated */
+    }
+
+    pos = frag ? (size_t) off32 * 32 : 0; /* fragment 0: field = size */
+    if (frag == 0) {
+        slave->eoe_len = 0;
+    }
+    if (pos + payload_len > sizeof(slave->eoe_frame)) {
+        return;
+    }
+    memcpy(slave->eoe_frame + pos, data + 4, payload_len);
+    slave->eoe_len = pos + payload_len;
+
+    if (last) {
+        /* Echo the complete frame back (single fragment). */
+        uint8_t rsp[4 + sizeof(slave->eoe_frame)];
+        uint16_t size_blocks = (uint16_t) (slave->eoe_len / 32 + 1);
+
+        if (4 + slave->eoe_len + 6 > slave->mbox_in_len) {
+            return; /* would need fragmentation: not emulated */
+        }
+        rsp[0] = 0x00; /* fragment request */
+        rsp[1] = 0x01; /* last fragment */
+        sim_wr16(rsp + 2, (uint16_t) ((0 & 0x3F) | ((size_blocks & 0x3F) << 6)
+                    | ((frame_no & 0x0F) << 12)));
+        memcpy(rsp + 4, slave->eoe_frame, slave->eoe_len);
+        sim_mbox_respond_type(slave, 0x02, rsp,
+                (uint16_t) (4 + slave->eoe_len));
+        slave->eoe_len = 0;
+    }
+}
+
 /** Process a request written into the receive mailbox. */
 static void sim_mbox_request(sim_slave_t *slave)
 {
@@ -572,6 +642,8 @@ static void sim_mbox_request(sim_slave_t *slave)
 
     if (type == 0x03) { /* CoE */
         sim_coe_request(slave, m + 6, dlen);
+    } else if (type == 0x02) { /* EoE */
+        sim_eoe_request(slave, m + 6, dlen);
     } else {
         /* Unsupported protocol: mailbox error reply (type 0). */
         uint8_t *r = slave->regs + slave->mbox_in_phys;
