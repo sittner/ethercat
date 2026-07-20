@@ -689,6 +689,11 @@ typedef void (*ec_log_cb_t)(int level, const char *fmt, va_list ap);
  *  \param socket_path Unix socket path for the IPC server, or NULL to
  *                     disable the IPC server entirely (tool cannot connect).
  *                     Use EC_IPC_DEFAULT_SOCKET_PATH for the default path.
+ *                     The socket is created with mode 0660 (owner and group
+ *                     only), since the tool API includes write operations.
+ *                     To grant a tool group access, chown() the socket file
+ *                     after this call returns (the ec_master daemon does
+ *                     this via --socket-group).
  *  \return 0 on success, < 0 on error. */
 EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb, const char *socket_path);
 

@@ -46,6 +46,7 @@
 #include "../ec_ioctl_data.h"
 
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <poll.h>
 #include <unistd.h>
@@ -1295,6 +1296,21 @@ int ec_ipc_server_start(const char *socket_path)
         ec_log(EC_LOG_ERR, "IPC: bind() to %s failed: %s\n",
                 cdev->sock_path, strerror(errno));
         close(sock_fd);
+        return ret;
+    }
+
+    /* The tool API includes write operations (SDO download, state changes,
+     * register/SII writes), so the socket must not be world-connectable.
+     * Permissions are checked at connect() time and no connection can be
+     * established before listen(), so restricting here is race-free.
+     * Access for a tool group is granted by chown()ing the socket file
+     * after startup (see ec_master --socket-group). */
+    if (chmod(cdev->sock_path, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP) < 0) {
+        ret = -errno;
+        ec_log(EC_LOG_ERR, "IPC: chmod() of %s failed: %s\n",
+                cdev->sock_path, strerror(errno));
+        close(sock_fd);
+        unlink(cdev->sock_path);
         return ret;
     }
 
