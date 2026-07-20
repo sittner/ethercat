@@ -1,0 +1,112 @@
+#-----------------------------------------------------------------------------
+#  CI for the userspace master port and the retained kernel mode.
+#
+#  Jobs:
+#    build-uspace  gcc/clang x with/without libxdp; build + unit tests
+#    sanitize      unit tests under AddressSanitizer + UBSan
+#    build-kernel  kernel modules against the distro's kernel headers
+#    dist          make distcheck (tarball completeness, VPATH build)
+#-----------------------------------------------------------------------------
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-uspace:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cc: [gcc, clang]
+        xdp: [xdp, no-xdp]
+    name: uspace ${{ matrix.cc }} (${{ matrix.xdp }})
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool
+          if [ "${{ matrix.xdp }}" = "xdp" ]; then
+            sudo apt-get install -y libxdp-dev libbpf-dev
+          fi
+      - name: Configure
+        run: |
+          ./bootstrap
+          ./configure --enable-uspace-master \
+              CC=${{ matrix.cc }} CFLAGS="-O2 -g -Wall -Wextra"
+      - name: Verify XDP detection
+        run: |
+          if [ "${{ matrix.xdp }}" = "xdp" ]; then
+            grep -q '#define HAVE_XDP 1' config.h
+          else
+            ! grep -q '#define HAVE_XDP 1' config.h
+          fi
+      - name: Build
+        run: make -j"$(nproc)"
+      - name: Unit tests
+        run: |
+          make -C tests check \
+              || { cat tests/test-suite.log tests/*.log; exit 1; }
+
+  sanitize:
+    runs-on: ubuntu-latest
+    name: unit tests (ASan+UBSan)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool
+      - name: Configure
+        run: |
+          ./bootstrap
+          ./configure --enable-uspace-master \
+              CFLAGS="-O1 -g -Wall -fsanitize=address,undefined \
+                      -fno-omit-frame-pointer -fno-sanitize-recover=all"
+      - name: Build
+        run: make -j"$(nproc)"
+      - name: Unit tests
+        run: |
+          make -C tests check \
+              || { cat tests/test-suite.log tests/*.log; exit 1; }
+
+  build-kernel:
+    runs-on: ubuntu-latest
+    name: kernel modules (distro headers)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool \
+              linux-headers-generic
+      - name: Configure
+        run: |
+          KDIR=$(find /usr/src -maxdepth 1 -type d \
+              -name 'linux-headers-*-generic' | sort -V | tail -1)
+          echo "Using kernel headers: $KDIR"
+          ./bootstrap
+          ./configure --with-linux-dir="$KDIR" \
+              --disable-8139too --enable-generic
+      - name: Build modules
+        run: make -j"$(nproc)" modules
+
+  dist:
+    runs-on: ubuntu-latest
+    name: distcheck
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool
+      - name: distcheck
+        run: |
+          ./bootstrap
+          ./configure --enable-uspace-master
+          make distcheck \
+              DISTCHECK_CONFIGURE_FLAGS="--enable-uspace-master" \
+              || { find . -name test-suite.log -exec cat {} +; exit 1; }
