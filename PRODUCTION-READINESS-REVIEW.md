@@ -372,6 +372,17 @@ currently documents a pipeline that never runs here.
    `#define ECRT_RT_ATTR GOMC_NONBLOCKING` to LinuxCNC to retire its
    `ecrt_rt_api.h` shim.
 10. T2 `transport_sim` + FSM/scan/PDO regression tests; T3 tool-IPC matrix.
+    — **first stage done**: `tests/transport_sim.{c,h}` emulates the bus at
+    datagram level (position/configured/broadcast addressing with correct
+    working counters and BRD OR-semantics, per-slave register space, AL
+    state machine ack, SII EEPROM read interface, DL-status port topology)
+    behind the public `ec_transport_ops_t`; `test_sim_scan` boots a real
+    master against 3 simulated slaves and verifies the complete scan
+    (identities from SII, `slaves_responding`, link state) plus the
+    startup/release/cleanup lifecycle — clean under ASan/UBSan/LSan.
+    Next increments: FMMU/logical addressing + SM emulation for domain
+    exchange in OP (activate → cyclic LRD/LWR round-trip), mailbox/CoE
+    for SDO tests, link-down/rescan behavior, DC (ARMW/FRMW).
 11. T4 RT smoke/latency gate (self-hosted).
 12. F6/F7 lock/teardown hardening; F8 link-check relocation.
 13. Docs refresh (FEATURES, TODO, stale checklist items); T5 hardware rig.
