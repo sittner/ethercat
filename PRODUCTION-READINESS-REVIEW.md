@@ -533,4 +533,12 @@ currently documents a pipeline that never runs here.
     comes from the NIC driver). Covers all devices including the
     backup, and no longer stalls if the application stops cycling.
     The cyclic path is now entirely free of ioctls.
-13. Docs refresh (FEATURES, TODO, stale checklist items); T5 hardware rig.
+13. ~~Docs refresh~~ — **done**: README.md and FEATURES.md now describe
+    the userspace master (transports, RT properties, PSC, tooling, test
+    suite); INSTALL.md gained the userspace build/run procedure incl.
+    the soname/ABI note and `--socket-group`; TODO's "move master to a
+    user space daemon" and "parallel configuration" entries note their
+    completion on this branch; the two stale PAL_IMPLEMENTATION.md
+    checkboxes are closed; USERSPACE-MASTER-IMPL.md §5 reflects the real
+    `-version-info 2:0:0`/soname policy. Remaining: T5 hardware rig +
+    first RT-SYSTEM-TEST.md record.

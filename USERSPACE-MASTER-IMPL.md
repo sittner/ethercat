@@ -485,9 +485,14 @@ the define automatically.
 
 ### 5. Shared Library Versioning
 
-The library currently uses `-version-info 0:0:0` (libtool). Before a stable
-release, the version-info triple should be updated following libtool's
-current:revision:age scheme to maintain ABI compatibility tracking.
+The library uses `-version-info 2:0:0` (libtool), i.e. soname
+`libethercat.so.2` — deliberately distinct from the kernel-mode ioctl
+client library from `lib/` (`3:0:2`, soname `libethercat.so.1`): the two
+libraries are intentionally NOT ABI compatible (different version node
+sets, different lifecycle API), and distinct sonames make a runtime
+mixup impossible. Follow libtool's current:revision:age rules for
+future updates; exported symbols are governed by
+`master/uspace/libethercat.map`.
 
 ## Known Limitations and Usage Notes
 

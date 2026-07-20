@@ -5,7 +5,8 @@ vim: spelllang=en spell
 # General Features
 
 - EtherCAT master implementation conforming to IEC/PAS 62407.
-  - Runs as kernel module for Linux 2.6.
+  - Runs as kernel module, or entirely in userspace as a shared library
+    (see "Userspace Master" below).
   - Multiple masters possible on one machine.
 
 - Native EtherCAT-capable versions of standard Linux drivers for wide-spread
@@ -23,6 +24,41 @@ vim: spelllang=en spell
   - RTAI, Xenomai, RT-Preempt, etc.
   - RTDM Interface for userspace realtime environments
   - Operation possible without any realtime extension at all.
+
+# Userspace Master (--enable-uspace-master)
+
+- The complete master core (FSMs, CoE/EoE/FoE/SoE, DC, domains) runs
+  inside the application process as a shared library (`libethercat.so.2`)
+  — no kernel module, no patched NIC drivers.
+  - Kernel mode is fully retained; both modes share the same core through
+    a platform abstraction layer (PAL, see PAL_IMPLEMENTATION.md).
+  - Standalone `ec_master` daemon for tool-only operation without an
+    application.
+- Pluggable userspace transports (`ectp.h`):
+  - Raw socket (AF_PACKET) — works with any network interface.
+  - AF_XDP (SKB and native mode) for reduced latency.
+  - Beckhoff CCAT EIM via direct PCI BAR access (no kernel module).
+  - Public transport ops interface for custom transports.
+- Realtime-friendly by construction:
+  - The cyclic path (receive/process/queue/send) takes no locks,
+    performs no allocations and issues no ioctls; RT-critical buffers
+    are prefaulted and mlocked.
+  - Priority-inheriting mutexes; library threads never inherit the
+    caller's realtime policy (configurable via
+    `ecrt_lib_set_thread_scheduling()`).
+  - Lock-free fallback logging from realtime contexts.
+  - `ECRT_RT_ATTR` function annotations for compile-time RT verification
+    of application code (clang function-effects analysis).
+  - Automatic NIC IRQ affinity pinning to the realtime CPU.
+- Parallel Slave Configuration (PSC): slaves are configured
+  concurrently, reducing bus startup time.
+- `ethercat` command-line tool connects over a Unix domain socket
+  (mode 0660; group configurable via `ec_master --socket-group`).
+- Hardware-free test suite: a simulated bus (datagram-level slave
+  emulation including CoE mailbox, SDO Information Service, DC and
+  FMMU/logical addressing) drives the real master core in `make check`;
+  CI covers gcc/clang, ASan/UBSan, ThreadSanitizer (race-free baseline)
+  and the kernel-mode build.
 
 - Common API for Realtime-Applications in kernel- and userspace.
   - Requesting and releasing masters.
