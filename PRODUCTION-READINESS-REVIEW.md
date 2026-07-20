@@ -408,8 +408,14 @@ currently documents a pipeline that never runs here.
     an unchanged configuration issues zero further SDO downloads
     (reverting the fix yields 12 extra downloads and exactly that
     assertion fails).
-    Next increments: link-down/rescan behavior, DC (ARMW/FRMW),
-    multi-slave domains, SDO Info service for `ethercat sdos`.
+    — **fifth stage done (link-down/rescan)**: `test_sim_link` covers
+    startup with the link down (mutation-verified regression for
+    `5dab28a0` — reverting it returns a false empty bus), idle-phase link
+    loss/recovery with rescan and intact identities, and a full cable
+    yank while activated: OP → link down → WC zero → link up → automatic
+    rescan + reconfiguration back to OP with process data flowing.
+    Next increments: DC (ARMW/FRMW), multi-slave domains, SDO Info
+    service for `ethercat sdos`.
 11. T4 RT smoke/latency gate (self-hosted).
 12. F6/F7 lock/teardown hardening; F8 link-check relocation.
 13. Docs refresh (FEATURES, TODO, stale checklist items); T5 hardware rig.
