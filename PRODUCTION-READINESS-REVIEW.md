@@ -590,3 +590,90 @@ runtime job.
     checkboxes are closed; USERSPACE-MASTER-IMPL.md §5 reflects the real
     `-version-info 2:0:0`/soname policy. Remaining: T5 hardware rig +
     first RT-SYSTEM-TEST.md record.
+
+---
+
+## 6. Pre-merge review closure (2026-07-20)
+
+A three-track pre-merge review of this branch against `uspace` (core/PAL
+concurrency, transport/API/tool surface, tests/CI) confirmed the roadmap
+work and surfaced a tail of findings, all fixed on this branch:
+
+1. **Thread-creation fallback kept the RT-inheritance hole open**
+   (major): on `pthread_create` failure with the configured policy,
+   `ec_thread_wake()` retried with default attributes — i.e.
+   `PTHREAD_INHERIT_SCHED` — silently reintroducing exactly the
+   RT-policy inheritance the explicit-scheduling work forbids. The
+   fallback now retries with explicit `SCHED_OTHER` and logs a warning;
+   total failure is logged too. `ecrt_lib_set_thread_scheduling()` now
+   validates the priority against the policy's min/max, so an invalid
+   combination fails fast instead of at (fallback) thread creation.
+2. **EC_PAL_SHARED stragglers**: `master->config_busy` (read lock-free
+   in the config wait condition), `fsm.rescan_required` (stored from
+   the IPC thread), `master->phase` and the device/master statistics
+   read by the tool (`tx_errors`, the four rate arrays, `loss_rates`)
+   are now `EC_PAL_SHARED` like their already-converted siblings.
+3. **PI-mutex setup unchecked**: `ec_sem_init()` now reports when
+   `PTHREAD_PRIO_INHERIT` is unavailable (the mutex degrades to
+   non-PI — say so instead of silently reinstating the inversion) and
+   aborts on `pthread_mutex_init` failure; the ERRORCHECK safety net is
+   NDEBUG-independent now (log + abort instead of `assert`).
+4. **Log ring teardown**: the drainer thread gets explicit attributes
+   (256 KiB stack, explicit `SCHED_OTHER`) like every other library
+   thread; an in-flight-producer counter closes the
+   `sem_post()`-after-`sem_destroy()` window in `ec_pal_log_stop()`,
+   which also drains messages the drainer missed.
+5. **EoE pool**: capacity is now reserved *per handler* at net_device
+   creation (a full TX queue + in-flight TX + RX reassembly + margin,
+   i.e. `tx_queue_size + 4` slots) instead of a fixed 128 global slots
+   that two busy handlers could exhaust; the reserve happens eagerly in
+   non-cyclic context (no more lazy alloc+mlock at first traffic inside
+   the EoE thread; a failed reserve fails handler creation). The TX
+   frame *descriptors* are pooled too: shared code frees them through a
+   new `ec_eoe_frame_free()` PAL hook (kernel: `ec_free`), closing the
+   last per-frame heap allocation in the EoE thread. Pool capacity
+   follows peak concurrent-handler demand and is reused, not leaked,
+   across rescans.
+6. **IPC hardening** (pre-existing on `uspace`, fixed here): all
+   client-supplied length checks in the trailing-data dispatchers are
+   computed in 64-bit arithmetic (the SII-write check
+   `sizeof(io) + (uint32_t)nwords * 2` wrapped for `nwords >= 2^31`,
+   passing validation and crashing the daemon in a 4 GiB `memcpy`),
+   and all response allocations are capped at `EC_IPC_MAX_RESPONSE`
+   (16 MiB) instead of trusting a 32-bit size verbatim. The IPC wire
+   magic (`EC_IPC_VERSION_MAGIC`) now folds in the pointer width, so a
+   32-bit tool against a 64-bit daemon gets a clear version error
+   instead of silently misparsing structs. The listening fd is closed
+   only by `ec_ipc_server_stop()` after the join (no shutdown()-vs-
+   close() fd-reuse window), socket paths longer than `sun_path` are
+   rejected instead of truncated, `--socket-group` chowns through a
+   pinned `O_PATH|O_NOFOLLOW` fd after verifying `S_ISSOCK` (no path
+   swap in world-writable directories), and the tool nulls struct
+   pointer members on the wire (no tool heap addresses leak; the old
+   comment claiming this was already the case was wrong).
+7. **Header hygiene**: the ECRT_RT_ATTR / ECRT_RT_TRUSTED_* blocks
+   duplicated between `ecrt.h` and `ectp.h` live in a single installed
+   `ecrt_rt.h` now.
+8. **Tests/CI**: transport_sim validates identity mailbox/SM geometry
+   against `SIM_REG_SIZE` and short CoE/SDO-info requests (latent OOB
+   if a future identity had moved the mailbox near the end of register
+   space), warns aloud when the EoE echo would need fragmentation, and
+   documents the locking contract of `sim_bus_slave_regs()`;
+   `test_sim_link` synchronizes on observed link polls instead of a
+   1.5 s wall-clock sleep racing the 5 s scan timeout; `test_tool_ipc`
+   quotes interpolated paths and carries a 120 s watchdog alarm;
+   `test_sim_dc` checks the `ecrt_slave_config_dc()` return; every CI
+   job has `timeout-minutes` and the test jobs upload `tests/*.log` as
+   artifacts on failure; `rt-clang.sh` keeps partial downloads for
+   resume and deletes corrupt ones after the digest check.
+
+Deliberate wontfixes from the same review: the sim acking any AL
+transition (documented emulation scope — enforcing legal transition
+order is a fidelity feature, not a bug), `le*_to_cpup` as `static
+inline` in the userspace header (required for alignment safety; a
+hypothetical app `#undef`ing the old macros breaks loudly at compile
+time), potential `libatomic` need for `_Atomic uint64_t` on exotic
+32-bit targets (not a supported deployment), the `on: push` +
+`pull_request` double-run for PRs from in-repo branches (branch-only
+pushes still need CI), and the raw visibility attribute in
+`pal_thread.c` (EC_PUBLIC_API is not in scope in PAL internals).

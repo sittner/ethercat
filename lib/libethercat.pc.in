@@ -27,7 +27,7 @@ libdir=@libdir@
 includedir=@includedir@
 
 Name: libethercat
-Description: Client support library for the EtherCAT Master
+Description: IgH EtherCAT Master library (kernel-mode client library, or the full userspace master when built with --enable-uspace-master)
 URL: http://www.etherlab.org
 Version: @VERSION@
 Libs:  -L${libdir} -lethercat

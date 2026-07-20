@@ -568,7 +568,12 @@ established before `listen()`), and fails closed if `chmod()` fails.
 Group access is granted by `chown()`ing the socket file after
 `ecrt_lib_init()` returns; the `ec_master` daemon exposes this as
 `-g`/`--socket-group <group>` (resolved via `getgrnam()` before
-daemonizing so a typo fails fast).
+daemonizing so a typo fails fast). The chown pins the path with
+`O_PATH|O_NOFOLLOW`, verifies the inode is a socket and operates
+through `/proc/self/fd`, so a concurrent path swap (relevant only if
+the admin points `--socket` into a world-writable directory) cannot
+redirect it to an arbitrary file. Over-long socket paths are rejected
+(`-ENAMETOOLONG`) instead of silently truncated.
 
 ### 2. `ec_master` Daemon Socket Path
 
