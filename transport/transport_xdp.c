@@ -36,6 +36,11 @@
 #include <net/ethernet.h>
 #include <arpa/inet.h>
 #include <linux/if_link.h>
+
+/* After the network headers (pal.h pulls linux/if.h, which must come
+ * after net/if.h): ec_log for nonblocking logging from the cyclic
+ * path. */
+#include "pal.h"
 #include <xdp/xsk.h>
 
 #include "pal_alloc.h"
@@ -118,7 +123,10 @@ static uint64_t xsk_alloc_umem_frame(ec_transport_xdp_t *xdp)
 static void xsk_free_umem_frame(ec_transport_xdp_t *xdp, uint64_t frame)
 {
     if (xdp->umem_frame_free >= NUM_FRAMES) {
-        fprintf(stderr, "Warning: UMEM frame pool overflow - frame will be leaked\n");
+        /* Reachable from the cyclic path: ec_log is nonblocking there
+         * (lock-free ring / application callback), fprintf is not. */
+        ec_log(EC_LOG_WARNING,
+                "XDP: UMEM frame pool overflow - frame will be leaked\n");
         return;
     }
     xdp->umem_frame_addr[xdp->umem_frame_free++] = frame;

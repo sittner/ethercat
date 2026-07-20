@@ -122,7 +122,11 @@ libethercat_la_DEPENDENCIES = libethercat.map
 libethercat_la_LIBADD = -lpthread
 
 if HAVE_XDP
-libethercat_la_LIBADD += -lxdp
+# -lbpf: transport_xdp.c calls bpf_xdp_detach() directly; the explicit
+# dependency is required for static links of the convenience library
+# (e.g. the unit tests), which do not resolve libxdp's transitive
+# DT_NEEDED entries.
+libethercat_la_LIBADD += -lxdp -lbpf
 endif
 
 # pkg-config and CMake package files (the templates in lib/ are
