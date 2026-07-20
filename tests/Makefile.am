@@ -50,4 +50,11 @@ test_emerg_ring_SOURCES = test_emerg_ring.c test.h
 test_pdo_print_SOURCES = test_pdo_print.c test.h
 test_shared_SOURCES = test_shared.c test.h
 
+# Self-test TUs for script/rt-effects-check.sh (syntax-only, driven by
+# the script with a pinned clang — not part of make check).
+EXTRA_DIST = \
+	rt-effects/rt_bad.c \
+	rt-effects/rt_ok.c \
+	rt-effects/rt_override.c
+
 #-----------------------------------------------------------------------------

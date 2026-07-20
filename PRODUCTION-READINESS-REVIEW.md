@@ -354,8 +354,23 @@ currently documents a pipeline that never runs here.
 8. ABI: set real `-version-info`, install uspace `.pc`/CMake config.
 
 **P2 — depth**
-9. §2 `ECRT_RT_ATTR` annotations in `ecrt.h.in` + rt-effects CI job; propose the
-   matching simplification (`#define ECRT_RT_ATTR GOMC_NONBLOCKING`) to LinuxCNC.
+9. ~~§2 `ECRT_RT_ATTR` annotations + rt-effects CI job~~ — **done** (embedder
+   side): all 52 `rt_safe`-documented functions in `ecrt.h.in` carry
+   `ECRT_RT_ATTR` (`__attribute__((nonblocking))` on clang ≥ 20, empty
+   otherwise, `#ifndef`-overrideable for the framework hand-over);
+   `ECRT_RT_TRUSTED_BEGIN/END` escapes provided. `script/rt-effects-check.sh`
+   (pinned clang 22.1.8 via `script/rt-clang.sh`, `RT_CLANG` override) proves
+   the contract with positive/negative/override self-test TUs
+   (`tests/rt-effects/`), wired as the `rt-effects` CI job with a toolchain
+   cache. The analysis is opt-in (`-Wfunction-effects`), verified inert in
+   default clang builds. **Still open from §2**: transitive verification of
+   the *implementation* — a probe (`clang -include include/ecrt.h
+   -Wfunction-effects master/master.c`) shows 19 first-level diagnostics
+   (`ec_master_queue_datagram`, `ec_log`, `ec_device_poll`, …), i.e. the
+   mechanism works but needs the internal cyclic call tree annotated and the
+   deliberate nonblocking syscalls trusted-wrapped. Also still open: propose
+   `#define ECRT_RT_ATTR GOMC_NONBLOCKING` to LinuxCNC to retire its
+   `ecrt_rt_api.h` shim.
 10. T2 `transport_sim` + FSM/scan/PDO regression tests; T3 tool-IPC matrix.
 11. T4 RT smoke/latency gate (self-hosted).
 12. F6/F7 lock/teardown hardening; F8 link-check relocation.

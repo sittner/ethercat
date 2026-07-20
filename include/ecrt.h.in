@@ -255,6 +255,55 @@
 # endif
 #endif
 
+/** Realtime function-effect annotation.
+ *
+ * Every function whose documentation carries the \a rt_safe usage tag is
+ * declared with this attribute. Backed by clang's function-effects
+ * analysis (clang >= 20, opt-in via -Wfunction-effects): an application
+ * that marks its own cyclic task function ECRT_RT_ATTR gets a compile-time
+ * diagnostic if that function calls any part of this API that is not
+ * realtime-safe (or any other blocking/allocating code). Expands to
+ * nothing on GCC and older clang, so ABI and production builds are
+ * unaffected. See script/rt-effects-check.sh.
+ *
+ * Overrideable: define ECRT_RT_ATTR before including this header to hand
+ * the annotation over to a framework's own RT-check macro (e.g.
+ * RTAPI_NONBLOCKING / GOMC_NONBLOCKING in LinuxCNC).
+ */
+#ifndef ECRT_RT_ATTR
+# if defined(__clang__) && (__clang_major__ >= 20) && defined(__has_attribute)
+#  if __has_attribute(nonblocking)
+#   define ECRT_RT_ATTR __attribute__((nonblocking))
+#  endif
+# endif
+# ifndef ECRT_RT_ATTR
+#  define ECRT_RT_ATTR
+# endif
+#endif
+
+/** Trust-boundary escape for the function-effects analysis.
+ *
+ * Wraps a function definition that is declared ECRT_RT_ATTR but cannot be
+ * verified by the compiler (e.g. it performs a syscall that is nonblocking
+ * by flag, which the analysis cannot see). Every use is a trust boundary
+ * of the RT path and must carry a justification comment.
+ */
+#ifndef ECRT_RT_TRUSTED_BEGIN
+# if defined(__clang__) && (__clang_major__ >= 20) && defined(__has_attribute)
+#  if __has_attribute(nonblocking)
+#   define ECRT_RT_TRUSTED_BEGIN \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wfunction-effects\"")
+#   define ECRT_RT_TRUSTED_END \
+    _Pragma("clang diagnostic pop")
+#  endif
+# endif
+# ifndef ECRT_RT_TRUSTED_BEGIN
+#  define ECRT_RT_TRUSTED_BEGIN
+#  define ECRT_RT_TRUSTED_END
+# endif
+#endif
+
 #ifdef EC_USPACE_MASTER
 /* Transport types and structs — users can use ec_transport_create() /
  * ec_transport_create_by_name() to create transports before calling
@@ -654,7 +703,7 @@ extern "C" {
  *
  * \return Value of ECRT_VERSION_MAGIC() at EtherCAT master compile time.
  */
-EC_PUBLIC_API unsigned int ecrt_version_magic(void);
+EC_PUBLIC_API unsigned int ecrt_version_magic(void) ECRT_RT_ATTR;
 
 #ifdef EC_USPACE_MASTER
 
@@ -931,7 +980,7 @@ EC_PUBLIC_API int ecrt_master(
         ec_master_t *master, /**< EtherCAT master */
         ec_master_info_t *master_info /**< Structure that will output the
                                         information */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Obtains network scan progress information.
  *
@@ -947,7 +996,7 @@ EC_PUBLIC_API int ecrt_master_scan_progress(
         ec_master_t *master, /**< EtherCAT master */
         ec_master_scan_progress_t *progress /**< Structure that will output
                                               the progress information. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Obtains slave information.
  *
@@ -1210,7 +1259,7 @@ EC_PUBLIC_API int ecrt_master_set_send_interval(
  */
 EC_PUBLIC_API int ecrt_master_send(
         ec_master_t *master /**< EtherCAT master. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Fetches received frames from the hardware and processes the datagrams.
  *
@@ -1228,7 +1277,7 @@ EC_PUBLIC_API int ecrt_master_send(
  */
 EC_PUBLIC_API int ecrt_master_receive(
         ec_master_t *master /**< EtherCAT master. */
-        );
+        ) ECRT_RT_ATTR;
 
 #ifdef __KERNEL__
 /** Sends non-application datagrams.
@@ -1243,7 +1292,7 @@ EC_PUBLIC_API int ecrt_master_receive(
  */
 int ecrt_master_send_ext(
         ec_master_t *master /**< EtherCAT master. */
-        );
+        ) ECRT_RT_ATTR;
 #endif
 
 /** Reads the current master state.
@@ -1260,7 +1309,7 @@ int ecrt_master_send_ext(
 EC_PUBLIC_API int ecrt_master_state(
         const ec_master_t *master, /**< EtherCAT master. */
         ec_master_state_t *state /**< Structure to store the information. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Reads the current state of a redundant link.
  *
@@ -1276,7 +1325,7 @@ EC_PUBLIC_API int ecrt_master_link_state(
                                 first backup device, ...). */
         ec_master_link_state_t *state /**< Structure to store the information.
                                        */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Sets the application time.
  *
@@ -1306,7 +1355,7 @@ EC_PUBLIC_API int ecrt_master_link_state(
 EC_PUBLIC_API int ecrt_master_application_time(
         ec_master_t *master, /**< EtherCAT master. */
         uint64_t app_time /**< Application time. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Queues the DC reference clock drift compensation datagram for sending.
  *
@@ -1321,7 +1370,7 @@ EC_PUBLIC_API int ecrt_master_application_time(
  */
 EC_PUBLIC_API int ecrt_master_sync_reference_clock(
         ec_master_t *master /**< EtherCAT master. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Queues the DC reference clock drift compensation datagram for sending.
  *
@@ -1340,7 +1389,7 @@ EC_PUBLIC_API int ecrt_master_sync_reference_clock(
 EC_PUBLIC_API int ecrt_master_sync_reference_clock_to(
         ec_master_t *master, /**< EtherCAT master. */
         uint64_t sync_time /**< Sync reference clock to this time. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Queues the DC clock drift compensation datagram for sending.
  *
@@ -1357,7 +1406,7 @@ EC_PUBLIC_API int ecrt_master_sync_reference_clock_to(
  */
 EC_PUBLIC_API int ecrt_master_sync_slave_clocks(
         ec_master_t *master /**< EtherCAT master. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Get the lower 32 bit of the reference clock system time.
  *
@@ -1384,7 +1433,7 @@ EC_PUBLIC_API int ecrt_master_sync_slave_clocks(
 EC_PUBLIC_API int ecrt_master_reference_clock_time(
         const ec_master_t *master, /**< EtherCAT master. */
         uint32_t *time /**< Pointer to store the queried system time. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Queues the DC synchrony monitoring datagram for sending.
  *
@@ -1398,7 +1447,7 @@ EC_PUBLIC_API int ecrt_master_reference_clock_time(
  */
 EC_PUBLIC_API int ecrt_master_sync_monitor_queue(
         ec_master_t *master /**< EtherCAT master. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Processes the DC synchrony monitoring datagram.
  *
@@ -1413,7 +1462,7 @@ EC_PUBLIC_API int ecrt_master_sync_monitor_queue(
  */
 EC_PUBLIC_API uint32_t ecrt_master_sync_monitor_process(
         const ec_master_t *master /**< EtherCAT master. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Retry configuring slaves.
  *
@@ -1431,7 +1480,7 @@ EC_PUBLIC_API uint32_t ecrt_master_sync_monitor_process(
  */
 EC_PUBLIC_API int ecrt_master_reset(
         ec_master_t *master /**< EtherCAT master. */
-        );
+        ) ECRT_RT_ATTR;
 
 /*****************************************************************************
  * Slave configuration methods
@@ -2001,7 +2050,7 @@ EC_PUBLIC_API ec_reg_request_t *ecrt_slave_config_create_reg_request(
 EC_PUBLIC_API int ecrt_slave_config_state(
         const ec_slave_config_t *sc, /**< Slave configuration */
         ec_slave_config_state_t *state /**< State object to write to. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Add an SoE IDN configuration.
  *
@@ -2274,7 +2323,7 @@ EC_PUBLIC_API int ecrt_domain_reg_pdo_entry_list(
  */
 EC_PUBLIC_API size_t ecrt_domain_size(
         const ec_domain_t *domain /**< Domain. */
-        );
+        ) ECRT_RT_ATTR;
 
 #ifdef __KERNEL__
 
@@ -2316,7 +2365,7 @@ void ecrt_domain_external_memory(
  */
 EC_PUBLIC_API uint8_t *ecrt_domain_data(
         const ec_domain_t *domain /**< Domain. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Determines the states of the domain's datagrams.
  *
@@ -2331,7 +2380,7 @@ EC_PUBLIC_API uint8_t *ecrt_domain_data(
  */
 EC_PUBLIC_API int ecrt_domain_process(
         ec_domain_t *domain /**< Domain. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** (Re-)queues all domain datagrams in the master's datagram queue.
  *
@@ -2344,7 +2393,7 @@ EC_PUBLIC_API int ecrt_domain_process(
  */
 EC_PUBLIC_API int ecrt_domain_queue(
         ec_domain_t *domain /**< Domain. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Reads the state of a domain.
  *
@@ -2360,7 +2409,7 @@ EC_PUBLIC_API int ecrt_domain_state(
         const ec_domain_t *domain, /**< Domain. */
         ec_domain_state_t *state /**< Pointer to a state object to store the
                                    information. */
-        );
+        ) ECRT_RT_ATTR;
 
 /*****************************************************************************
  * SDO request methods.
@@ -2384,7 +2433,7 @@ EC_PUBLIC_API int ecrt_sdo_request_index(
         ec_sdo_request_t *req, /**< SDO request. */
         uint16_t index, /**< SDO index. */
         uint8_t subindex /**< SDO subindex. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Set the timeout for an SDO request.
  *
@@ -2405,7 +2454,7 @@ EC_PUBLIC_API int ecrt_sdo_request_timeout(
         ec_sdo_request_t *req, /**< SDO request. */
         uint32_t timeout /**< Timeout in milliseconds. Zero means no
                            timeout. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Access to the SDO request's data.
  *
@@ -2438,7 +2487,7 @@ EC_PUBLIC_API int ecrt_sdo_request_timeout(
  */
 EC_PUBLIC_API uint8_t *ecrt_sdo_request_data(
         const ec_sdo_request_t *req /**< SDO request. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Returns the current SDO data size.
  *
@@ -2456,7 +2505,7 @@ EC_PUBLIC_API uint8_t *ecrt_sdo_request_data(
  */
 EC_PUBLIC_API size_t ecrt_sdo_request_data_size(
         const ec_sdo_request_t *req /**< SDO request. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Get the current state of the SDO request.
  *
@@ -2476,7 +2525,7 @@ EC_PUBLIC_API ec_request_state_t ecrt_sdo_request_state(
         const
 #endif
         ec_sdo_request_t *req /**< SDO request. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Schedule an SDO write operation.
  *
@@ -2495,7 +2544,7 @@ EC_PUBLIC_API ec_request_state_t ecrt_sdo_request_state(
  */
 EC_PUBLIC_API int ecrt_sdo_request_write(
         ec_sdo_request_t *req /**< SDO request. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Schedule an SDO read operation.
  *
@@ -2515,7 +2564,7 @@ EC_PUBLIC_API int ecrt_sdo_request_write(
  */
 EC_PUBLIC_API int ecrt_sdo_request_read(
         ec_sdo_request_t *req /**< SDO request. */
-        );
+        ) ECRT_RT_ATTR;
 
 /*****************************************************************************
  * SoE request methods.
@@ -2539,7 +2588,7 @@ EC_PUBLIC_API int ecrt_soe_request_idn(
         ec_soe_request_t *req, /**< IDN request. */
         uint8_t drive_no, /**< SDO index. */
         uint16_t idn /**< SoE IDN. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Set the timeout for an SoE request.
  *
@@ -2560,7 +2609,7 @@ EC_PUBLIC_API int ecrt_soe_request_timeout(
         ec_soe_request_t *req, /**< SoE request. */
         uint32_t timeout /**< Timeout in milliseconds. Zero means no
                            timeout. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Access to the SoE request's data.
  *
@@ -2593,7 +2642,7 @@ EC_PUBLIC_API int ecrt_soe_request_timeout(
  */
 EC_PUBLIC_API uint8_t *ecrt_soe_request_data(
         const ec_soe_request_t *req /**< SoE request. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Returns the current IDN data size.
  *
@@ -2607,7 +2656,7 @@ EC_PUBLIC_API uint8_t *ecrt_soe_request_data(
  */
 EC_PUBLIC_API size_t ecrt_soe_request_data_size(
         const ec_soe_request_t *req /**< SoE request. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Get the current state of the SoE request.
  *
@@ -2626,7 +2675,7 @@ EC_PUBLIC_API ec_request_state_t ecrt_soe_request_state(
         const
 #endif
         ec_soe_request_t *req /**< SoE request. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Schedule an SoE IDN write operation.
  *
@@ -2645,7 +2694,7 @@ EC_PUBLIC_API ec_request_state_t ecrt_soe_request_state(
  */
 EC_PUBLIC_API int ecrt_soe_request_write(
         ec_soe_request_t *req /**< SoE request. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Schedule an SoE IDN read operation.
  *
@@ -2665,7 +2714,7 @@ EC_PUBLIC_API int ecrt_soe_request_write(
  */
 EC_PUBLIC_API int ecrt_soe_request_read(
         ec_soe_request_t *req /**< SoE request. */
-        );
+        ) ECRT_RT_ATTR;
 
 /*****************************************************************************
  * VoE handler methods.
@@ -2690,7 +2739,7 @@ EC_PUBLIC_API int ecrt_voe_handler_send_header(
         ec_voe_handler_t *voe, /**< VoE handler. */
         uint32_t vendor_id, /**< Vendor ID. */
         uint16_t vendor_type /**< Vendor-specific type. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Reads the header data of a received VoE message.
  *
@@ -2711,7 +2760,7 @@ EC_PUBLIC_API int ecrt_voe_handler_received_header(
         const ec_voe_handler_t *voe, /**< VoE handler. */
         uint32_t *vendor_id, /**< Vendor ID. */
         uint16_t *vendor_type /**< Vendor-specific type. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Access to the VoE handler's data.
  *
@@ -2737,7 +2786,7 @@ EC_PUBLIC_API int ecrt_voe_handler_received_header(
  */
 EC_PUBLIC_API uint8_t *ecrt_voe_handler_data(
         const ec_voe_handler_t *voe /**< VoE handler. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Returns the current data size.
  *
@@ -2755,7 +2804,7 @@ EC_PUBLIC_API uint8_t *ecrt_voe_handler_data(
  */
 EC_PUBLIC_API size_t ecrt_voe_handler_data_size(
         const ec_voe_handler_t *voe /**< VoE handler. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Start a VoE write operation.
  *
@@ -2776,7 +2825,7 @@ EC_PUBLIC_API size_t ecrt_voe_handler_data_size(
 EC_PUBLIC_API int ecrt_voe_handler_write(
         ec_voe_handler_t *voe, /**< VoE handler. */
         size_t size /**< Number of bytes to write (without the VoE header). */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Start a VoE read operation.
  *
@@ -2802,7 +2851,7 @@ EC_PUBLIC_API int ecrt_voe_handler_write(
  */
 EC_PUBLIC_API int ecrt_voe_handler_read(
         ec_voe_handler_t *voe /**< VoE handler. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Start a VoE read operation without querying the sync manager status.
  *
@@ -2829,7 +2878,7 @@ EC_PUBLIC_API int ecrt_voe_handler_read(
  */
 EC_PUBLIC_API int ecrt_voe_handler_read_nosync(
         ec_voe_handler_t *voe /**< VoE handler. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Execute the handler.
  *
@@ -2846,7 +2895,7 @@ EC_PUBLIC_API int ecrt_voe_handler_read_nosync(
  */
 EC_PUBLIC_API ec_request_state_t ecrt_voe_handler_execute(
         ec_voe_handler_t *voe /**< VoE handler. */
-        );
+        ) ECRT_RT_ATTR;
 
 /*****************************************************************************
  * Register request methods.
@@ -2879,7 +2928,7 @@ EC_PUBLIC_API ec_request_state_t ecrt_voe_handler_execute(
  */
 EC_PUBLIC_API uint8_t *ecrt_reg_request_data(
         const ec_reg_request_t *req /**< Register request. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Get the current state of the register request.
  *
@@ -2893,7 +2942,7 @@ EC_PUBLIC_API uint8_t *ecrt_reg_request_data(
  */
 EC_PUBLIC_API ec_request_state_t ecrt_reg_request_state(
         const ec_reg_request_t *req /**< Register request. */
-    );
+    ) ECRT_RT_ATTR;
 
 /** Schedule an register write operation.
  *
@@ -2916,7 +2965,7 @@ EC_PUBLIC_API int ecrt_reg_request_write(
         ec_reg_request_t *req, /**< Register request. */
         uint16_t address, /**< Register address. */
         size_t size /**< Size to write. */
-        );
+        ) ECRT_RT_ATTR;
 
 /** Schedule a register read operation.
  *
@@ -2939,7 +2988,7 @@ EC_PUBLIC_API int ecrt_reg_request_read(
         ec_reg_request_t *req, /**< Register request. */
         uint16_t address, /**< Register address. */
         size_t size /**< Size to write. */
-        );
+        ) ECRT_RT_ATTR;
 
 /*****************************************************************************
  * Bitwise read/write macros
@@ -3099,7 +3148,7 @@ EC_PUBLIC_API int ecrt_reg_request_read(
  * \param data EtherCAT data pointer
  * \return EtherCAT data value
  */
-EC_PUBLIC_API float ecrt_read_real(const void *data);
+EC_PUBLIC_API float ecrt_read_real(const void *data) ECRT_RT_ATTR;
 
 /** Read a 32-bit floating-point value from EtherCAT data.
  *
@@ -3115,7 +3164,7 @@ EC_PUBLIC_API float ecrt_read_real(const void *data);
  * \param data EtherCAT data pointer
  * \return EtherCAT data value
  */
-EC_PUBLIC_API double ecrt_read_lreal(const void *data);
+EC_PUBLIC_API double ecrt_read_lreal(const void *data) ECRT_RT_ATTR;
 
 /** Read a 64-bit floating-point value from EtherCAT data.
  *
@@ -3211,7 +3260,7 @@ EC_PUBLIC_API double ecrt_read_lreal(const void *data);
  * \param data EtherCAT data pointer
  * \param value new value
  */
-EC_PUBLIC_API void ecrt_write_real(void *data, float value);
+EC_PUBLIC_API void ecrt_write_real(void *data, float value) ECRT_RT_ATTR;
 
 /** Write a 32-bit floating-point value to EtherCAT data.
  *
@@ -3227,7 +3276,7 @@ EC_PUBLIC_API void ecrt_write_real(void *data, float value);
  * \param data EtherCAT data pointer
  * \param value new value
  */
-EC_PUBLIC_API void ecrt_write_lreal(void *data, double value);
+EC_PUBLIC_API void ecrt_write_lreal(void *data, double value) ECRT_RT_ATTR;
 
 /** Write a 64-bit floating-point value to EtherCAT data.
  *

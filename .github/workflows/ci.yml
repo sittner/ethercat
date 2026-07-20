@@ -4,6 +4,7 @@
 #  Jobs:
 #    build-uspace  gcc/clang x with/without libxdp; build + unit tests
 #    sanitize      unit tests under AddressSanitizer + UBSan
+#    rt-effects    ECRT_RT_ATTR contract via clang function-effects
 #    build-kernel  kernel modules against the distro's kernel headers
 #    dist          make distcheck (tarball completeness, VPATH build)
 #-----------------------------------------------------------------------------
@@ -72,6 +73,27 @@ jobs:
         run: |
           make -C tests check \
               || { cat tests/test-suite.log tests/*.log; exit 1; }
+
+  rt-effects:
+    runs-on: ubuntu-latest
+    name: RT function-effects check
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool
+      - name: Cache pinned clang
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ethercat-rt-clang
+          key: rt-clang-22.1.8-${{ runner.arch }}
+      - name: Configure
+        run: |
+          ./bootstrap
+          ./configure --enable-uspace-master
+      - name: RT effects check
+        run: script/rt-effects-check.sh
 
   build-kernel:
     runs-on: ubuntu-latest
