@@ -84,6 +84,12 @@ int ec_log_ratelimit(void);
 
 void ec_log_set_callback(ec_log_cb_t cb);
 
+/* Lock-free log ring (nonblocking fallback for RT contexts when no
+ * application callback is installed). Started by ecrt_lib_init(),
+ * stopped by ecrt_lib_cleanup(). */
+int ec_pal_log_start(void);
+void ec_pal_log_stop(void);
+
 /****************************************************************************/
 /* Kernel utility macros */
 /****************************************************************************/

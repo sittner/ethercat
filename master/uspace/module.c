@@ -56,8 +56,17 @@ int ecrt_lib_init(ec_log_cb_t log_cb, const char *socket_path)
     ec_log_set_callback(log_cb);
     ec_master_init_static();
 
+    /* Without an application log callback, RT-context messages go
+     * through the lock-free ring drained by this thread; failure to
+     * start it is non-fatal (falls back to direct stderr). */
+    if (!log_cb && ec_pal_log_start() != 0) {
+        ec_log(EC_LOG_WARNING, "Failed to start log drainer thread;"
+                " falling back to direct stderr logging\n");
+    }
+
     if (ec_pal_work_init() != 0) {
         ec_log(EC_LOG_ERR, "Failed to create system workqueue\n");
+        ec_pal_log_stop();
         atomic_flag_clear(&lib_initialized);
         return -1;
     }
@@ -329,6 +338,7 @@ void ecrt_lib_cleanup(void)
     ec_ipc_server_stop();
     ec_pal_irq_work_cleanup();
     ec_pal_work_cleanup();
+    ec_pal_log_stop(); /* last: drains remaining messages */
     atomic_flag_clear(&lib_initialized);
 }
 
