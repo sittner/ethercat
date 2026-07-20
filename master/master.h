@@ -195,7 +195,7 @@ struct ec_master {
     ec_datagram_t fsm_datagram; /**< Datagram used for state machines. */
     ec_master_phase_t phase; /**< Master phase. */
     EC_PAL_SHARED unsigned int active; /**< Master has been activated. */
-    unsigned int config_changed; /**< The configuration changed. */
+    EC_PAL_SHARED unsigned int config_changed; /**< The configuration changed. */
     EC_PAL_SHARED unsigned int injection_seq_fsm; /**< Datagram injection
                                       sequence number for the FSM side. */
     EC_PAL_SHARED unsigned int injection_seq_rt; /**< Datagram injection
