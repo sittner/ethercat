@@ -20,6 +20,8 @@
  *
  ****************************************************************************/
 
+#include <string.h>
+
 #include "include/ecrt.h"
 
 /****************************************************************************/
@@ -36,7 +38,10 @@ unsigned int ecrt_version_magic(void)
 float ecrt_read_real(const void *data)
 {
     uint32_t raw = EC_READ_U32(data);
-    return *(float *) (const void *) &raw;
+    float value;
+
+    memcpy(&value, &raw, sizeof(value));
+    return value;
 }
 
 /****************************************************************************/
@@ -44,21 +49,30 @@ float ecrt_read_real(const void *data)
 double ecrt_read_lreal(const void *data)
 {
     uint64_t raw = EC_READ_U64(data);
-    return *(double *) (const void *) &raw;
+    double value;
+
+    memcpy(&value, &raw, sizeof(value));
+    return value;
 }
 
 /****************************************************************************/
 
 void ecrt_write_real(void *data, float value)
 {
-    *(uint32_t *) data = cpu_to_le32(*(uint32_t *) (void *) &value);
+    uint32_t raw;
+
+    memcpy(&raw, &value, sizeof(raw));
+    EC_WRITE_U32(data, raw);
 }
 
 /****************************************************************************/
 
 void ecrt_write_lreal(void *data, double value)
 {
-    *(uint64_t *) data = cpu_to_le64(*(uint64_t *) (void *) &value);
+    uint64_t raw;
+
+    memcpy(&raw, &value, sizeof(raw));
+    EC_WRITE_U64(data, raw);
 }
 
 #endif // ifndef __KERNEL__
