@@ -4,6 +4,7 @@
 #  Jobs:
 #    build-uspace  gcc/clang x with/without libxdp; build + unit tests
 #    sanitize      unit tests under AddressSanitizer + UBSan
+#    tsan          unit tests under ThreadSanitizer (race-free baseline)
 #    rt-effects    ECRT_RT_ATTR contract via clang function-effects
 #    build-kernel  kernel modules against the distro's kernel headers
 #    dist          make distcheck (tarball completeness, VPATH build)
@@ -67,6 +68,27 @@ jobs:
           ./configure --enable-uspace-master \
               CFLAGS="-O1 -g -Wall -fsanitize=address,undefined \
                       -fno-omit-frame-pointer -fno-sanitize-recover=all"
+      - name: Build
+        run: make -j"$(nproc)"
+      - name: Unit tests
+        run: |
+          make -C tests check \
+              || { cat tests/test-suite.log tests/*.log; exit 1; }
+
+  tsan:
+    runs-on: ubuntu-latest
+    name: unit tests (ThreadSanitizer)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake libtool clang
+      - name: Configure
+        run: |
+          ./bootstrap
+          ./configure --enable-uspace-master \
+              CC=clang CFLAGS="-O1 -g -fsanitize=thread"
       - name: Build
         run: make -j"$(nproc)"
       - name: Unit tests

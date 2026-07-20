@@ -495,14 +495,23 @@ currently documents a pipeline that never runs here.
     latency-test, 24 h soak, concurrent tool traffic, fault injection,
     pass criteria, per-release results log). Optional follow-up: an
     RTSan (`-fsanitize=realtime`, pinned clang) runtime job.
-12. F6/F7 lock/teardown hardening; F8 link-check relocation.
-    **TSan baseline recorded** (while validating the log ring): a
-    ThreadSanitizer build of the library running `test_sim_multi`
-    reports 173 data-race warnings, all in the shared core (datagram
-    state fields, `fsm_master`, mailbox, send path) — the master's
-    concurrency relies on queue/phase discipline and sequence counters
-    that TSan cannot see, so many are benign-by-design, but they have
-    not been triaged; none are in the new PAL logging ring. Triaging
-    this list (annotate/atomicize the benign ones, fix any real ones)
-    belongs to this item.
+12. ~~F6/F7 TSan triage~~ — **done (triage + atomics)**: the 233-warning
+    TSan baseline (173 multi + 60 link) collapsed to **0** by making the
+    cross-thread handover variables C11 atomics in the userspace build
+    via a new `EC_PAL_SHARED` qualifier (empty in kernel mode, kernel
+    build verified): `datagram->state` and `time_received`,
+    `injection_seq_rt/fsm`, `ext_ring_idx_rt/fsm`, `slave_count`,
+    `scan_busy/scan_index/initial_scan_done`, `active`, `app_time`,
+    `slave->current_state/force_config/time_preop`,
+    `fsm.slaves_responding/slave_states`, `device->link_state`. The
+    plain assignments/comparisons in the shared core become seq-cst
+    atomics without call-site changes, giving the queue-discipline
+    handovers real happens-before edges. One genuine ordering bug found
+    and fixed: the receive path published `state = RECEIVED` BEFORE
+    writing `time_received`, so FSMs could read a stale/torn reception
+    timestamp (used for SII/mailbox timeout math). A `tsan` CI job locks
+    in the race-free state. The F7 teardown contract (stop the cyclic
+    task before release/cleanup) is now documented at
+    `ecrt_release_master()`. Still open from the original item: F6
+    non-PI semaphore conversion and F8 link-check relocation.
 13. Docs refresh (FEATURES, TODO, stale checklist items); T5 hardware rig.
