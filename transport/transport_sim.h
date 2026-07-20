@@ -60,6 +60,10 @@ typedef struct {
     uint8_t dc_supported;   /**< Advertise distributed clocks (32 bit). */
     uint8_t eoe;            /**< Advertise EoE (requires mailbox);
                               received frames are echoed back. */
+    uint8_t loopback;       /**< Echo output process data (SM2) into input
+                              process data (SM3) after each frame, so a HAL
+                              output pin round-trips to its input pin. Needs
+                              both sm2_len and sm3_len nonzero. */
 } sim_slave_identity_t;
 
 /** Create a bus with \a nslaves slaves, each initialized from

@@ -82,6 +82,13 @@ typedef struct {
     uint16_t mbox_out_len;
     uint16_t mbox_in_phys;  /**< Send mailbox (slave -> master). */
     uint16_t mbox_in_len;
+    uint16_t sm2_phys;      /**< Output process-data SM (master -> slave). */
+    uint16_t sm2_len;
+    uint16_t sm3_phys;      /**< Input process-data SM (slave -> master). */
+    uint16_t sm3_len;
+    uint8_t loopback;       /**< Echo output process data (SM2) back into the
+                              input process data (SM3) after each frame, so a
+                              HAL output pin round-trips to its input pin. */
     sim_od_entry_t od[SIM_OD_ENTRIES];
     unsigned long od_downloads; /**< Number of SDO download requests. */
     uint8_t eoe_frame[1600]; /**< EoE frame reassembly buffer. */
@@ -1091,6 +1098,8 @@ static sim_bus_t *sim_bus_create_from_file(const char *path)
             id->dc_supported = (uint8_t) strtoul(args, NULL, 0);
         } else if (strcmp(key, "eoe") == 0) {
             id->eoe = (uint8_t) strtoul(args, NULL, 0);
+        } else if (strcmp(key, "loopback") == 0) {
+            id->loopback = (uint8_t) strtoul(args, NULL, 0);
         } else if (strcmp(key, "mbox_out") == 0) {
             if (sscanf(args, "%i %i", &a, &b) != 2) goto badline;
             id->mbox_out_phys = (uint16_t) a;
@@ -1246,6 +1255,18 @@ static int sim_send(ec_transport_t *transport, size_t size)
     bus->frame_count++;
 
     if (sim_bus_process_frame(bus, transport->tx_buffer, size) == 0) {
+        unsigned int s;
+        /* Loopback slaves: echo the output process data the master just
+         * wrote (SM2) into the input process data (SM3), so it reappears on
+         * the next receive() — a one-frame round-trip. Geometry is bounded
+         * by the sim_bus_create() SIM_REG_SIZE check. */
+        for (s = 0; s < bus->nslaves; s++) {
+            sim_slave_t *sl = &bus->slaves[s];
+            if (sl->loopback && sl->sm2_len && sl->sm3_len) {
+                size_t n = sl->sm2_len < sl->sm3_len ? sl->sm2_len : sl->sm3_len;
+                memcpy(sl->regs + sl->sm3_phys, sl->regs + sl->sm2_phys, n);
+            }
+        }
         /* Queue the processed frame for the next receive() (drop the
          * oldest frame on overflow, like a full RX ring would). */
         unsigned int next = (bus->rxq_head + 1) % SIM_RXQ_LEN;
@@ -1387,6 +1408,11 @@ sim_bus_t *sim_bus_create(unsigned int nslaves,
         slave->mbox_out_len = identities[i].mbox_out_len;
         slave->mbox_in_phys = identities[i].mbox_in_phys;
         slave->mbox_in_len = identities[i].mbox_in_len;
+        slave->sm2_phys = identities[i].sm2_phys;
+        slave->sm2_len = identities[i].sm2_len;
+        slave->sm3_phys = identities[i].sm3_phys;
+        slave->sm3_len = identities[i].sm3_len;
+        slave->loopback = identities[i].loopback;
 
         if (slave->mbox_out_len) {
             /* PDO assignment counts for SM0..SM3 (read by the master's
