@@ -76,11 +76,18 @@ static inline void ec_sem_down(ec_semaphore_t *sem)
  * ec_sem_down_trylock - try to acquire without blocking
  *
  * Returns 0 if acquired, 1 if not (note: opposite of sem_trywait!)
+ *
+ * TRUSTED: pthread_mutex_trylock() never blocks by contract; the
+ * function-effects analysis cannot see that. Used from the cyclic path
+ * (ecrt_master_send_ext()).
  */
+static inline int ec_sem_down_trylock(ec_semaphore_t *sem) EC_RT_ATTR;
+EC_RT_TRUSTED_BEGIN
 static inline int ec_sem_down_trylock(ec_semaphore_t *sem)
 {
     return (pthread_mutex_trylock(sem) == 0) ? 0 : 1;
 }
+EC_RT_TRUSTED_END
 
 /**
  * ec_sem_down_interruptible - acquire semaphore, interruptible
@@ -95,6 +102,11 @@ static inline int ec_sem_down_interruptible(ec_semaphore_t *sem)
     return 0;
 }
 
+/* TRUSTED: unlocking a PI mutex is nonblocking (bounded futex wake);
+ * the function-effects analysis cannot see that. Reachable from the
+ * cyclic path only after a successful trylock. */
+static inline void ec_sem_up(ec_semaphore_t *sem) EC_RT_ATTR;
+EC_RT_TRUSTED_BEGIN
 static inline void ec_sem_up(ec_semaphore_t *sem)
 {
     int ret = pthread_mutex_unlock(sem);
@@ -102,6 +114,7 @@ static inline void ec_sem_up(ec_semaphore_t *sem)
     assert(ret == 0); /* EPERM = unlock by a non-owning thread */
     (void) ret;
 }
+EC_RT_TRUSTED_END
 
 #endif /* __EC_USPACE_PAL_SEM_H__ */
 

@@ -149,12 +149,16 @@ int main(int argc, char **argv)
     (void) argc;
 
     /* Without privileges for TAP creation, re-exec in an unprivileged
-     * user+network namespace. */
-    if (!getenv("EC_TEST_EOE_WRAPPED") && geteuid() != 0) {
+     * user+network namespace — but only where that actually works
+     * (recent Ubuntu blocks unprivileged user namespaces via AppArmor:
+     * there, unshare itself exits nonzero, which must not fail the
+     * test). Probe first; without a working namespace, run directly and
+     * skip when the TAP cannot be created. */
+    if (!getenv("EC_TEST_EOE_WRAPPED") && geteuid() != 0
+            && system("unshare -r -n true >/dev/null 2>&1") == 0) {
         setenv("EC_TEST_EOE_WRAPPED", "1", 1);
         execlp("unshare", "unshare", "-r", "-n", argv[0], (char *) NULL);
-        /* exec failed: fall through and try directly (will skip if the
-         * TAP cannot be created). */
+        /* exec failed: fall through. */
     }
 
     bus = sim_bus_create(1, identities);
