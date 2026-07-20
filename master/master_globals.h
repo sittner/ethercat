@@ -82,6 +82,20 @@
 /** Word offset of first SII category. */
 #define EC_FIRST_SII_CATEGORY_OFFSET 0x40
 
+/** Qualifier for fields shared between the application (RT) thread and
+ * the master threads without locking: the datagram state and the
+ * injection/ring handover counters. In the userspace build these are
+ * C11 atomics, which gives the plain assignments and comparisons in
+ * the shared core sequentially consistent semantics and establishes
+ * the happens-before edges for the datagram fields they guard. The
+ * kernel build keeps plain fields and relies on its existing
+ * barrier/locking conventions. */
+#ifdef EC_USPACE_MASTER
+#define EC_PAL_SHARED _Atomic
+#else
+#define EC_PAL_SHARED
+#endif
+
 /** Size of a sync manager configuration page. */
 #define EC_SYNC_PAGE_SIZE 8
 

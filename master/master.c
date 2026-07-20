@@ -1146,10 +1146,13 @@ void ec_master_receive_datagrams(
         datagram->working_counter = EC_READ_U16(cur_data);
         cur_data += EC_DATAGRAM_FOOTER_SIZE;
 
-        // dequeue the received datagram
-        datagram->state = EC_DATAGRAM_RECEIVED;
+        // dequeue the received datagram; the atomic state store is the
+        // publication point in userspace mode, so all result fields
+        // (working counter, data, reception time) must be written
+        // before it
         datagram->time_received =
             master->devices[EC_DEVICE_MAIN].time_poll;
+        datagram->state = EC_DATAGRAM_RECEIVED;
         list_del_init(&datagram->queue);
     }
 }

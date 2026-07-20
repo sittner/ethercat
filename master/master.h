@@ -135,14 +135,14 @@ typedef struct {
 /** Device statistics.
  */
 typedef struct {
-    uint64_t tx_count; /**< Number of frames sent. */
+    EC_PAL_SHARED uint64_t tx_count; /**< Number of frames sent. */
     uint64_t last_tx_count; /**< Number of frames sent of last statistics cycle. */
-    uint64_t rx_count; /**< Number of frames received. */
+    EC_PAL_SHARED uint64_t rx_count; /**< Number of frames received. */
     uint64_t last_rx_count; /**< Number of frames received of last statistics
                          cycle. */
-    uint64_t tx_bytes; /**< Number of bytes sent. */
+    EC_PAL_SHARED uint64_t tx_bytes; /**< Number of bytes sent. */
     uint64_t last_tx_bytes; /**< Number of bytes sent of last statistics cycle. */
-    uint64_t rx_bytes; /**< Number of bytes received. */
+    EC_PAL_SHARED uint64_t rx_bytes; /**< Number of bytes received. */
     uint64_t last_rx_bytes; /**< Number of bytes received of last statistics cycle.
                         */
     uint64_t last_loss; /**< Tx/Rx difference of last statistics cycle. */
@@ -194,22 +194,24 @@ struct ec_master {
     ec_fsm_master_t fsm; /**< Master state machine. */
     ec_datagram_t fsm_datagram; /**< Datagram used for state machines. */
     ec_master_phase_t phase; /**< Master phase. */
-    unsigned int active; /**< Master has been activated. */
+    EC_PAL_SHARED unsigned int active; /**< Master has been activated. */
     unsigned int config_changed; /**< The configuration changed. */
-    unsigned int injection_seq_fsm; /**< Datagram injection sequence number
-                                      for the FSM side. */
-    unsigned int injection_seq_rt; /**< Datagram injection sequence number
-                                     for the realtime side. */
+    EC_PAL_SHARED unsigned int injection_seq_fsm; /**< Datagram injection
+                                      sequence number for the FSM side. */
+    EC_PAL_SHARED unsigned int injection_seq_rt; /**< Datagram injection
+                                     sequence number for the realtime side. */
 
     ec_slave_t *slaves; /**< Array of slaves on the bus. */
-    unsigned int slave_count; /**< Number of slaves on the bus. */
+    EC_PAL_SHARED unsigned int slave_count; /**< Number of slaves on the
+                                              bus. Written during scan,
+                                              read by the app/tool. */
 
     /* Configuration applied by the application. */
     struct list_head configs; /**< List of slave configurations. */
     struct list_head domains; /**< List of domains. */
 
-    uint64_t app_time; /**< Time of the last ecrt_master_sync() call. */
-    uint64_t dc_ref_time; /**< Common reference timestamp for DC start times. */
+    EC_PAL_SHARED uint64_t app_time; /**< Time of the last ecrt_master_sync() call. */
+    EC_PAL_SHARED uint64_t dc_ref_time; /**< Common reference timestamp for DC start times. */
     ec_datagram_t ref_sync_datagram; /**< Datagram used for synchronizing the
                                        reference clock to the master clock. */
     ec_datagram_t sync_datagram; /**< Datagram used for DC drift
@@ -220,14 +222,14 @@ struct ec_master {
                                         clock slave config. */
     ec_slave_t *dc_ref_clock; /**< DC reference clock slave. */
 
-    unsigned int scan_busy; /**< Current scan state. */
-    unsigned int scan_index; /**< Index of slave currently scanned. */
-    unsigned int allow_scan; /**< \a True, if slave scanning is allowed. */
+    EC_PAL_SHARED unsigned int scan_busy; /**< Current scan state. */
+    EC_PAL_SHARED unsigned int scan_index; /**< Index of slave currently scanned. */
+    EC_PAL_SHARED unsigned int allow_scan; /**< \a True, if slave scanning is allowed. */
     ec_semaphore_t scan_sem; /**< Semaphore protecting the \a scan_busy
                                  variable and the \a allow_scan flag. */
     ec_wait_queue_t scan_queue; /**< Queue for processes that wait for
                                     slave scanning. */
-    unsigned int initial_scan_done; /**< Nonzero after the first bus scan
+    EC_PAL_SHARED unsigned int initial_scan_done; /**< Nonzero after the first bus scan
                                          attempt has completed (either slaves
                                          found and scanned, or no slaves). */
 
@@ -247,10 +249,10 @@ struct ec_master {
 
     ec_datagram_t ext_datagram_ring[EC_EXT_RING_SIZE]; /**< External datagram
                                                          ring. */
-    unsigned int ext_ring_idx_rt; /**< Index in external datagram ring for RT
-                                    side. */
-    unsigned int ext_ring_idx_fsm; /**< Index in external datagram ring for
-                                     FSM side. */
+    EC_PAL_SHARED unsigned int ext_ring_idx_rt; /**< Index in external
+                                    datagram ring for RT side. */
+    EC_PAL_SHARED unsigned int ext_ring_idx_fsm; /**< Index in external
+                                     datagram ring for FSM side. */
     unsigned int send_interval; /**< Interval between two calls to
                                   ecrt_master_send(). */
     size_t max_queue_size; /**< Maximum size of datagram queue */

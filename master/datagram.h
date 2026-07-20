@@ -90,7 +90,11 @@ typedef struct {
     size_t data_size; /**< Size of the data in \a data. */
     uint8_t index; /**< Index (set by master). */
     uint16_t working_counter; /**< Working counter. */
-    ec_datagram_state_t state; /**< State. */
+    EC_PAL_SHARED ec_datagram_state_t state; /**< State. Handover flag
+                                               between the app (RT)
+                                               thread and the FSM
+                                               threads (see
+                                               EC_PAL_SHARED). */
     ec_time_t time_sent; /**< Timestamp, when the datagram was sent. */
     ec_time_t time_received; /**< Timestamp, when the datagram was
                                       received. */

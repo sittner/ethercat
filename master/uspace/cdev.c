@@ -65,7 +65,7 @@
 
 /** Global singleton IPC server state. */
 typedef struct {
-    int              sock_fd;        /**< Listening socket fd (-1 if inactive). */
+    _Atomic int      sock_fd;        /**< Listening socket fd (-1 if inactive). Handshake between listener thread and ec_ipc_server_stop(). */
     char             sock_path[UNIX_PATH_MAX]; /**< Unix socket filesystem path. */
     ec_thread_t     *thread;         /**< Listener thread handle. */
     atomic_int       shutdown;       /**< Non-zero to request shutdown. */

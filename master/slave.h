@@ -181,9 +181,10 @@ struct ec_slave
     // configuration
     ec_slave_config_t *config; /**< Current configuration. */
     ec_slave_state_t requested_state; /**< Requested application state. */
-    ec_slave_state_t current_state; /**< Current application state. */
+    EC_PAL_SHARED ec_slave_state_t current_state; /**< Current application state. */
     unsigned int error_flag; /**< Stop processing after an error. */
-    unsigned int force_config; /**< Force (re-)configuration. */
+    EC_PAL_SHARED unsigned int force_config; /**< Force
+                                               (re-)configuration. */
     uint16_t configured_rx_mailbox_offset; /**< Configured receive mailbox
                                              offset. */
     uint16_t configured_rx_mailbox_size; /**< Configured receive mailbox size.
@@ -216,7 +217,7 @@ struct ec_slave
 
     struct list_head sdo_dictionary; /**< SDO dictionary list */
     uint8_t sdo_dictionary_fetched; /**< Dictionary has been fetched. */
-    ec_time_t time_preop; /**< Time, the slave went to PREOP. */
+    EC_PAL_SHARED ec_time_t time_preop; /**< Time, the slave went to PREOP. */
 
     struct list_head sdo_requests; /**< SDO access requests. */
     struct list_head reg_requests; /**< Register access requests. */

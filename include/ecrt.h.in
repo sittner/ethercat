@@ -868,6 +868,10 @@ EC_PUBLIC_API ec_master_t *ecrt_open_master(
  *
  * If the master was activated, ecrt_master_deactivate() is called internally.
  *
+ * The application MUST have stopped its cyclic task before calling this
+ * (or ecrt_lib_cleanup()): the master structure is freed, so a concurrent
+ * ecrt_master_receive()/ecrt_master_send() would access freed memory.
+ *
  * \apiusage{master_any,blocking}
  */
 EC_PUBLIC_API void ecrt_release_master(
