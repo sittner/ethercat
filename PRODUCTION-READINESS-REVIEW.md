@@ -348,10 +348,31 @@ currently documents a pipeline that never runs here.
    `EC_READ/WRITE_*` semantics, datagram construction, CoE emergency ring).
    Mutation-checked: reverting `f5ed03a1` makes `test_pdo_print` fail under
    ASan with the historical stack-buffer-overflow.
-6. F3: document the RT log-callback requirement; ring-buffer fallback.
-7. F4/F5: document mlockall contract + failure modes; `PTHREAD_EXPLICIT_SCHED` for
-   library threads; expose thread scheduling knobs.
-8. ABI: set real `-version-info`, install uspace `.pc`/CMake config.
+6. ~~F3: RT log-callback docs; ring-buffer fallback~~ — **done**: without
+   an application callback, RT-context `ec_log` messages now go through
+   a lock-free MPSC ring (64 × 224 B, claim-by-CAS, drop-and-count on
+   overflow) drained to stderr by a dedicated thread started in
+   `ecrt_lib_init()`; the direct mutex path remains only outside the
+   drainer's lifetime (non-RT by construction). The nonblocking-callback
+   requirement is documented at `ecrt_lib_init()`. TSan-checked.
+   (Multi-fragment message interleaving under concurrent FSMs remains —
+   line assembly is printk-style and out of scope for the ring.)
+7. ~~F4/F5: mlockall docs; PTHREAD_EXPLICIT_SCHED; scheduling knobs~~ —
+   **done**: library threads are now created with
+   `PTHREAD_EXPLICIT_SCHED` + `SCHED_OTHER` (never inheriting the
+   caller's RT policy) and a 512 KiB stack (the glibc 8 MiB default per
+   thread exceeded common `RLIMIT_MEMLOCK` settings on its own); the new
+   `ecrt_lib_set_thread_scheduling(policy, priority)` API (exported,
+   versioned) overrides this, falling back to defaults when privileges
+   are missing. The mlockall/RLIMIT_MEMLOCK/prefault contract and the
+   FSM-starvation failure mode are documented at `ecrt_lib_init()` and
+   in RT-SYSTEM-TEST.md.
+8. ~~ABI: `-version-info`, uspace `.pc`/CMake~~ — **done**: the uspace
+   library is now `-version-info 2:0:0` (soname `libethercat.so.2`,
+   deliberately distinct from the kernel-mode client's `.so.1` so the
+   ABI-incompatible libraries can never be confused at runtime), and
+   uspace installs use the shared `libethercat.pc` and
+   `ethercat-config.cmake` templates from `lib/`.
 
 **P2 — depth**
 9. ~~§2 `ECRT_RT_ATTR` annotations + rt-effects CI job~~ — **done** (embedder
@@ -475,4 +496,13 @@ currently documents a pipeline that never runs here.
     pass criteria, per-release results log). Optional follow-up: an
     RTSan (`-fsanitize=realtime`, pinned clang) runtime job.
 12. F6/F7 lock/teardown hardening; F8 link-check relocation.
+    **TSan baseline recorded** (while validating the log ring): a
+    ThreadSanitizer build of the library running `test_sim_multi`
+    reports 173 data-race warnings, all in the shared core (datagram
+    state fields, `fsm_master`, mailbox, send path) — the master's
+    concurrency relies on queue/phase discipline and sequence counters
+    that TSan cannot see, so many are benign-by-design, but they have
+    not been triaged; none are in the new PAL logging ring. Triaging
+    this list (annotate/atomicize the benign ones, fix any real ones)
+    belongs to this item.
 13. Docs refresh (FEATURES, TODO, stale checklist items); T5 hardware rig.
