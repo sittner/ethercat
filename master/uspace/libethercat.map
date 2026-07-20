@@ -3,6 +3,7 @@ global:
 /* Library lifecycle */
 ecrt_lib_init;
 ecrt_lib_cleanup;
+ecrt_lib_set_thread_scheduling;
 ecrt_startup_master;
 ecrt_release_master;
 

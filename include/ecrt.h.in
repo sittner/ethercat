@@ -734,6 +734,22 @@ typedef void (*ec_log_cb_t)(int level, const char *fmt, va_list ap);
 /** Initialize the userspace master library. Must be called once before
  *  any other ecrt_* function.
  *
+ *  Realtime requirements (see also RT-SYSTEM-TEST.md):
+ *  - The library does NOT lock process memory; a realtime application
+ *    must call mlockall(MCL_CURRENT | MCL_FUTURE) and prefault its
+ *    stack itself (see examples/user). Note that the default 8 MiB
+ *    RLIMIT_MEMLOCK is not sufficient — raise it in the deployment.
+ *  - A log callback installed here is called from realtime context
+ *    (datagram timeouts, working counter changes) and must not block.
+ *    Without a callback, RT-context messages go through a lock-free
+ *    ring drained by a library thread (a full ring drops messages and
+ *    reports the count).
+ *  - Library threads are created with explicit SCHED_OTHER scheduling
+ *    (never inheriting the caller's realtime policy); see
+ *    ecrt_lib_set_thread_scheduling() to change this. A starved master
+ *    thread stalls slave state machines and mailbox traffic, but never
+ *    the application's cyclic send/receive path.
+ *
  *  \param log_cb     Log callback, or NULL for default (stderr).
  *  \param socket_path Unix socket path for the IPC server, or NULL to
  *                     disable the IPC server entirely (tool cannot connect).
@@ -745,6 +761,24 @@ typedef void (*ec_log_cb_t)(int level, const char *fmt, va_list ap);
  *                     this via --socket-group).
  *  \return 0 on success, < 0 on error. */
 EC_PUBLIC_API int ecrt_lib_init(ec_log_cb_t log_cb, const char *socket_path);
+
+/** Configure the scheduling of library-created threads (master state
+ *  machine, EoE, IPC listener, work queues).
+ *
+ *  Applies to threads created afterwards, so call it before
+ *  ecrt_lib_init() / ecrt_startup_master(). The default is explicit
+ *  SCHED_OTHER, priority 0 — library threads never inherit the
+ *  creating thread's (possibly realtime) policy. If the configured
+ *  policy cannot be applied at thread creation (e.g. missing
+ *  privileges), the library falls back to default scheduling instead
+ *  of failing.
+ *
+ *  \param policy   SCHED_OTHER, SCHED_FIFO or SCHED_RR.
+ *  \param priority Realtime priority for SCHED_FIFO/SCHED_RR (choose a
+ *                  value BELOW the application's cyclic thread), 0 for
+ *                  SCHED_OTHER.
+ *  \return 0 on success, -EINVAL on an unsupported policy. */
+EC_PUBLIC_API int ecrt_lib_set_thread_scheduling(int policy, int priority);
 
 /** Start a userspace master.
  *  The caller creates transports with ec_transport_create() or
