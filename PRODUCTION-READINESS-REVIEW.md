@@ -319,10 +319,21 @@ currently documents a pipeline that never runs here.
 ## 5. Prioritized roadmap
 
 **P0 — correctness/safety, before any production deployment**
-1. Fix F1 (`lib/shared.c` UB) — small, isolated, high blast radius.
-2. F9: IPC socket permissions (mode/group), document.
-3. Triage the non-cosmetic warnings from F2 (`-Wuninitialized`, `-Warray-bounds`,
-   `cdev.c:1291` truncation, `-Wpointer-sign`).
+1. ~~Fix F1 (`lib/shared.c` UB)~~ — **done** (memcpy punning + `EC_WRITE_*`;
+   round-trip and LE wire format verified at `-O2 -fstrict-aliasing`).
+2. ~~F9: IPC socket permissions~~ — **done** (0660 fail-closed between
+   `bind()`/`listen()`; `ec_master --socket-group`; docs updated).
+3. ~~Triage the non-cosmetic warnings from F2~~ — **done**. The
+   `-Warray-bounds` at `module.c:177` was a real out-of-bounds write:
+   `ecrt_startup_master()` accessed `devices[EC_DEVICE_BACKUP]` without the
+   `EC_MAX_NUM_DEVICES` guard, corrupting memory when a backup transport was
+   passed to a default (`--with-devices=1`) build — now rejected/guarded.
+   Also fixed: dead `size < 0` in `coe_emerg_ring.c` (replaced by a real
+   allocation-overflow guard), `-Wpointer-sign` in `tool_api.c`, unused
+   `ipc_strcpy`. `-Wuninitialized`/`-Wstrict-aliasing` were F1.
+   Remaining warnings (100) are the cosmetic classes only
+   (`-Wunused-parameter` 52, `-Wtype-limits` 18, `-Wstringop-truncation` 15
+   — all NUL-safe on inspection, `-Wsign-compare` 14) → F2/P1.
 
 **P1 — production hygiene**
 4. CI: build-uspace + build-kernel + distcheck jobs (no tests needed to start —
