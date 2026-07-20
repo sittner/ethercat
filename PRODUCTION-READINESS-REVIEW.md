@@ -459,6 +459,20 @@ currently documents a pipeline that never runs here.
     on every uspace SDO read. The kernel/ioctl backend masked this
     (same address space). Fixed by preserving the local pointer across
     the request.
-11. T4 RT smoke/latency gate (self-hosted).
+11. ~~T4 RT smoke/latency gate (self-hosted)~~ — **re-scoped**: latency
+    gating in CI was dropped deliberately (jitter is a whole-system
+    property; a CI box measures the CI box, and threshold gates are
+    either blind or flaky). Replaced by (a) `tests/test_rt_pagefault` in
+    `make check`: cyclic path over transport_sim with fault-counter
+    deltas on the RT thread, windowed so ambient strays don't flake it;
+    mutation-verified (an injected 4 KiB/cycle leak fails every window
+    with ~1004 faults). mlockall is attempted but tolerated to fail —
+    which surfaced a real deployment constraint: the default 8 MiB
+    RLIMIT_MEMLOCK cannot hold the library's thread stacks, so real
+    deployments MUST raise it (documented). And (b) `RT-SYSTEM-TEST.md`:
+    a recorded manual whole-system procedure (LinuxCNC + hardware rig +
+    latency-test, 24 h soak, concurrent tool traffic, fault injection,
+    pass criteria, per-release results log). Optional follow-up: an
+    RTSan (`-fsanitize=realtime`, pinned clang) runtime job.
 12. F6/F7 lock/teardown hardening; F8 link-check relocation.
 13. Docs refresh (FEATURES, TODO, stale checklist items); T5 hardware rig.

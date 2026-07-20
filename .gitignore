@@ -70,3 +70,4 @@ tests/test_sim_dc
 tests/test_sim_multi
 tests/test_sim_sdo_info
 tests/test_tool_ipc
+tests/test_rt_pagefault
