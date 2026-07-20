@@ -149,6 +149,7 @@
 #else
 #include <stdlib.h> // for size_t
 #include <stdint.h>
+#include <string.h> // for memcpy (alignment-safe data access helpers)
 #include <sys/time.h> // for struct timeval
 #include <netinet/in.h> // struct in_addr
 #endif
@@ -3100,9 +3101,50 @@ EC_PUBLIC_API int ecrt_reg_request_read(
 
 #endif
 
-#define le16_to_cpup(x) le16_to_cpu(*((uint16_t *)(x)))
-#define le32_to_cpup(x) le32_to_cpu(*((uint32_t *)(x)))
-#define le64_to_cpup(x) le64_to_cpu(*((uint64_t *)(x)))
+/* Alignment-safe little-endian accessors. EtherCAT data pointers are
+ * byte offsets into frames and process data, so they are NOT guaranteed
+ * to be naturally aligned — a direct typed dereference would be
+ * undefined behavior (and a trap on strict-alignment architectures).
+ * memcpy compiles to a single move on architectures with unaligned
+ * access support. */
+static inline uint16_t le16_to_cpup(const void *p)
+{
+    uint16_t v;
+    memcpy(&v, p, sizeof(v));
+    return le16_to_cpu(v);
+}
+
+static inline uint32_t le32_to_cpup(const void *p)
+{
+    uint32_t v;
+    memcpy(&v, p, sizeof(v));
+    return le32_to_cpu(v);
+}
+
+static inline uint64_t le64_to_cpup(const void *p)
+{
+    uint64_t v;
+    memcpy(&v, p, sizeof(v));
+    return le64_to_cpu(v);
+}
+
+static inline void ec_write_le16p(void *p, uint16_t v)
+{
+    v = cpu_to_le16(v);
+    memcpy(p, &v, sizeof(v));
+}
+
+static inline void ec_write_le32p(void *p, uint32_t v)
+{
+    v = cpu_to_le32(v);
+    memcpy(p, &v, sizeof(v));
+}
+
+static inline void ec_write_le64p(void *p, uint64_t v)
+{
+    v = cpu_to_le64(v);
+    memcpy(p, &v, sizeof(v));
+}
 
 #endif /* ifndef __KERNEL__ */
 
@@ -3239,10 +3281,15 @@ EC_PUBLIC_API double ecrt_read_lreal(const void *data) ECRT_RT_ATTR;
  * \param DATA EtherCAT data pointer
  * \param VAL new value
  */
+#ifdef __KERNEL__
 #define EC_WRITE_U16(DATA, VAL) \
     do { \
         *((uint16_t *) (DATA)) = cpu_to_le16((uint16_t) (VAL)); \
     } while (0)
+#else
+#define EC_WRITE_U16(DATA, VAL) \
+    ec_write_le16p((void *) (DATA), (uint16_t) (VAL))
+#endif
 
 /** Write a 16-bit signed value to EtherCAT data.
  *
@@ -3256,10 +3303,15 @@ EC_PUBLIC_API double ecrt_read_lreal(const void *data) ECRT_RT_ATTR;
  * \param DATA EtherCAT data pointer
  * \param VAL new value
  */
+#ifdef __KERNEL__
 #define EC_WRITE_U32(DATA, VAL) \
     do { \
         *((uint32_t *) (DATA)) = cpu_to_le32((uint32_t) (VAL)); \
     } while (0)
+#else
+#define EC_WRITE_U32(DATA, VAL) \
+    ec_write_le32p((void *) (DATA), (uint32_t) (VAL))
+#endif
 
 /** Write a 32-bit signed value to EtherCAT data.
  *
@@ -3273,10 +3325,15 @@ EC_PUBLIC_API double ecrt_read_lreal(const void *data) ECRT_RT_ATTR;
  * \param DATA EtherCAT data pointer
  * \param VAL new value
  */
+#ifdef __KERNEL__
 #define EC_WRITE_U64(DATA, VAL) \
     do { \
         *((uint64_t *) (DATA)) = cpu_to_le64((uint64_t) (VAL)); \
     } while (0)
+#else
+#define EC_WRITE_U64(DATA, VAL) \
+    ec_write_le64p((void *) (DATA), (uint64_t) (VAL))
+#endif
 
 /** Write a 64-bit signed value to EtherCAT data.
  *
