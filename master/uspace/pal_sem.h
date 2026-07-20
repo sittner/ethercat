@@ -29,17 +29,47 @@
 #ifndef __EC_USPACE_PAL_SEM_H__
 #define __EC_USPACE_PAL_SEM_H__
 
-/* Semaphore type */
-typedef sem_t ec_semaphore_t;
+#include <assert.h>
+
+/* Semaphore type.
+ *
+ * The master core uses its semaphores exclusively in mutex style: every
+ * ec_sem_down() is paired with an ec_sem_up() by the same thread in the
+ * same function (audited across all call sites of master_sem,
+ * device_sem, scan_sem, config_sem and ext_queue_sem; all are
+ * initialized to 1). The userspace implementation is therefore a
+ * pthread mutex with PTHREAD_PRIO_INHERIT — a plain sem_t has no owner
+ * and thus no priority inheritance, so a low-priority holder (e.g. the
+ * SCHED_OTHER master FSM thread) could block a realtime-priority waiter
+ * unboundedly under a classic three-thread priority inversion.
+ *
+ * PTHREAD_MUTEX_ERRORCHECK is the safety net for the mutex-style
+ * contract: an unlock from a non-owning thread (i.e. semaphore-style
+ * signaling that the audit missed) fails with EPERM and trips the
+ * assert instead of silently corrupting the lock state.
+ */
+typedef pthread_mutex_t ec_semaphore_t;
 
 static inline void ec_sem_init(ec_semaphore_t *sem, int val)
 {
-    sem_init(sem, 0, val);  /* 0 = not shared between processes */
+    pthread_mutexattr_t attr;
+
+    assert(val == 1); /* mutex-style only: initialized unlocked */
+    (void) val;
+
+    pthread_mutexattr_init(&attr);
+    pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT);
+    pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
+    pthread_mutex_init(sem, &attr);
+    pthread_mutexattr_destroy(&attr);
 }
 
 static inline void ec_sem_down(ec_semaphore_t *sem)
 {
-    sem_wait(sem);
+    int ret = pthread_mutex_lock(sem);
+
+    assert(ret == 0); /* EDEADLK = relock attempt by the owner */
+    (void) ret;
 }
 
 /**
@@ -49,24 +79,28 @@ static inline void ec_sem_down(ec_semaphore_t *sem)
  */
 static inline int ec_sem_down_trylock(ec_semaphore_t *sem)
 {
-    return (sem_trywait(sem) == 0) ? 0 : 1;
+    return (pthread_mutex_trylock(sem) == 0) ? 0 : 1;
 }
 
 /**
  * ec_sem_down_interruptible - acquire semaphore, interruptible
  *
- * Returns 0 on success, -EINTR if interrupted by signal
+ * Returns 0 on success, -EINTR if interrupted by signal. The userspace
+ * library performs no signal-based interruption, so this maps to a
+ * plain lock.
  */
 static inline int ec_sem_down_interruptible(ec_semaphore_t *sem)
 {
-    if (sem_wait(sem) == -1 && errno == EINTR)
-        return -EINTR;
+    ec_sem_down(sem);
     return 0;
 }
 
 static inline void ec_sem_up(ec_semaphore_t *sem)
 {
-    sem_post(sem);
+    int ret = pthread_mutex_unlock(sem);
+
+    assert(ret == 0); /* EPERM = unlock by a non-owning thread */
+    (void) ret;
 }
 
 #endif /* __EC_USPACE_PAL_SEM_H__ */

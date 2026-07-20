@@ -512,6 +512,17 @@ currently documents a pipeline that never runs here.
     timestamp (used for SII/mailbox timeout math). A `tsan` CI job locks
     in the race-free state. The F7 teardown contract (stop the cyclic
     task before release/cleanup) is now documented at
-    `ecrt_release_master()`. Still open from the original item: F6
-    non-PI semaphore conversion and F8 link-check relocation.
+    `ecrt_release_master()`.
+    **F6 semaphore conversion done**: a structural audit proved all five
+    core semaphores (master/device/scan/config/ext_queue) are used
+    strictly mutex-style — every `ec_sem_up()` is preceded by a
+    same-function `ec_sem_down()`, none is held across a function
+    boundary, all are initialized to 1. The uspace PAL now implements
+    `ec_semaphore_t` as a pthread mutex with `PTHREAD_PRIO_INHERIT`
+    (bounding the FSM-holds-master_sem priority inversion) and
+    `PTHREAD_MUTEX_ERRORCHECK` + asserts as the contract safety net
+    (a missed semaphore-style use would trip EPERM instead of silently
+    corrupting). Kernel mode keeps `struct semaphore` untouched.
+    Validated: full suite with asserts armed, TSan, ASan, distcheck.
+    Still open: F8 link-check relocation.
 13. Docs refresh (FEATURES, TODO, stale checklist items); T5 hardware rig.
