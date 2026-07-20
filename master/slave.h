@@ -182,7 +182,7 @@ struct ec_slave
     ec_slave_config_t *config; /**< Current configuration. */
     EC_PAL_SHARED ec_slave_state_t requested_state; /**< Requested application state. */
     EC_PAL_SHARED ec_slave_state_t current_state; /**< Current application state. */
-    unsigned int error_flag; /**< Stop processing after an error. */
+    EC_PAL_SHARED unsigned int error_flag; /**< Stop processing after an error. */
     EC_PAL_SHARED unsigned int force_config; /**< Force
                                                (re-)configuration. */
     uint16_t configured_rx_mailbox_offset; /**< Configured receive mailbox
