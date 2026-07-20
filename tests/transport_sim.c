@@ -19,7 +19,13 @@
  *                            at 0x0508, then clears the busy/op bits;
  *                            write ops set the error bit (unsupported)
  *  - Base information block (0x0000): 8 FMMUs, 8 sync managers, MII
- *    ports 0/1, no DC support.
+ *    ports 0/1, optional 32-bit DC support.
+ *  - Distributed clocks: a write to 0x0900 latches synthetic port
+ *    receive times (chain topology, 100 ns per hop, base advancing
+ *    with the frame counter) for the master's transmission delay
+ *    measurement; ARMW/FRMW read the addressed slave's register and
+ *    write the value to the DC-capable slaves downstream of it (the
+ *    system time 0x0910 is a plain stored value, it does not advance).
  *  - Working counters: +1 per matching slave for read or write commands.
  *  - CoE mailbox: requests written into the receive mailbox (SM0
  *    buffer) are answered from a per-slave object dictionary into the
@@ -213,7 +219,7 @@ static void sim_slave_init_eeprom(sim_slave_t *slave,
 }
 
 static void sim_slave_init_regs(sim_slave_t *slave, unsigned int pos,
-        unsigned int nslaves)
+        unsigned int nslaves, const sim_slave_identity_t *id)
 {
     uint8_t *r = slave->regs;
 
@@ -226,7 +232,8 @@ static void sim_slave_init_regs(sim_slave_t *slave, unsigned int pos,
     r[0x0004] = 8; /* FMMU count */
     r[0x0005] = 8; /* sync manager count */
     r[0x0007] = 0x0F; /* ports 0+1: MII, ports 2+3: not implemented */
-    r[0x0008] = 0x00; /* features: no FMMU bit op, no DC */
+    /* features: bit 2 = DC supported (bit 3 clear: 32-bit range) */
+    r[0x0008] = id->dc_supported ? 0x04 : 0x00;
 
     /* DL status: bit 4+i = link on port i, bit 8+2i = loop closed on
      * port i, bit 9+2i = signal detected on port i. Port 0 is the
@@ -564,6 +571,31 @@ static unsigned int sim_slave_process_logical(sim_slave_t *slave,
     return r + (cmd == 0x0C ? 2 * w : w);
 }
 
+/** Latch synthetic DC port receive times on all slaves (triggered by a
+ * write to 0x0900): chain topology, 100 ns per hop, base advancing with
+ * the frame counter so consecutive measurements stay monotonic. */
+static void sim_bus_latch_dc_times(sim_bus_t *bus)
+{
+    uint32_t base = (uint32_t) bus->frame_count * 1000u;
+    unsigned int i;
+
+    for (i = 0; i < bus->nslaves; i++) {
+        uint8_t *r = bus->slaves[i].regs;
+
+        sim_wr16(r + 0x0900, (uint16_t) (base + i * 100));
+        sim_wr16(r + 0x0902, (uint16_t) ((base + i * 100) >> 16));
+        if (i + 1 < bus->nslaves) { /* port 1: return pass of the frame */
+            uint32_t t1 = base + (2 * (bus->nslaves - 1) - i) * 100;
+            sim_wr16(r + 0x0904, (uint16_t) t1);
+            sim_wr16(r + 0x0906, (uint16_t) (t1 >> 16));
+        } else {
+            sim_wr16(r + 0x0904, 0);
+            sim_wr16(r + 0x0906, 0);
+        }
+        memset(r + 0x0908, 0, 8); /* ports 2 + 3: not connected */
+    }
+}
+
 /** Process one datagram against the whole bus (in place). */
 static void sim_bus_process_datagram(sim_bus_t *bus, uint8_t cmd,
         uint8_t *addr, uint8_t *data, uint16_t len, uint8_t *wkc_field)
@@ -624,9 +656,48 @@ static void sim_bus_process_datagram(sim_bus_t *bus, uint8_t cmd,
                 }
             }
             break;
-        default:
-            /* NOP and DC commands: no slave processes. */
+        case 0x0D: /* ARMW */
+        case 0x0E: /* FRMW */
+            {
+                /* Read Multiple Write: the addressed slave provides the
+                 * data; slaves the frame passes AFTERWARDS take the
+                 * write. Used for DC drift compensation (0x0910). */
+                int16_t pos = (int16_t) sim_rd16(addr);
+                uint16_t station = sim_rd16(addr);
+                int have_data = 0;
+
+                for (i = 0; i < bus->nslaves; i++) {
+                    sim_slave_t *slave = &bus->slaves[i];
+                    int addressed = (cmd == 0x0D)
+                            ? (pos == 0)
+                            : (sim_rd16(slave->regs + 0x0010) == station);
+
+                    if ((size_t) offset + len <= SIM_REG_SIZE) {
+                        if (addressed) {
+                            memcpy(data, slave->regs + offset, len);
+                            have_data = 1;
+                            wkc++;
+                        } else if (have_data) {
+                            memcpy(slave->regs + offset, data, len);
+                            wkc++;
+                        }
+                    }
+                    pos++;
+                }
+                if (cmd == 0x0D) {
+                    sim_wr16(addr, (uint16_t) pos);
+                }
+            }
             break;
+        default:
+            /* NOP: no slave processes. */
+            break;
+    }
+
+    /* A write covering 0x0900 latches the DC port receive times. */
+    if ((cmd == 0x02 || cmd == 0x05 || cmd == 0x08)
+            && offset <= 0x0900 && 0x0900 < (uint32_t) offset + len) {
+        sim_bus_latch_dc_times(bus);
     }
 
     sim_wr16(wkc_field, wkc);
@@ -823,7 +894,7 @@ sim_bus_t *sim_bus_create(unsigned int nslaves,
     for (i = 0; i < nslaves; i++) {
         sim_slave_t *slave = &bus->slaves[i];
 
-        sim_slave_init_regs(slave, i, nslaves);
+        sim_slave_init_regs(slave, i, nslaves, &identities[i]);
         sim_slave_init_eeprom(slave, &identities[i]);
 
         slave->mbox_out_phys = identities[i].mbox_out_phys;

@@ -414,8 +414,17 @@ currently documents a pipeline that never runs here.
     loss/recovery with rescan and intact identities, and a full cable
     yank while activated: OP → link down → WC zero → link up → automatic
     rescan + reconfiguration back to OP with process data flowing.
-    Next increments: DC (ARMW/FRMW), multi-slave domains, SDO Info
-    service for `ethercat sdos`.
+    — **sixth stage done (distributed clocks)**: slaves can advertise
+    32-bit DC; a write to 0x0900 latches synthetic chain-topology port
+    receive times (100 ns/hop) for the delay measurement, and ARMW/FRMW
+    read the addressed slave and write downstream. `test_sim_dc` verifies
+    reference-clock selection, measured transmission delays (0 ns ref /
+    100 ns second slave written via FPWR 0x0920), DC config registers
+    (AssignActivate 0x0980, cycle time 0x09A0), app-time propagation
+    ref→FRMW→slaves (0x0910), `ecrt_master_reference_clock_time()` and
+    the 0x092C sync monitor — alongside flowing process data.
+    Next increments: multi-slave domains, SDO Info service for
+    `ethercat sdos`.
 11. T4 RT smoke/latency gate (self-hosted).
 12. F6/F7 lock/teardown hardening; F8 link-check relocation.
 13. Docs refresh (FEATURES, TODO, stale checklist items); T5 hardware rig.

@@ -66,3 +66,4 @@ tests/test_sim_domain
 tests/test_sim_coe
 tests/test_sim_pdo_assign
 tests/test_sim_link
+tests/test_sim_dc

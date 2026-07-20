@@ -57,6 +57,7 @@ typedef struct {
     uint16_t mbox_in_phys;  /**< Physical start of the send (slave ->
                               master) mailbox / SM1 (e.g. 0x1080). */
     uint16_t mbox_in_len;   /**< Send mailbox size. */
+    uint8_t dc_supported;   /**< Advertise distributed clocks (32 bit). */
 } sim_slave_identity_t;
 
 /** Create a bus with \a nslaves slaves, each initialized from
