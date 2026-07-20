@@ -120,7 +120,7 @@ int ec_eoe_init(
                 "eoe%us%u", slave->master->index, slave->ring_position);
     }
 
-    snprintf(eoe->datagram.name, EC_DATAGRAM_NAME_SIZE, name);
+    snprintf(eoe->datagram.name, EC_DATAGRAM_NAME_SIZE, "%s", name);
 
     ret = ec_eoe_netdev_create(eoe, name);
     if (ret) {
@@ -196,7 +196,7 @@ int ec_eoe_send(ec_eoe_t *eoe /**< EoE handler */)
 
     remaining_size = eoe->tx_frame->skb->len - eoe->tx_offset;
 
-    if (remaining_size <= eoe->slave->configured_tx_mailbox_size - 10) {
+    if (remaining_size <= (size_t) (eoe->slave->configured_tx_mailbox_size - 10)) {
         current_size = remaining_size;
         last_fragment = 1;
     } else {

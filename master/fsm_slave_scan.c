@@ -671,13 +671,13 @@ void ec_fsm_slave_scan_state_sii_data(ec_fsm_slave_scan_t *fsm
 
     // 2 words fetched
 
-    if (fsm->sii_offset + 2 <= slave->sii_nwords) { // 2 words fit
+    if ((size_t) fsm->sii_offset + 2 <= slave->sii_nwords) { // 2 words fit
         memcpy(slave->sii_words + fsm->sii_offset, fsm->fsm_sii.value, 4);
     } else { // copy the last word
         memcpy(slave->sii_words + fsm->sii_offset, fsm->fsm_sii.value, 2);
     }
 
-    if (fsm->sii_offset + 2 < slave->sii_nwords) {
+    if ((size_t) fsm->sii_offset + 2 < slave->sii_nwords) {
         // fetch the next 2 words
         fsm->sii_offset += 2;
         ec_fsm_sii_read(&fsm->fsm_sii, slave, fsm->sii_offset,
@@ -786,7 +786,7 @@ void ec_fsm_slave_scan_state_sii_data(ec_fsm_slave_scan_t *fsm
     while (EC_READ_U16(cat_word) != 0xFFFF) {
 
         // type and size words must fit
-        if (cat_word + 2 - slave->sii_words > slave->sii_nwords) {
+        if ((size_t) (cat_word + 2 - slave->sii_words) > slave->sii_nwords) {
             EC_SLAVE_ERR(slave, "Unexpected end of SII data:"
                     " Category header incomplete.\n");
             goto end;
@@ -796,7 +796,7 @@ void ec_fsm_slave_scan_state_sii_data(ec_fsm_slave_scan_t *fsm
         cat_size = EC_READ_U16(cat_word + 1);
         cat_word += 2;
 
-        if (cat_word + cat_size - slave->sii_words > slave->sii_nwords) {
+        if ((size_t) (cat_word + cat_size - slave->sii_words) > slave->sii_nwords) {
             EC_SLAVE_WARN(slave, "Unexpected end of SII data:"
                     " Category data incomplete.\n");
             goto end;
@@ -836,7 +836,7 @@ void ec_fsm_slave_scan_state_sii_data(ec_fsm_slave_scan_t *fsm
         }
 
         cat_word += cat_size;
-        if (cat_word - slave->sii_words >= slave->sii_nwords) {
+        if ((size_t) (cat_word - slave->sii_words) >= slave->sii_nwords) {
             EC_SLAVE_WARN(slave, "Unexpected end of SII data:"
                     " Next category header missing.\n");
             goto end;

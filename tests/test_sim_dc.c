@@ -69,7 +69,7 @@ static ec_pdo_info_t tx_pdos[] = {
 static ec_sync_info_t syncs[] = {
     { 2, EC_DIR_OUTPUT, 1, rx_pdos, EC_WD_ENABLE },
     { 3, EC_DIR_INPUT, 1, tx_pdos, EC_WD_DISABLE },
-    { 0xff }
+    { 0xff, EC_DIR_INVALID, 0, NULL, EC_WD_DEFAULT }
 };
 
 int main(void)

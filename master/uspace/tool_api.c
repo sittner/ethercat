@@ -62,7 +62,7 @@
 static void tool_strcpy(char *target, size_t target_size, const char *source)
 {
     if (source) {
-        strncpy(target, source, target_size);
+        strncpy(target, source, target_size - 1);
         target[target_size - 1] = '\0';
     } else {
         target[0] = '\0';

@@ -72,8 +72,8 @@ int ec_netdev_register(ec_netdev_t *dev)
     /* Configure as TAP device (layer 2) with no packet info header */
     memset(&ifr, 0, sizeof(ifr));
     ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
-    strncpy(ifr.ifr_name, dev->name, IFNAMSIZ - 1);
-    
+    snprintf(ifr.ifr_name, IFNAMSIZ, "%s", dev->name);
+
     err = ioctl(fd, TUNSETIFF, &ifr);
     if (err < 0) {
         fprintf(stderr, "EoE: Failed to create TAP device %s: %s\n",
@@ -91,7 +91,7 @@ int ec_netdev_register(ec_netdev_t *dev)
     sock = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock >= 0) {
         memset(&ifr, 0, sizeof(ifr));
-        strncpy(ifr.ifr_name, dev->name, IFNAMSIZ - 1);
+        snprintf(ifr.ifr_name, IFNAMSIZ, "%s", dev->name);
         if (ioctl(sock, SIOCGIFINDEX, &ifr) == 0) {
             dev->ifindex = ifr.ifr_ifindex;
         }
@@ -156,7 +156,7 @@ int ec_netdev_set_mac(ec_netdev_t *dev, const uint8_t mac[ETH_ALEN])
     }
     
     memset(&ifr, 0, sizeof(ifr));
-    strncpy(ifr.ifr_name, dev->name, IFNAMSIZ - 1);
+    snprintf(ifr.ifr_name, IFNAMSIZ, "%s", dev->name);
     ifr.ifr_hwaddr.sa_family = ARPHRD_ETHER;
     memcpy(ifr.ifr_hwaddr.sa_data, mac, ETH_ALEN);
     

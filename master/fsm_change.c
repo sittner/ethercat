@@ -433,7 +433,7 @@ const ec_code_msg_t al_status_messages[] = {
     {0x0050, "EEPROM No Access"},
     {0x0051, "EEPROM Error"},
     {0x0060, "Slave Restarted Locally"},
-    {0xffff}
+    {0xffff, NULL}
 };
 
 

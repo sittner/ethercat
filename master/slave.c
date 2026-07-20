@@ -340,7 +340,7 @@ int ec_slave_fetch_sii_strings(
         }
 
         offset = 1;
-        for (i = 0; i < slave->sii.string_count; i++) {
+        for (i = 0; i < (int) slave->sii.string_count; i++) {
             size = data[offset];
             // allocate memory for string structure and data at a single blow
             if (!(slave->sii.strings[i] =

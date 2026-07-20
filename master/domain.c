@@ -230,7 +230,6 @@ int ec_domain_finish(
 {
     uint32_t datagram_offset;
     size_t datagram_size;
-    unsigned int datagram_count;
     unsigned int datagram_used[EC_DIR_COUNT];
     ec_fmmu_config_t *fmmu;
     const ec_fmmu_config_t *datagram_first_fmmu = NULL;
@@ -255,7 +254,6 @@ int ec_domain_finish(
     // - calculate the datagrams' expected working counters
     datagram_offset = 0;
     datagram_size = 0;
-    datagram_count = 0;
     datagram_used[EC_DIR_OUTPUT] = 0;
     datagram_used[EC_DIR_INPUT] = 0;
 
@@ -281,7 +279,6 @@ int ec_domain_finish(
 
             datagram_offset += datagram_size;
             datagram_size = 0;
-            datagram_count++;
             datagram_used[EC_DIR_OUTPUT] = 0;
             datagram_used[EC_DIR_INPUT] = 0;
             datagram_first_fmmu = fmmu;
@@ -305,7 +302,6 @@ int ec_domain_finish(
                 datagram_used);
         if (ret < 0)
             return ret;
-        datagram_count++;
     }
 
     EC_MASTER_INFO(domain->master, "Domain%u: Logical address 0x%08x,"
