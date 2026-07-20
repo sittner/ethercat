@@ -398,9 +398,18 @@ currently documents a pipeline that never runs here.
     up/downloads, OD round-trip verification, and the abort path
     (0x06020000 for unknown objects); the CoE-capable slave also takes
     the mailbox-scan and PDO-reading (0x1C1x) paths during startup.
+    — **fourth stage done (CoE-based PDO assignment)**: the SII gains a
+    General category advertising enable_pdo_assign/-configuration, so a
+    combined mailbox+PD slave takes the fsm_pdo SDO write path during
+    PREOP→SAFEOP. `test_sim_pdo_assign` verifies the exact mapping
+    (0x1600/0x1A00) and assignment (0x1C12/0x1C13) object values the
+    master writes, reaches OP with working process data, and — mutation-
+    verified regression for `f381059c` — asserts that re-activating with
+    an unchanged configuration issues zero further SDO downloads
+    (reverting the fix yields 12 extra downloads and exactly that
+    assertion fails).
     Next increments: link-down/rescan behavior, DC (ARMW/FRMW),
-    multi-slave domains, SDO Info service for `ethercat sdos`, CoE-based
-    PDO assignment tests (mailbox + PD slave combined).
+    multi-slave domains, SDO Info service for `ethercat sdos`.
 11. T4 RT smoke/latency gate (self-hosted).
 12. F6/F7 lock/teardown hardening; F8 link-check relocation.
 13. Docs refresh (FEATURES, TODO, stale checklist items); T5 hardware rig.

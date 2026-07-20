@@ -96,4 +96,7 @@ int sim_bus_od_set(sim_bus_t *bus, unsigned int pos, uint16_t index,
 const uint8_t *sim_bus_od_data(sim_bus_t *bus, unsigned int pos,
         uint16_t index, uint8_t subindex, size_t *size);
 
+/** Number of SDO download requests slave \a pos has received. */
+unsigned long sim_bus_od_download_count(sim_bus_t *bus, unsigned int pos);
+
 #endif

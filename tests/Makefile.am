@@ -39,6 +39,7 @@ check_PROGRAMS = \
 	test_shared \
 	test_sim_coe \
 	test_sim_domain \
+	test_sim_pdo_assign \
 	test_sim_scan
 
 TESTS = $(check_PROGRAMS)
@@ -55,6 +56,8 @@ test_shared_SOURCES = test_shared.c test.h
 test_sim_coe_SOURCES = test_sim_coe.c transport_sim.c transport_sim.h test.h
 test_sim_domain_SOURCES = test_sim_domain.c transport_sim.c transport_sim.h \
 	test.h
+test_sim_pdo_assign_SOURCES = test_sim_pdo_assign.c transport_sim.c \
+	transport_sim.h test.h
 test_sim_scan_SOURCES = test_sim_scan.c transport_sim.c transport_sim.h test.h
 
 # Self-test TUs for script/rt-effects-check.sh (syntax-only, driven by

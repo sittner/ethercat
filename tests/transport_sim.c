@@ -74,6 +74,7 @@ typedef struct {
     uint16_t mbox_in_phys;  /**< Send mailbox (slave -> master). */
     uint16_t mbox_in_len;
     sim_od_entry_t od[SIM_OD_ENTRIES];
+    unsigned long od_downloads; /**< Number of SDO download requests. */
 } sim_slave_t;
 
 struct sim_bus {
@@ -151,14 +152,27 @@ static void sim_slave_init_eeprom(sim_slave_t *slave,
         ee[0x001C] = 0x0004; /* EC_MBOX_COE */
     }
 
+    uint16_t *cat = ee + 0x0040;
+
+    if (id->mbox_out_len) {
+        /* General category (type 0x1E, 32 bytes): the CoE details byte
+         * (data byte 5) advertises SDO access and PDO assignment /
+         * configuration via CoE — required by the master's fsm_pdo
+         * before it writes 0x1C1x / mapping objects via SDO. */
+        cat[0] = 0x001E; /* category type */
+        cat[1] = 16;     /* category size in words */
+        memset(cat + 2, 0, 16 * sizeof(uint16_t));
+        cat[4] = 0x0D00; /* data byte 5 = 0x0D: enable_sdo |
+                            enable_pdo_assign | enable_pdo_configuration */
+        cat += 18;
+    }
+
     if (id->mbox_out_len || id->sm2_len || id->sm3_len) {
         /* Sync manager category (type 0x29), 4 SMs x 4 words: physical
          * start, default length, control/status, enable/type.
          * SM0 = mailbox out, SM1 = mailbox in (disabled slots when the
          * slave has no mailbox); SM2 = process data output, SM3 =
          * process data input. */
-        uint16_t *cat = ee + 0x0040;
-
         cat[0] = 0x0029; /* category type */
         cat[1] = 16;     /* category size in words */
 
@@ -327,6 +341,8 @@ static void sim_coe_request(sim_slave_t *slave, const uint8_t *coe,
             {
                 size_t dsize;
                 const uint8_t *src;
+
+                slave->od_downloads++;
 
                 if (cs & 0x02) { /* expedited */
                     dsize = (cs & 0x01) ? 4 - ((cs >> 2) & 0x03) : 4;
@@ -904,6 +920,18 @@ int sim_bus_od_set(sim_bus_t *bus, unsigned int pos, uint16_t index,
     }
     pthread_mutex_unlock(&bus->lock);
     return ret;
+}
+
+unsigned long sim_bus_od_download_count(sim_bus_t *bus, unsigned int pos)
+{
+    unsigned long n = 0;
+
+    if (pos < bus->nslaves) {
+        pthread_mutex_lock(&bus->lock);
+        n = bus->slaves[pos].od_downloads;
+        pthread_mutex_unlock(&bus->lock);
+    }
+    return n;
 }
 
 const uint8_t *sim_bus_od_data(sim_bus_t *bus, unsigned int pos,
