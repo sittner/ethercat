@@ -354,6 +354,8 @@ static void xdp_close(ec_transport_t *transport)
  * uninitialized header caused by UMEM frame pool churn.
  */
 static uint8_t *xdp_get_tx_buffer(ec_transport_t *transport)
+        ECRT_RT_ATTR;
+static uint8_t *xdp_get_tx_buffer(ec_transport_t *transport)
 {
     ec_transport_xdp_t *xdp = transport->priv;
 
@@ -385,6 +387,12 @@ static uint8_t *xdp_get_tx_buffer(ec_transport_t *transport)
  * transmitted.  EtherCAT slaves forwarded those frames back, and the NIC's
  * MAC filter rejected or counted them as alignment errors.
  */
+/* TRUSTED: the TX ring kick is sendto(MSG_DONTWAIT) and the ring
+ * operations are lock-free; the function-effects analysis cannot
+ * see that the syscall does not block. */
+static int xdp_send(ec_transport_t *transport, size_t size)
+        ECRT_RT_ATTR;
+ECRT_RT_TRUSTED_BEGIN
 static int xdp_send(ec_transport_t *transport, size_t size)
 {
     ec_transport_xdp_t *xdp = transport->priv;
@@ -432,6 +440,7 @@ static int xdp_send(ec_transport_t *transport, size_t size)
 
     return 0;
 }
+ECRT_RT_TRUSTED_END
 
 /****************************************************************************/
 
@@ -474,6 +483,12 @@ static void xdp_drain_deferred_refills(ec_transport_xdp_t *xdp)
 /**
  * Receive frame (non-blocking).
  */
+/* TRUSTED: ring peek/release are lock-free and the optional wakeup
+ * is recvfrom(MSG_DONTWAIT); the function-effects analysis cannot
+ * see that the syscall does not block. */
+static int xdp_receive(ec_transport_t *transport, uint8_t *buffer,
+        size_t max_size) ECRT_RT_ATTR;
+ECRT_RT_TRUSTED_BEGIN
 static int xdp_receive(ec_transport_t *transport, uint8_t *buffer, size_t max_size)
 {
     ec_transport_xdp_t *xdp = transport->priv;
@@ -533,6 +548,7 @@ static int xdp_receive(ec_transport_t *transport, uint8_t *buffer, size_t max_si
 
     return (int)len;
 }
+ECRT_RT_TRUSTED_END
 
 /****************************************************************************/
 

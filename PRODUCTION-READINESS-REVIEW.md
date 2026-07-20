@@ -335,6 +335,24 @@ currently documents a pipeline that never runs here.
    (`-Wunused-parameter` 52, `-Wtype-limits` 18, `-Wstringop-truncation` 15
    — all NUL-safe on inspection, `-Wsign-compare` 14) → F2/P1.
 
+**Transitive RT implementation verification (§2 mechanism 1) — done**:
+the internal cyclic call tree carries `EC_RT_ATTR` (globals.h; empty on
+GCC/kernel), the cyclic transport ops function-pointer types carry
+`ECRT_RT_ATTR` (ectp.h — custom transports are forced honest), and the
+deliberate nonblocking-by-flag leaves are `EC_RT_TRUSTED`-wrapped with
+justification comments (sendto/recvfrom MSG_DONTWAIT in raw/XDP,
+clock_gettime, sched_getcpu, time(), the log ring, the debug hexdump —
+audit with `grep -rn RT_TRUSTED master/ transport/`).
+`script/rt-effects-check.sh` §4 compiles the ten RT translation units
+with the annotated header injected and clang's function-effects
+analysis as an error: ANY blocking call added to the cyclic path now
+fails CI. Mutation-verified (an injected `usleep` in
+`ecrt_domain_process` fails the check naming the function). The XDP TU
+is checked when libxdp headers are present (CI installs them). This
+closes LinuxCNC's "EtherLab master is an unverified trusted leaf"
+checklist gap once the submodule is bumped. Remaining optional: RTSan
+runtime job.
+
 **P1 — production hygiene**
 4. ~~CI~~ — **done**: `.github/workflows/ci.yml` with build-uspace
    (gcc/clang × ±libxdp, `-Wall -Wextra`, unit tests), sanitize (ASan+UBSan),

@@ -80,7 +80,8 @@ void ec_master_thread_stop(ec_master_t *);
 void ec_master_inject_external_datagrams(ec_master_t *);
 ec_datagram_t *ec_master_get_external_datagram(ec_master_t *);
 void ec_master_exec_slave_fsms(ec_master_t *);
-int ec_master_send_datagrams(ec_master_t *, ec_device_index_t);
+int ec_master_send_datagrams(ec_master_t *, ec_device_index_t)
+        EC_RT_ATTR;
 int ec_master_calc_topology_rec(ec_master_t *, ec_slave_t *, unsigned int *);
 void ec_master_calc_topology(ec_master_t *);
 void ec_master_calc_transmission_delays(ec_master_t *);
@@ -91,7 +92,7 @@ static int ec_master_eoe_thread(void *);
 #endif
 void ec_master_find_dc_ref_clock(ec_master_t *);
 void ec_master_clear_device_stats(ec_master_t *);
-void ec_master_update_device_stats(ec_master_t *);
+void ec_master_update_device_stats(ec_master_t *) EC_RT_ATTR;
 static void sc_reset_task_kicker(ec_irq_work_t *work);
 static void sc_reset_task(ec_work_t *work);
 

@@ -52,4 +52,31 @@
 
 /*****************************************************************************/
 
+/** Realtime function-effect annotation for the INTERNAL cyclic call
+ * tree (the public API twin is ECRT_RT_ATTR in ecrt.h — keep the
+ * version gates in sync). Backed by clang's function-effects analysis
+ * (clang >= 20, opt-in via -Wfunction-effects, see
+ * script/rt-effects-check.sh); expands to nothing on GCC and older
+ * clang. EC_RT_TRUSTED_BEGIN/END wrap a definition that is declared
+ * EC_RT_ATTR but cannot be verified by the compiler (e.g. a
+ * nonblocking-by-flag syscall); every use is a trust boundary of the
+ * RT path and must carry a justification comment. */
+#if defined(__clang__) && (__clang_major__ >= 20) && defined(__has_attribute)
+#if __has_attribute(nonblocking)
+#define EC_RT_ATTR __attribute__((nonblocking))
+#define EC_RT_TRUSTED_BEGIN \
+    _Pragma("clang diagnostic push") \
+    _Pragma("clang diagnostic ignored \"-Wfunction-effects\"")
+#define EC_RT_TRUSTED_END \
+    _Pragma("clang diagnostic pop")
+#endif
+#endif
+#ifndef EC_RT_ATTR
+#define EC_RT_ATTR
+#define EC_RT_TRUSTED_BEGIN
+#define EC_RT_TRUSTED_END
+#endif
+
+/*****************************************************************************/
+
 #endif

@@ -78,9 +78,9 @@ typedef void (*ec_log_cb_t)(int level, const char *fmt, va_list ap);
 /****************************************************************************/
 
 void ec_log(int level, const char *fmt, ...)
-    __attribute__((format(printf, 2, 3)));
+    __attribute__((format(printf, 2, 3))) EC_RT_ATTR;
 
-int ec_log_ratelimit(void);
+int ec_log_ratelimit(void) EC_RT_ATTR;
 
 void ec_log_set_callback(ec_log_cb_t cb);
 

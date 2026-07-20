@@ -171,6 +171,8 @@ static void raw_close(ec_transport_t *transport)
  * Get TX buffer pointer.
  */
 static uint8_t *raw_get_tx_buffer(ec_transport_t *transport)
+        ECRT_RT_ATTR;
+static uint8_t *raw_get_tx_buffer(ec_transport_t *transport)
 {
     return transport->tx_buffer;
 }
@@ -180,6 +182,12 @@ static uint8_t *raw_get_tx_buffer(ec_transport_t *transport)
 /**
  * Send frame.
  */
+/* TRUSTED: sendto() on a socket opened with O_NONBLOCK is a
+ * nonblocking syscall; the function-effects analysis cannot see
+ * that. */
+static int raw_send(ec_transport_t *transport, size_t size)
+        ECRT_RT_ATTR;
+ECRT_RT_TRUSTED_BEGIN
 static int raw_send(ec_transport_t *transport, size_t size)
 {
     ec_transport_raw_t *raw = transport->priv;
@@ -207,12 +215,18 @@ static int raw_send(ec_transport_t *transport, size_t size)
 
     return 0;
 }
+ECRT_RT_TRUSTED_END
 
 /****************************************************************************/
 
 /**
  * Receive frame (non-blocking).
  */
+/* TRUSTED: recvfrom(MSG_DONTWAIT) is a nonblocking syscall; the
+ * function-effects analysis cannot see that. */
+static int raw_receive(ec_transport_t *transport, uint8_t *buffer,
+        size_t max_size) ECRT_RT_ATTR;
+ECRT_RT_TRUSTED_BEGIN
 static int raw_receive(ec_transport_t *transport, uint8_t *buffer, size_t max_size)
 {
     ec_transport_raw_t *raw = transport->priv;
@@ -245,6 +259,7 @@ static int raw_receive(ec_transport_t *transport, uint8_t *buffer, size_t max_si
         return (int)ret;
     }
 }
+ECRT_RT_TRUSTED_END
 
 /****************************************************************************/
 

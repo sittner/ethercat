@@ -188,6 +188,13 @@ static void ec_log_ring_put(int level, const char *fmt, va_list args)
     sem_post(&log_sem);
 }
 
+/* TRUSTED: with an application callback the nonblocking contract is
+ * delegated to the application (documented at ecrt_lib_init()); without
+ * one, RT-context messages go through the lock-free ring above
+ * (vsnprintf + atomics + sem_post, all nonblocking); the mutex-guarded
+ * direct path is only reachable outside the drainer's lifetime, where
+ * no RT context exists. */
+EC_RT_TRUSTED_BEGIN
 void ec_log(int level, const char *fmt, ...)
 {
     va_list args;
@@ -209,6 +216,7 @@ void ec_log(int level, const char *fmt, ...)
 
     va_end(args);
 }
+EC_RT_TRUSTED_END
 
 static void ec_master_nanosleep(const unsigned long nsecs) {
     struct timespec ts = {
@@ -232,12 +240,20 @@ void ec_master_operation_thread_schedule(ec_master_t *master) {
     ec_master_nanosleep(master->send_interval * 1000);
 }
 
+/* TRUSTED: clock_gettime(CLOCK_MONOTONIC) is a nonblocking vDSO call;
+ * the function-effects analysis cannot see that. */
+EC_RT_TRUSTED_BEGIN
 ec_time_t ec_current_time(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);  // or CLOCK_REALTIME for wall-clock time
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
 }
+EC_RT_TRUSTED_END
 
+/* TRUSTED: the rate-limiter state is a deliberate static local and
+ * time() is a nonblocking vDSO call; the function-effects analysis
+ * cannot see either. */
+EC_RT_TRUSTED_BEGIN
 int ec_log_ratelimit(void)
 {
     static time_t last_time = 0;
@@ -249,3 +265,4 @@ int ec_log_ratelimit(void)
     }
     return 0;  /* Rate limited */
 }
+EC_RT_TRUSTED_END

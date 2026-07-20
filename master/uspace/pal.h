@@ -47,9 +47,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "pal_misc.h"
-
+/* master_globals.h (via globals.h) provides the EC_RT_ATTR /
+ * EC_PAL_SHARED macros used by the PAL headers below. */
 #include "../master_globals.h"
+
+#include "pal_misc.h"
 #include "pal_sem.h"
 #include "pal_mtx.h"
 #include "pal_queue.h"

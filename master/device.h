@@ -114,16 +114,16 @@ void ec_device_clear(ec_device_t *);
 int ec_device_open(ec_device_t *);
 int ec_device_close(ec_device_t *);
 
-void ec_device_poll(ec_device_t *);
-uint8_t *ec_device_tx_data(ec_device_t *);
-void ec_device_send(ec_device_t *, size_t);
-void ec_device_clear_stats(ec_device_t *);
-void ec_device_update_stats(ec_device_t *);
+void ec_device_poll(ec_device_t *) EC_RT_ATTR;
+uint8_t *ec_device_tx_data(ec_device_t *) EC_RT_ATTR;
+void ec_device_send(ec_device_t *, size_t) EC_RT_ATTR;
+void ec_device_clear_stats(ec_device_t *) EC_RT_ATTR;
+void ec_device_update_stats(ec_device_t *) EC_RT_ATTR;
 void ec_device_init_common(ec_device_t *, ec_master_t *);
 void ec_device_clear_common(ec_device_t *);
-void ec_device_account_tx(ec_device_t *, size_t);
-void ec_device_account_tx_error(ec_device_t *);
-void ec_device_account_rx(ec_device_t *, size_t);
+void ec_device_account_tx(ec_device_t *, size_t) EC_RT_ATTR;
+void ec_device_account_tx_error(ec_device_t *) EC_RT_ATTR;
+void ec_device_account_rx(ec_device_t *, size_t) EC_RT_ATTR;
 
 #ifdef EC_DEBUG_RING
 void ec_device_debug_ring_append(ec_device_t *, ec_debug_frame_dir_t,

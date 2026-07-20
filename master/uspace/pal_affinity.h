@@ -32,6 +32,10 @@
 
 /** Record RT caller's CPU for IRQ affinity tracking.
  *  Guarded by master->active (set only after ecrt_master_activate). */
+/* TRUSTED: sched_getcpu() is a nonblocking vDSO call; the
+ * function-effects analysis cannot see that. */
+static inline void ec_pal_record_rt_cpu(ec_master_t *master) EC_RT_ATTR;
+EC_RT_TRUSTED_BEGIN
 static inline void ec_pal_record_rt_cpu(ec_master_t *master)
 {
     if (!master->active)
@@ -39,6 +43,7 @@ static inline void ec_pal_record_rt_cpu(ec_master_t *master)
     atomic_store_explicit(&master->pal.rt_cpu, sched_getcpu(),
                           memory_order_relaxed);
 }
+EC_RT_TRUSTED_END
 
 /** Periodically refresh the devices' link state from the transports
  * (1 Hz, implemented in device_uspace.c). Runs in the master threads:

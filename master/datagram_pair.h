@@ -56,7 +56,8 @@ int ec_datagram_pair_init(ec_datagram_pair_t *, ec_domain_t *, uint32_t,
         uint8_t *, size_t, const unsigned int []);
 void ec_datagram_pair_clear(ec_datagram_pair_t *);
 
-uint16_t ec_datagram_pair_process(ec_datagram_pair_t *, uint16_t[]);
+uint16_t ec_datagram_pair_process(ec_datagram_pair_t *, uint16_t[])
+        EC_RT_ATTR;
 
 /****************************************************************************/
 

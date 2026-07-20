@@ -447,6 +447,8 @@ static void ccat_close(ec_transport_t *transport)
  * The actual copy to CCAT hardware happens in send().
  */
 static uint8_t *ccat_get_tx_buffer(ec_transport_t *transport)
+        ECRT_RT_ATTR;
+static uint8_t *ccat_get_tx_buffer(ec_transport_t *transport)
 {
     return transport->tx_buffer;
 }
@@ -459,6 +461,8 @@ static uint8_t *ccat_get_tx_buffer(ec_transport_t *transport)
  * Copies frame data into the current TX slot in CCAT memory-mapped region,
  * then kicks the TX FIFO register.
  */
+static int ccat_send(ec_transport_t *transport, size_t size)
+        ECRT_RT_ATTR;
 static int ccat_send(ec_transport_t *transport, size_t size)
 {
     ec_transport_ccat_t *ccat = transport->priv;
@@ -513,6 +517,8 @@ static int ccat_send(ec_transport_t *transport, size_t size)
  * Returns number of bytes received, 0 if no frame available, or negative
  * error code.
  */
+static int ccat_receive(ec_transport_t *transport, uint8_t *buffer,
+        size_t max_size) ECRT_RT_ATTR;
 static int ccat_receive(ec_transport_t *transport, uint8_t *buffer,
                         size_t max_size)
 {

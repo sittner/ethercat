@@ -96,6 +96,9 @@
 #define EC_PAL_SHARED
 #endif
 
+/* The EC_RT_ATTR / EC_RT_TRUSTED_* realtime annotation macros live in
+ * globals.h so the PAL headers can use them as well. */
+
 /** Size of a sync manager configuration page. */
 #define EC_SYNC_PAGE_SIZE 8
 
@@ -220,7 +223,7 @@ ssize_t ec_mac_print(const uint8_t *, char *);
 int ec_mac_is_zero(const uint8_t *);
 int ec_mac_is_broadcast(const uint8_t *);
 int ec_mac_parse(uint8_t *, const char *, int);
-void ec_print_data(const uint8_t *, size_t);
+void ec_print_data(const uint8_t *, size_t) EC_RT_ATTR;
 void ec_print_data_diff(const uint8_t *, const uint8_t *, size_t);
 size_t ec_state_string(uint8_t, char *, uint8_t);
 

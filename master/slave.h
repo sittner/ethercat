@@ -237,7 +237,7 @@ void ec_slave_clear(ec_slave_t *);
 
 void ec_slave_clear_sync_managers(ec_slave_t *);
 
-void ec_slave_request_state(ec_slave_t *, ec_slave_state_t);
+void ec_slave_request_state(ec_slave_t *, ec_slave_state_t) EC_RT_ATTR;
 void ec_slave_set_state(ec_slave_t *, ec_slave_state_t);
 
 // SII categories

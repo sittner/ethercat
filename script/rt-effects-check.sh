@@ -16,10 +16,15 @@
 #   rt_override.c  ECRT_RT_ATTR overridden before including ecrt.h
 #                  (the framework hand-over hook) — must compile clean
 #
-# Verifying the master's *implementation* transitively (annotating the
-# internal cyclic call tree and trusted-wrapping the deliberate
-# nonblocking syscalls) is a separate work item; see
-# PRODUCTION-READINESS-REVIEW.md section 2.
+# In addition, the master's IMPLEMENTATION is verified transitively:
+# the internal cyclic call tree carries EC_RT_ATTR (globals.h), the
+# cyclic transport ops types carry ECRT_RT_ATTR (ectp.h), and the
+# deliberate nonblocking-by-flag syscalls (sendto/recvfrom with
+# MSG_DONTWAIT, clock_gettime, sched_getcpu, the log ring) are wrapped
+# in EC_RT_TRUSTED_BEGIN/END with justification comments — audit them
+# with: grep -rn RT_TRUSTED master/ transport/. Each RT translation
+# unit below is compiled with the annotated public header injected, so
+# ANY blocking call added to the cyclic path fails this check.
 #
 # Usage: script/rt-effects-check.sh [builddir]
 # Needs a configured tree (reads the generated include/ecrt.h from the
@@ -84,6 +89,43 @@ if "$CLANG" $CFLAGS "$TOP/tests/rt-effects/rt_override.c"; then
 else
     echo "rt-effects-check: FAIL rt_override.c (override did not win)" >&2
     fail=1
+fi
+
+# 4. Implementation verification: compile the RT translation units with
+#    the annotated public header injected. The analysis then verifies
+#    the definitions of every rt_safe function and everything they call.
+IMPL_CFLAGS="-std=gnu11 -fsyntax-only -Wfunction-effects \
+    -Werror=function-effects \
+    -DEC_USPACE_MASTER -D_GNU_SOURCE -DHAVE_CONFIG_H \
+    -I$BUILD -I$TOP/master/uspace -I$TOP/master \
+    -I$BUILD/include -I$TOP/include \
+    -include $BUILD/include/ecrt.h"
+
+IMPL_TUS="master/master.c master/domain.c master/device.c \
+    master/datagram.c master/utils.c \
+    master/uspace/device_uspace.c master/uspace/pal.c \
+    transport/transport.c transport/transport_raw.c \
+    transport/transport_ccat.c"
+
+for tu in $IMPL_TUS; do
+    if "$CLANG" $IMPL_CFLAGS "$TOP/$tu"; then
+        echo "rt-effects-check: PASS $tu"
+    else
+        echo "rt-effects-check: FAIL $tu (blocking call in the RT path?)" >&2
+        fail=1
+    fi
+done
+
+# The XDP transport needs the libxdp headers; skip with a note if absent.
+if echo '#include <xdp/xsk.h>' | "$CLANG" -fsyntax-only -x c - 2>/dev/null; then
+    if "$CLANG" $IMPL_CFLAGS -DHAVE_XDP "$TOP/transport/transport_xdp.c"; then
+        echo "rt-effects-check: PASS transport/transport_xdp.c"
+    else
+        echo "rt-effects-check: FAIL transport/transport_xdp.c" >&2
+        fail=1
+    fi
+else
+    echo "rt-effects-check: SKIP transport/transport_xdp.c (no libxdp headers)"
 fi
 
 if [ "$fail" -ne 0 ]; then
