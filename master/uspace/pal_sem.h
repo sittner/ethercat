@@ -30,6 +30,9 @@
 #define __EC_USPACE_PAL_SEM_H__
 
 #include <assert.h>
+#include <stdlib.h>
+
+#include "pal_misc.h"
 
 /* Semaphore type.
  *
@@ -45,22 +48,37 @@
  *
  * PTHREAD_MUTEX_ERRORCHECK is the safety net for the mutex-style
  * contract: an unlock from a non-owning thread (i.e. semaphore-style
- * signaling that the audit missed) fails with EPERM and trips the
- * assert instead of silently corrupting the lock state.
+ * signaling that the audit missed) fails with EPERM and aborts instead
+ * of silently corrupting the lock state. The checks are independent of
+ * NDEBUG: continuing without the lock held would mean silent state
+ * corruption in a fieldbus master, so failing loudly wins.
  */
 typedef pthread_mutex_t ec_semaphore_t;
 
 static inline void ec_sem_init(ec_semaphore_t *sem, int val)
 {
     pthread_mutexattr_t attr;
+    int ret;
 
     assert(val == 1); /* mutex-style only: initialized unlocked */
     (void) val;
 
     pthread_mutexattr_init(&attr);
-    pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT);
+    ret = pthread_mutexattr_setprotocol(&attr, PTHREAD_PRIO_INHERIT);
+    if (ret) {
+        /* Without PI the mutex still works, but the priority-inversion
+         * protection this type exists for is gone — say so. */
+        ec_log(EC_LOG_WARNING,
+                "PTHREAD_PRIO_INHERIT unavailable (%d); mutexes degrade"
+                " to non-PI — unbounded priority inversion possible\n",
+                ret);
+    }
     pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ERRORCHECK);
-    pthread_mutex_init(sem, &attr);
+    ret = pthread_mutex_init(sem, &attr);
+    if (ret) {
+        ec_log(EC_LOG_CRIT, "pthread_mutex_init() failed (%d)\n", ret);
+        abort();
+    }
     pthread_mutexattr_destroy(&attr);
 }
 
@@ -68,8 +86,10 @@ static inline void ec_sem_down(ec_semaphore_t *sem)
 {
     int ret = pthread_mutex_lock(sem);
 
-    assert(ret == 0); /* EDEADLK = relock attempt by the owner */
-    (void) ret;
+    if (ret) { /* EDEADLK = relock attempt by the owner */
+        ec_log(EC_LOG_CRIT, "mutex lock failed (%d)\n", ret);
+        abort();
+    }
 }
 
 /**
@@ -111,8 +131,10 @@ static inline void ec_sem_up(ec_semaphore_t *sem)
 {
     int ret = pthread_mutex_unlock(sem);
 
-    assert(ret == 0); /* EPERM = unlock by a non-owning thread */
-    (void) ret;
+    if (ret) { /* EPERM = unlock by a non-owning thread */
+        ec_log(EC_LOG_CRIT, "mutex unlock failed (%d)\n", ret);
+        abort();
+    }
 }
 EC_RT_TRUSTED_END
 
