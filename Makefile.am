@@ -39,7 +39,9 @@ endif
 # ENABLE_USPACE_MASTER and ENABLE_KERNEL are mutually exclusive
 # (configure.ac forces enablekernel=0 when --enable-uspace-master is set)
 if ENABLE_USPACE_MASTER
-SUBDIRS += master
+SUBDIRS += \
+	master \
+	tests
 endif
 
 if BUILD_TOOL
