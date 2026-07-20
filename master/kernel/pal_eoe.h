@@ -23,6 +23,12 @@ void ec_eoe_netdev_destroy(struct ec_eoe *eoe);
 /* TX polling - no-op in kernel (uses push model via ndo_start_xmit) */
 static inline void ec_eoe_poll_tx(struct ec_eoe *eoe) {}
 
+/* Frame descriptor free — kernel: plain heap free, matching the
+ * ec_alloc_atomic() in ec_eoedev_tx(). Userspace pools descriptors. */
+static inline void ec_eoe_frame_free(void *frame) {
+    ec_free(frame);
+}
+
 /* Net_device queue operations */
 static inline void ec_eoe_netdev_tx_lock(ec_eoe_netdev_t dev) {
     netif_tx_lock_bh(dev);

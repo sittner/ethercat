@@ -145,7 +145,7 @@ void ec_eoe_clear(ec_eoe_t *eoe /**< EoE handler */)
 
     if (eoe->tx_frame) {
         ec_eoe_buf_free(eoe->tx_frame->skb);
-        ec_free(eoe->tx_frame);
+        ec_eoe_frame_free(eoe->tx_frame);
     }
 
     if (eoe->rx_skb)
@@ -175,7 +175,7 @@ void ec_eoe_flush(ec_eoe_t *eoe /**< EoE handler */)
     list_for_each_entry_safe(frame, next, &tx_queue, queue) {
         list_del(&frame->queue);
         ec_eoe_buf_free(frame->skb);
-        ec_free(frame);
+        ec_eoe_frame_free(frame);
     }
 }
 
@@ -614,7 +614,7 @@ void ec_eoe_state_tx_start(ec_eoe_t *eoe /**< EoE handler */)
 
     if (ec_eoe_send(eoe)) {
         ec_eoe_buf_free(eoe->tx_frame->skb);
-        ec_free(eoe->tx_frame);
+        ec_eoe_frame_free(eoe->tx_frame);
         eoe->tx_frame = NULL;
         eoe->stats.tx_errors++;
         eoe->state = ec_eoe_state_rx_start;
@@ -681,14 +681,14 @@ void ec_eoe_state_tx_sent(ec_eoe_t *eoe /**< EoE handler */)
         eoe->stats.tx_bytes += eoe->tx_frame->skb->len;
         eoe->tx_counter += eoe->tx_frame->skb->len;
         ec_eoe_buf_free(eoe->tx_frame->skb);
-        ec_free(eoe->tx_frame);
+        ec_eoe_frame_free(eoe->tx_frame);
         eoe->tx_frame = NULL;
         eoe->state = ec_eoe_state_rx_start;
     }
     else { // send next fragment
         if (ec_eoe_send(eoe)) {
             ec_eoe_buf_free(eoe->tx_frame->skb);
-            ec_free(eoe->tx_frame);
+            ec_eoe_frame_free(eoe->tx_frame);
             eoe->tx_frame = NULL;
             eoe->stats.tx_errors++;
 #if EOE_DEBUG_LEVEL >= 1
