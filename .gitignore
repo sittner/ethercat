@@ -54,3 +54,10 @@ master/uspace/ec_master
 master/uspace/libethercat.la
 master/uspace/libethercat.pc
 master/globals.h.gch
+tests/test-suite.log
+tests/*.log
+tests/*.trs
+tests/test_datagram
+tests/test_emerg_ring
+tests/test_pdo_print
+tests/test_shared
