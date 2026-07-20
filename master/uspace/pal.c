@@ -72,6 +72,15 @@ static atomic_ulong log_dropped;
 static sem_t log_sem;
 static pthread_t log_drainer;
 static atomic_int log_ring_active; /**< 0 = off, 1 = running, 2 = stopping */
+static atomic_int log_ring_users; /**< Producers currently inside the
+                                    ring path; ec_pal_log_stop() waits
+                                    for this to drop to zero before
+                                    destroying log_sem. */
+
+/** Stack size for the drainer: it only formats/writes small strings,
+ * but keep it in line with the other library threads so the mlockall()
+ * footprint stays predictable. */
+#define EC_LOG_DRAINER_STACK_SIZE (256 * 1024)
 
 static void ec_log_print_direct(int level, const char *msg)
 {
@@ -83,6 +92,36 @@ static void ec_log_print_direct(int level, const char *msg)
     fflush(stderr);
 }
 
+/** Print all ready slots and the drop count. Called by the drainer and
+ * once more by ec_pal_log_stop() for messages racing the shutdown. */
+static void ec_log_ring_drain(void)
+{
+    for (;;) {
+        unsigned int t = atomic_load_explicit(&log_tail,
+                memory_order_relaxed);
+        ec_log_slot_t *slot = &log_ring[t & (EC_LOG_RING_SIZE - 1)];
+
+        if (atomic_load_explicit(&slot->ready, memory_order_acquire)
+                != 1) {
+            break; /* next slot not (yet) ready */
+        }
+        ec_log_print_direct(slot->level, slot->msg);
+        atomic_store_explicit(&slot->ready, 0, memory_order_release);
+        atomic_store_explicit(&log_tail, t + 1, memory_order_release);
+    }
+
+    {
+        unsigned long dropped =
+            atomic_exchange_explicit(&log_dropped, 0,
+                    memory_order_relaxed);
+        if (dropped) {
+            fprintf(stderr, "[WARN] EtherCAT: %lu log message(s)"
+                    " dropped (ring full)\n", dropped);
+            fflush(stderr);
+        }
+    }
+}
+
 static void *ec_log_drainer_fn(void *arg)
 {
     (void) arg;
@@ -90,30 +129,7 @@ static void *ec_log_drainer_fn(void *arg)
     for (;;) {
         sem_wait(&log_sem);
 
-        for (;;) {
-            unsigned int t = atomic_load_explicit(&log_tail,
-                    memory_order_relaxed);
-            ec_log_slot_t *slot = &log_ring[t & (EC_LOG_RING_SIZE - 1)];
-
-            if (atomic_load_explicit(&slot->ready, memory_order_acquire)
-                    != 1) {
-                break; /* next slot not (yet) ready */
-            }
-            ec_log_print_direct(slot->level, slot->msg);
-            atomic_store_explicit(&slot->ready, 0, memory_order_release);
-            atomic_store_explicit(&log_tail, t + 1, memory_order_release);
-        }
-
-        {
-            unsigned long dropped =
-                atomic_exchange_explicit(&log_dropped, 0,
-                        memory_order_relaxed);
-            if (dropped) {
-                fprintf(stderr, "[WARN] EtherCAT: %lu log message(s)"
-                        " dropped (ring full)\n", dropped);
-                fflush(stderr);
-            }
-        }
+        ec_log_ring_drain();
 
         if (atomic_load_explicit(&log_ring_active, memory_order_acquire)
                 == 2) {
@@ -139,7 +155,21 @@ int ec_pal_log_start(void)
     }
 
     atomic_store(&log_ring_active, 1);
-    ret = pthread_create(&log_drainer, NULL, ec_log_drainer_fn, NULL);
+    {
+        /* Explicit attributes like every other library thread: small
+         * stack, and never inherit a (possibly realtime) policy from
+         * the caller of ecrt_lib_init(). */
+        pthread_attr_t attr;
+        struct sched_param param = { .sched_priority = 0 };
+
+        pthread_attr_init(&attr);
+        pthread_attr_setstacksize(&attr, EC_LOG_DRAINER_STACK_SIZE);
+        pthread_attr_setinheritsched(&attr, PTHREAD_EXPLICIT_SCHED);
+        pthread_attr_setschedpolicy(&attr, SCHED_OTHER);
+        pthread_attr_setschedparam(&attr, &param);
+        ret = pthread_create(&log_drainer, &attr, ec_log_drainer_fn, NULL);
+        pthread_attr_destroy(&attr);
+    }
     if (ret) {
         atomic_store(&log_ring_active, 0);
         sem_destroy(&log_sem);
@@ -153,9 +183,19 @@ void ec_pal_log_stop(void)
     if (atomic_load(&log_ring_active) != 1) {
         return;
     }
-    atomic_store_explicit(&log_ring_active, 2, memory_order_release);
+    atomic_store(&log_ring_active, 2);
     sem_post(&log_sem); /* final drain + exit */
     pthread_join(log_drainer, NULL);
+
+    /* A producer that saw log_ring_active == 1 may still be inside
+     * ec_log_ring_put(); wait it out before destroying the semaphore
+     * (seq_cst ordering of the users counter vs. the active flag makes
+     * this reliable), then print anything the drainer missed. */
+    while (atomic_load(&log_ring_users)) {
+        sched_yield();
+    }
+    ec_log_ring_drain();
+
     atomic_store(&log_ring_active, 0);
     sem_destroy(&log_sem);
 }
@@ -202,16 +242,27 @@ void ec_log(int level, const char *fmt, ...)
 
     if (ec_log_callback) {
         ec_log_callback(level, fmt, args);
-    } else if (atomic_load_explicit(&log_ring_active, memory_order_acquire)
-            == 1) {
-        ec_log_ring_put(level, fmt, args);
     } else {
-        /* Before ecrt_lib_init() / after cleanup: direct stderr. */
-        char msg[EC_LOG_MSG_SIZE];
-        vsnprintf(msg, sizeof(msg), fmt, args);
-        pthread_mutex_lock(&ec_log_lock);
-        ec_log_print_direct(level, msg);
-        pthread_mutex_unlock(&ec_log_lock);
+        int ringed = 0;
+
+        /* The users counter brackets the active check and the ring
+         * access so ec_pal_log_stop() can wait for in-flight producers
+         * before destroying the semaphore (both seq_cst). */
+        atomic_fetch_add(&log_ring_users, 1);
+        if (atomic_load(&log_ring_active) == 1) {
+            ec_log_ring_put(level, fmt, args);
+            ringed = 1;
+        }
+        atomic_fetch_sub(&log_ring_users, 1);
+
+        if (!ringed) {
+            /* Before ecrt_lib_init() / after cleanup: direct stderr. */
+            char msg[EC_LOG_MSG_SIZE];
+            vsnprintf(msg, sizeof(msg), fmt, args);
+            pthread_mutex_lock(&ec_log_lock);
+            ec_log_print_direct(level, msg);
+            pthread_mutex_unlock(&ec_log_lock);
+        }
     }
 
     va_end(args);
