@@ -160,7 +160,8 @@ noinst_HEADERS = \
 	pal_sem.h \
 	pal_thread.h \
 	pal_work.h \
-	$(top_srcdir)/transport/irq_pin.h
+	$(top_srcdir)/transport/irq_pin.h \
+	$(top_srcdir)/transport/transport_sim.h
 
 EXTRA_DIST = libethercat.map
 
