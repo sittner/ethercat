@@ -1313,6 +1313,29 @@ static int sim_get_link_state(ec_transport_t *transport)
     sim_bus_t *bus = transport->priv;
     int up;
 
+    /* For a file-driven (registry) bus, a companion "<interface>.link"
+     * control file — if present — overrides the link state: content "0"
+     * means link down, anything else means up. This lets an integration
+     * test inject link loss / recovery into a running master. It is done
+     * here (not in send/receive) because get_link_state is off the RT
+     * cyclic path and only polled periodically, like raw_get_link_state's
+     * ioctl. Injected buses (sim_bus_create) use sim_bus_set_link() and
+     * skip this. */
+    if (bus->transport_owned && transport->interface[0]) {
+        char linkpath[80];
+        if (snprintf(linkpath, sizeof(linkpath), "%s.link",
+                    transport->interface) < (int) sizeof(linkpath)) {
+            FILE *f = fopen(linkpath, "r");
+            if (f) {
+                int c = fgetc(f);
+                fclose(f);
+                pthread_mutex_lock(&bus->lock);
+                bus->link_up = (c != '0');
+                pthread_mutex_unlock(&bus->lock);
+            }
+        }
+    }
+
     pthread_mutex_lock(&bus->lock);
     up = bus->link_up;
     bus->link_polls++;
