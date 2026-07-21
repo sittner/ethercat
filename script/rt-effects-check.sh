@@ -107,7 +107,7 @@ IMPL_TUS="master/master.c master/domain.c master/device.c \
     master/datagram.c master/utils.c \
     master/uspace/device_uspace.c master/uspace/pal.c \
     transport/transport.c transport/transport_raw.c \
-    transport/transport_ccat.c"
+    transport/transport_ccat.c transport/transport_sim.c"
 
 for tu in $IMPL_TUS; do
     if "$CLANG" $IMPL_CFLAGS "$TOP/$tu"; then

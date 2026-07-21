@@ -69,6 +69,7 @@ tests/test_sim_link
 tests/test_sim_dc
 tests/test_sim_multi
 tests/test_sim_sdo_info
+tests/test_sim_transport_file
 tests/test_tool_ipc
 tests/test_rt_pagefault
 master/uspace/ethercat-config.cmake

@@ -75,6 +75,7 @@ libethercat_la_SOURCES = \
 	$(top_srcdir)/transport/transport.c \
 	$(top_srcdir)/transport/transport_raw.c \
 	$(top_srcdir)/transport/transport_ccat.c \
+	$(top_srcdir)/transport/transport_sim.c \
 	$(top_srcdir)/transport/irq_pin.c
 
 if HAVE_XDP
@@ -159,7 +160,8 @@ noinst_HEADERS = \
 	pal_sem.h \
 	pal_thread.h \
 	pal_work.h \
-	$(top_srcdir)/transport/irq_pin.h
+	$(top_srcdir)/transport/irq_pin.h \
+	$(top_srcdir)/transport/transport_sim.h
 
 EXTRA_DIST = libethercat.map
 
