@@ -40,6 +40,7 @@ extern const ec_transport_ops_t ec_transport_xdp_skb_ops;
 extern const ec_transport_ops_t ec_transport_xdp_native_ops;
 #endif
 extern const ec_transport_ops_t ec_transport_ccat_ops;
+extern const ec_transport_ops_t ec_transport_sim_ops;
 
 /****************************************************************************/
 
@@ -54,6 +55,7 @@ static const struct {
     { EC_TRANSPORT_XDP_NATIVE, &ec_transport_xdp_native_ops },
 #endif
     { EC_TRANSPORT_CCAT,       &ec_transport_ccat_ops },
+    { EC_TRANSPORT_SIM,        &ec_transport_sim_ops },
     { 0, NULL }  /* End of table marker */
 };
 

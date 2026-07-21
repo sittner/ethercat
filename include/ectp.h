@@ -46,6 +46,8 @@ enum ec_transport_type {
     EC_TRANSPORT_XDP_SKB,   /**< AF_XDP Generic SKB mode (universal compatibility) */
     EC_TRANSPORT_XDP_NATIVE,   /**< AF_XDP Native driver mode with copy */
     EC_TRANSPORT_CCAT,      /**< Beckhoff CCAT EIM direct PCI access (no kernel module) */
+    EC_TRANSPORT_SIM,       /**< In-process simulated bus from a description file
+                              (testing / dry-run; not for hard-realtime production) */
 };
 
 typedef enum ec_transport_type ec_transport_type_t;
@@ -122,7 +124,8 @@ struct ec_transport_ops {
 struct ec_transport {
     const ec_transport_ops_t *ops;  /**< Operations table */
     void *priv;                     /**< Private transport data */
-    char interface[16];             /**< Interface name */
+    char interface[64];             /**< Interface name (NIC) or, for the
+                                      sim transport, the bus-description file path */
     uint8_t tx_buffer[EC_TRANSPORT_MAX_FRAME_SIZE];  /**< TX buffer */
 };
 
