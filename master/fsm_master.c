@@ -1552,7 +1552,7 @@ void ec_fsm_master_state_write_sii(
     }
 
     fsm->sii_index++;
-    if (fsm->sii_index < request->nwords) {
+    if ((size_t) fsm->sii_index < request->nwords) {
         ec_fsm_sii_write(&fsm->fsm_sii, slave,
                 request->offset + fsm->sii_index,
                 request->words + fsm->sii_index,

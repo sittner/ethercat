@@ -38,8 +38,23 @@ jobs:
       - name: Configure
         run: |
           ./bootstrap
+          # -Werror keeps the tree warning-free so a genuinely new warning
+          # (torn size check, aliasing, ...) fails the build instead of
+          # drowning in known noise. Every fixable class is fixed in the
+          # source; only these two are suppressed, and each on its own merit
+          # (not to spare a diff) -- the warning is noise or the code is
+          # intentionally correct, with no clean fix:
+          #   unused-parameter - uniform FSM state-fn signatures require the
+          #                      parameter even when a given state ignores it
+          #                      (same reason the kernel builds -Wno-...);
+          #                      an unused param is ~never a bug here.
+          #   type-limits      - the `debug_level >= level` in EC_*_DBG is a
+          #                      deliberate tautology at level 0 (always log);
+          #                      gcc-only, and no general fix keeps the macro.
           ./configure --enable-uspace-master \
-              CC=${{ matrix.cc }} CFLAGS="-O2 -g -Wall -Wextra"
+              CC=${{ matrix.cc }} \
+              CFLAGS="-O2 -g -Wall -Wextra -Werror \
+                      -Wno-unused-parameter -Wno-type-limits"
       - name: Verify XDP detection
         run: |
           if [ "${{ matrix.xdp }}" = "xdp" ]; then

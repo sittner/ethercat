@@ -642,7 +642,7 @@ void ec_fsm_soe_write_request(
     // fragment successfully sent
     fsm->offset += fsm->fragment_size;
 
-    if (fsm->offset < fsm->request->data_size) {
+    if ((size_t) fsm->offset < fsm->request->data_size) {
         // next fragment
         fsm->retries = EC_FSM_RETRIES;
         ec_fsm_soe_write_next_fragment(fsm, datagram);

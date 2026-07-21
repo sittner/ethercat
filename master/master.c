@@ -105,9 +105,9 @@ int ecrt_master_send_ext(ec_master_t *master);
 void ec_master_init_static(void)
 {
     // one jiffy may always elapse between time measurement
-    datagram_timeout = max(ec_us_to_time(EC_IO_TIMEOUT), 1);
+    datagram_timeout = max(ec_us_to_time(EC_IO_TIMEOUT), (ec_time_t) 1);
     ext_injection_timeout =
-        max(ec_us_to_time(EC_SDO_INJECTION_TIMEOUT), 1);
+        max(ec_us_to_time(EC_SDO_INJECTION_TIMEOUT), (ec_time_t) 1);
 }
 
 /****************************************************************************/
@@ -2535,7 +2535,8 @@ int ecrt_master_get_slave(ec_master_t *master, uint16_t slave_position,
     slave_info->sync_count = slave->sii.sync_count;
     slave_info->sdo_count = ec_slave_sdo_count(slave);
     if (slave->sii.name) {
-        strncpy(slave_info->name, slave->sii.name, EC_MAX_STRING_LENGTH);
+        strncpy(slave_info->name, slave->sii.name, EC_MAX_STRING_LENGTH - 1);
+        slave_info->name[EC_MAX_STRING_LENGTH - 1] = 0;
     } else {
         slave_info->name[0] = 0;
     }

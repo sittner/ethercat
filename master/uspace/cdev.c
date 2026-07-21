@@ -1293,7 +1293,8 @@ int ec_ipc_server_start(const char *socket_path)
 
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    strncpy(addr.sun_path, cdev->sock_path, sizeof(addr.sun_path) - 1);
+    /* sock_path fits sun_path (both UNIX_PATH_MAX, length checked above). */
+    memcpy(addr.sun_path, cdev->sock_path, strlen(cdev->sock_path) + 1);
 
     if (bind(sock_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
         ret = -errno;

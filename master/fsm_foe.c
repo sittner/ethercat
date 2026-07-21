@@ -231,8 +231,8 @@ int ec_foe_prepare_data_send(
 
     remaining_size = fsm->tx_buffer_size - fsm->tx_buffer_offset;
 
-    if (remaining_size < fsm->slave->configured_tx_mailbox_size
-            - EC_MBOX_HEADER_SIZE - EC_FOE_HEADER_SIZE) {
+    if (remaining_size < (size_t) (fsm->slave->configured_tx_mailbox_size
+            - EC_MBOX_HEADER_SIZE - EC_FOE_HEADER_SIZE)) {
         current_size = remaining_size;
         fsm->tx_last_packet = 1;
     } else {
