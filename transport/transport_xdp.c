@@ -573,7 +573,7 @@ static int xdp_get_link_state(ec_transport_t *transport)
     }
 
     memset(&ifr, 0, sizeof(ifr));
-    snprintf(ifr.ifr_name, IFNAMSIZ, "%s", transport->interface);
+    snprintf(ifr.ifr_name, IFNAMSIZ, "%.*s", IFNAMSIZ - 1, transport->interface);
 
     if (ioctl(xdp->ioctl_sock, SIOCGIFFLAGS, &ifr) < 0) {
         return -errno;
