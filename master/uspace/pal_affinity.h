@@ -58,13 +58,14 @@ static inline void ec_pal_check_irq_affinity(ec_master_t *master)
     int rt_cpu = atomic_load_explicit(&master->pal.rt_cpu,
                                       memory_order_relaxed);
     if (rt_cpu >= 0 && rt_cpu != master->pal.affinity_cpu) {
-        if (ec_transport_set_cpu_affinity(master->pal.transport,
-                                          rt_cpu) == 0) {
+        int ret = ec_transport_set_cpu_affinity(master->pal.transport,
+                                                rt_cpu);
+        if (ret > 0) {
             EC_MASTER_INFO(master,
-                "Pinned transport IRQ to CPU %d\n", rt_cpu);
+                "Pinned %d transport IRQ(s) to CPU %d\n", ret, rt_cpu);
         } else {
             EC_MASTER_WARN(master,
-                "Failed to pin transport IRQ to CPU %d\n", rt_cpu);
+                "Failed to pin transport IRQs to CPU %d\n", rt_cpu);
         }
         master->pal.affinity_cpu = rt_cpu;
     }

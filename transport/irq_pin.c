@@ -64,18 +64,18 @@ static int read_sysfs_int(const char *path)
 /****************************************************************************/
 
 /**
- * Find the lowest-numbered MSI-X IRQ for a network interface.
+ * Collect all MSI-X/MSI IRQs of a network interface, ascending.
  *
  * Looks in /sys/class/net/$iface/device/msi_irqs/ for IRQ entries.
- * Returns the lowest numbered IRQ (which corresponds to queue 0 on
- * most drivers).
+ * All vectors are collected: which vector serves which queue (or none,
+ * like igb's link/misc vector) is driver-specific, and on a dedicated
+ * EtherCAT NIC the non-traffic vectors are near-silent anyway.
  */
-static int find_msix_irq(const char *iface)
+static int find_msix_irqs(const char *iface, ec_irq_set_t *set)
 {
     char path[PATH_MAX];
     DIR *dir;
     struct dirent *ent;
-    int lowest_irq = -1;
 
     snprintf(path, sizeof(path), "/sys/class/net/%s/device/msi_irqs", iface);
     dir = opendir(path);
@@ -84,38 +84,55 @@ static int find_msix_irq(const char *iface)
     }
 
     while ((ent = readdir(dir)) != NULL) {
-        int irq;
+        int irq, i, j;
         if (ent->d_name[0] == '.') {
             continue;
         }
         irq = atoi(ent->d_name);
-        if (irq > 0 && (lowest_irq < 0 || irq < lowest_irq)) {
-            lowest_irq = irq;
+        if (irq <= 0) {
+            continue;
         }
+        if (set->count >= EC_IRQ_MAX_VECTORS) {
+            break;
+        }
+        /* Insert in ascending order (directory order is arbitrary) */
+        for (i = 0; i < set->count && set->irq[i] < irq; i++);
+        for (j = set->count; j > i; j--) {
+            set->irq[j] = set->irq[j - 1];
+        }
+        set->irq[i] = irq;
+        set->count++;
     }
     closedir(dir);
 
-    return lowest_irq;
+    return set->count > 0 ? set->count : -1;
 }
 
 /****************************************************************************/
 
-int ec_irq_discover(const char *iface)
+int ec_irq_discover(const char *iface, ec_irq_set_t *set)
 {
     char path[PATH_MAX];
     int irq;
 
-    /* Try MSI-X first (multi-queue NICs) -- get queue-0 IRQ */
-    irq = find_msix_irq(iface);
-    if (irq > 0) {
-        return irq;
+    if (!iface || !set) {
+        return -1;
+    }
+
+    set->count = 0;
+
+    /* Try MSI-X first (multi-queue NICs) -- collect all vectors */
+    if (find_msix_irqs(iface, set) > 0) {
+        return set->count;
     }
 
     /* Fall back to legacy/MSI single IRQ */
     snprintf(path, sizeof(path), "/sys/class/net/%s/device/irq", iface);
     irq = read_sysfs_int(path);
     if (irq > 0) {
-        return irq;
+        set->irq[0] = irq;
+        set->count = 1;
+        return set->count;
     }
 
     return -1;
@@ -123,15 +140,14 @@ int ec_irq_discover(const char *iface)
 
 /****************************************************************************/
 
-int ec_irq_set_affinity(int irq, int cpu)
+/**
+ * Pin a single IRQ to a CPU via /proc/irq/$irq/smp_affinity.
+ */
+static int set_one_affinity(int irq, int cpu)
 {
     char path[PATH_MAX];
     char mask[32];
     int fd, n, ret;
-
-    if (irq <= 0 || cpu < 0 || cpu >= 64) {
-        return -EINVAL;
-    }
 
     snprintf(path, sizeof(path), "/proc/irq/%d/smp_affinity", irq);
     fd = open(path, O_WRONLY);
@@ -156,6 +172,28 @@ int ec_irq_set_affinity(int irq, int cpu)
     }
 
     return 0;
+}
+
+/****************************************************************************/
+
+int ec_irq_set_affinity(const ec_irq_set_t *set, int cpu)
+{
+    int i, pinned = 0, err = -ENODEV;
+
+    if (!set || set->count <= 0 || cpu < 0 || cpu >= 64) {
+        return -EINVAL;
+    }
+
+    for (i = 0; i < set->count; i++) {
+        int ret = set_one_affinity(set->irq[i], cpu);
+        if (ret == 0) {
+            pinned++;
+        } else {
+            err = ret;
+        }
+    }
+
+    return pinned > 0 ? pinned : err;
 }
 
 /****************************************************************************/

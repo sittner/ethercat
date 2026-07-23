@@ -29,12 +29,41 @@ of this file.
 - [ ] Application installs a **nonblocking log callback** via
       `ecrt_lib_init()` (the stderr fallback takes a global mutex in the
       RT path — review finding F3).
-- [ ] CPU isolation configured (`isolcpus=`, `nohz_full=`, `rcu_nocbs=`)
-      and the cyclic thread pinned to an isolated CPU. The master pins
-      the NIC IRQ to the RT CPU automatically (transport `irq_pin`);
-      verify with `cat /proc/interrupts` during the run.
-- [ ] C-states capped (`/dev/cpu_dma_latency` held at 0 by the RT
-      environment) and cpufreq governor `performance`.
+- [ ] CPU isolation configured (`isolcpus=`, `irqaffinity=`, optionally
+      `nohz_full=`/`rcu_nocbs=`) and the cyclic thread pinned to an
+      isolated CPU. `nohz_full` is a marginal win for sleeper-based
+      cyclic apps (it only suppresses the tick while a task *runs*, and
+      disengages entirely when more than one task is runnable on the
+      core); if used, the timer-migration item below is MANDATORY.
+- [ ] **Timer migration disabled** when `nohz_full=` is set
+      (`sysctl.kernel.timer_migration=0` on the kernel command line).
+      With nohz_full the kernel arms all non-pinned timers — including
+      the cyclic thread's `clock_nanosleep` wakeup — on a *housekeeping*
+      CPU, so wakeup latency tracks the housekeeping CPU's load, which
+      is exactly where the EtherCAT IRQ/NAPI/background load lives.
+      (Observed 2026-07-23 on sbs: ~375 µs worst case under EtherCAT
+      load, 988 ns after disabling. Diagnostic: compare per-CPU `LOC`
+      rates in `/proc/interrupts` — the RT CPU must show at least
+      cycle-rate local timer interrupts; a deficit there with a matching
+      surplus on a housekeeping CPU means the wakeup timers migrated.)
+- [ ] The master pins all of the NIC's IRQ vectors to the RT CPU
+      automatically (transport `irq_pin`; log line "Pinned N transport
+      IRQ(s) to CPU x"). Verify with `cat /proc/interrupts` during the
+      run that the **queue-0 traffic vector** (`<iface>-TxRx-0`)
+      accumulates on the RT CPU — that vector is the one that matters,
+      and on igb it is NOT the lowest-numbered one (the lowest is the
+      link/misc interrupt; a single-vector pin silently missed it,
+      observed on sbs).
+- [ ] C-states capped and cpufreq governor `performance`, via the
+      kernel command line: `intel_idle.max_cstate=1
+      processor.max_cstate=1 cpufreq.default_governor=performance`.
+      Without a cap, deep C-states (C6-C10) add 100-400 µs exit latency
+      to every cycle wakeup on an otherwise idle RT core.  Neither the
+      master library nor the application is assumed to hold
+      `/dev/cpu_dma_latency` — capping C-states is the deployment's
+      responsibility, and this checklist item is the guard: latency
+      spikes of 100-400 µs on an otherwise *idle* box mean the cmdline
+      cap is missing.
 - [ ] Transport choice recorded (raw / xdp-skb / xdp-native); for XDP
       note the link bounce at attach time (commit 5dab28a0).
 
