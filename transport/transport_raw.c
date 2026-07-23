@@ -48,7 +48,7 @@ typedef struct {
     int if_index;                      /**< Interface index */
     struct sockaddr_ll socket_addr;    /**< Socket address for sending */
     uint8_t mac_addr[6];               /**< Interface MAC address */
-    int irq_number;                    /**< Cached NIC IRQ (0 = not discovered) */
+    ec_irq_set_t irqs;                 /**< Cached NIC IRQs (count 0 = not discovered) */
 } ec_transport_raw_t;
 
 /****************************************************************************/
@@ -132,8 +132,8 @@ static int raw_open(ec_transport_t *transport, const char *interface)
         goto err_close;
     }
 
-    /* Discover NIC IRQ for affinity pinning (best-effort, non-fatal) */
-    raw->irq_number = ec_irq_discover(interface);
+    /* Discover NIC IRQs for affinity pinning (best-effort, non-fatal) */
+    ec_irq_discover(interface, &raw->irqs);
 
     return 0;
 
@@ -328,17 +328,17 @@ static int raw_get_fd(ec_transport_t *transport)
 /****************************************************************************/
 
 /**
- * Set CPU affinity for the NIC IRQ.
+ * Set CPU affinity for all NIC IRQs.
  */
 static int raw_set_cpu_affinity(ec_transport_t *transport, int cpu)
 {
     ec_transport_raw_t *raw = transport->priv;
 
-    if (!raw || raw->irq_number <= 0) {
+    if (!raw || raw->irqs.count <= 0) {
         return -ENODEV;
     }
 
-    return ec_irq_set_affinity(raw->irq_number, cpu);
+    return ec_irq_set_affinity(&raw->irqs, cpu);
 }
 
 /****************************************************************************/

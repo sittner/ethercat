@@ -105,13 +105,16 @@ struct ec_transport_ops {
 
     /** Set CPU affinity for transport IRQs (optional, NULL if not supported).
      *
-     * Pins the NIC IRQ(s) associated with this transport to the specified CPU.
-     * This keeps the IRQ handler and the RT thread on the same core for
-     * cache-local I/O, reducing latency and jitter in the EtherCAT cycle.
+     * Pins all NIC IRQ vectors associated with this transport to the
+     * specified CPU (all vectors, because the vector-to-queue mapping is
+     * driver-specific — see transport/irq_pin.h).  This keeps the IRQ
+     * handler and the RT thread on the same core for cache-local I/O,
+     * reducing latency and jitter in the EtherCAT cycle.
      *
      * @param transport  Transport instance.
      * @param cpu        Target CPU number (0-based).
-     * @return 0 on success, negative error code on failure.
+     * @return Number of IRQs pinned (> 0) on success, negative error code
+     *         on failure.
      */
     int (*set_cpu_affinity)(ec_transport_t *transport, int cpu);
 };
@@ -283,7 +286,8 @@ void ec_transport_print_available(void);
  *
  * @param transport Transport instance
  * @param cpu Target CPU number (0-based)
- * @return 0 on success, -ENOSYS if not supported, other negative on error
+ * @return Number of IRQs pinned (> 0) on success, -ENOSYS if not
+ *         supported, other negative on error
  */
 int ec_transport_set_cpu_affinity(ec_transport_t *transport, int cpu);
 

@@ -95,7 +95,7 @@ typedef struct {
     uint32_t xdp_flags;                /**< XDP flags used during open (needed for detach) */
     uint64_t fq_refill_pending[FQ_REFILL_MAX]; /**< Frames awaiting FQ refill */
     uint32_t fq_refill_count;          /**< Number of pending refill frames */
-    int irq_number;                    /**< Cached NIC IRQ (0 = not discovered) */
+    ec_irq_set_t irqs;                 /**< Cached NIC IRQs (count 0 = not discovered) */
 } ec_transport_xdp_t;
 
 /****************************************************************************/
@@ -275,8 +275,8 @@ static int xdp_open(ec_transport_t *transport, const char *interface,
 
     xsk_ring_prod__submit(&xdp->fq, XDP_FQ_FILL_SIZE);
 
-    /* Discover NIC IRQ for affinity pinning (best-effort, non-fatal) */
-    xdp->irq_number = ec_irq_discover(interface);
+    /* Discover NIC IRQs for affinity pinning (best-effort, non-fatal) */
+    ec_irq_discover(interface, &xdp->irqs);
 
     return 0;
 
@@ -623,17 +623,17 @@ static int xdp_get_fd(ec_transport_t *transport)
 /****************************************************************************/
 
 /**
- * Set CPU affinity for the NIC IRQ.
+ * Set CPU affinity for all NIC IRQs.
  */
 static int xdp_set_cpu_affinity(ec_transport_t *transport, int cpu)
 {
     ec_transport_xdp_t *xdp = transport->priv;
 
-    if (!xdp || xdp->irq_number <= 0) {
+    if (!xdp || xdp->irqs.count <= 0) {
         return -ENODEV;
     }
 
-    return ec_irq_set_affinity(xdp->irq_number, cpu);
+    return ec_irq_set_affinity(&xdp->irqs, cpu);
 }
 
 /****************************************************************************/
