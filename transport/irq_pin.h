@@ -65,7 +65,11 @@ typedef struct {
  *
  * Collects every MSI-X/MSI vector from
  * /sys/class/net/$iface/device/msi_irqs/, falling back to the legacy
- * IRQ from /sys/class/net/$iface/device/irq.  Interfaces with more than
+ * IRQ from /sys/class/net/$iface/device/irq, falling back to a
+ * /proc/interrupts scan for non-PCI platform devices (SoC NICs like
+ * bcmgenet on the Raspberry Pi, whose sysfs device node has neither
+ * attribute) -- matching the action name against the device's OF node
+ * name and the interface name.  Interfaces with more than
  * EC_IRQ_MAX_VECTORS vectors are truncated (irrelevant for the dedicated
  * NICs this is meant for).
  *
@@ -74,6 +78,31 @@ typedef struct {
  * \return Number of IRQs discovered (> 0) on success, -1 on failure.
  */
 int ec_irq_discover(const char *iface, ec_irq_set_t *set);
+
+/**
+ * Scan a /proc/interrupts-format file for IRQs whose action name matches.
+ *
+ * Considers only rows introduced by an IRQ number ("31: ..."), and
+ * compares every whitespace/comma-separated token of the row against the
+ * two names -- full-token equality, so "eth0" does not match an MSI
+ * vector's "eth0-rx-0" (those are found via sysfs by the PCI paths).
+ * Matches are inserted into *set ascending, without duplicates, appending
+ * to whatever the set already holds.
+ *
+ * Split out of ec_irq_discover() (which passes "/proc/interrupts") so the
+ * format parsing is testable against fixture files.
+ *
+ * \param path    File to scan, normally "/proc/interrupts".
+ * \param name_a  First action name to match (e.g. the device's OF node
+ *                name, "fd580000.ethernet"); may be NULL.
+ * \param name_b  Second action name to match (e.g. the interface name);
+ *                may be NULL.
+ * \param set     Matching IRQs are added here.
+ * \return Number of IRQs added (> 0) on success, -1 when the file cannot
+ *         be read, no row matched, or both names are NULL.
+ */
+int ec_irq_scan_proc_interrupts(const char *path, const char *name_a,
+                                const char *name_b, ec_irq_set_t *set);
 
 /**
  * Set the CPU affinity for all IRQs in a set.

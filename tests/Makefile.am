@@ -36,6 +36,7 @@ AM_CPPFLAGS = \
 check_PROGRAMS = \
 	test_datagram \
 	test_emerg_ring \
+	test_irq_pin \
 	test_pdo_print \
 	test_rt_pagefault \
 	test_shared \
@@ -60,6 +61,7 @@ AM_LDFLAGS = -static
 
 test_datagram_SOURCES = test_datagram.c test.h
 test_emerg_ring_SOURCES = test_emerg_ring.c test.h
+test_irq_pin_SOURCES = test_irq_pin.c test.h
 test_pdo_print_SOURCES = test_pdo_print.c test.h
 # transport_sim.{c,h} now lives in $(top_srcdir)/transport and is compiled
 # into libethercat (a selectable transport, EC_TRANSPORT_SIM); the tests
