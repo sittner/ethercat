@@ -22,6 +22,36 @@
 /**
  * \file
  * NIC IRQ affinity pinning implementation.
+ *
+ * Discovery is layered -- sysfs PCI attributes first, /proc/interrupts
+ * last -- rather than scanning /proc/interrupts for every NIC. The
+ * ordering is deliberate:
+ *
+ * - /proc/interrupts shows the action name from request_irq() time. Many
+ *   PCI drivers request their MSI-X vectors at probe, BEFORE udev renames
+ *   eth0 -> enp2s0, so the table permanently shows "eth0-TxRx-0" while
+ *   the configured interface is "enp2s0" -- name-matching finds nothing.
+ *   The msi_irqs/ directory hangs off the device object itself, listing
+ *   every vector by number, immune to renames.
+ *
+ * - MSI-X action names are driver-invented ("eth0", "eth0-rx-0",
+ *   "eth0-TxRx-1", ...); collecting ALL vectors of an interface from the
+ *   table would need per-driver prefix heuristics -- exactly the
+ *   knowledge the pin-all-vectors design exists to avoid. msi_irqs/ is
+ *   complete by construction, including vectors whose action name
+ *   carries no interface hint.
+ *
+ * - msi_irqs/ and device/irq are documented, machine-oriented sysfs ABI;
+ *   /proc/interrupts is a human-oriented table whose layout varies with
+ *   architecture and CPU count, and it only lists IRQs already
+ *   requested (some drivers request at ndo_open, not probe).
+ *
+ * Platform devices (SoC NICs) have none of the PCI attributes, so for
+ * them the table scan is the only option -- with the OF node name as a
+ * rename-proof anchor beside the interface name. Should a platform
+ * driver ever surface that requests its IRQs at probe under the
+ * pre-rename name, the fix is a third match candidate (the pre-rename
+ * name), not scanning /proc/interrupts for PCI devices too.
  */
 
 #include "irq_pin.h"
@@ -64,6 +94,31 @@ static int read_sysfs_int(const char *path)
 /****************************************************************************/
 
 /**
+ * Insert an IRQ number into a set, ascending, ignoring duplicates.
+ * Silently drops the IRQ when the set is full (irrelevant for the
+ * dedicated NICs this is meant for).
+ */
+static void irq_set_insert(ec_irq_set_t *set, int irq)
+{
+    int i, j;
+
+    if (irq <= 0 || set->count >= EC_IRQ_MAX_VECTORS) {
+        return;
+    }
+    for (i = 0; i < set->count && set->irq[i] < irq; i++);
+    if (i < set->count && set->irq[i] == irq) {
+        return;
+    }
+    for (j = set->count; j > i; j--) {
+        set->irq[j] = set->irq[j - 1];
+    }
+    set->irq[i] = irq;
+    set->count++;
+}
+
+/****************************************************************************/
+
+/**
  * Collect all MSI-X/MSI IRQs of a network interface, ascending.
  *
  * Looks in /sys/class/net/$iface/device/msi_irqs/ for IRQ entries.
@@ -84,24 +139,10 @@ static int find_msix_irqs(const char *iface, ec_irq_set_t *set)
     }
 
     while ((ent = readdir(dir)) != NULL) {
-        int irq, i, j;
         if (ent->d_name[0] == '.') {
             continue;
         }
-        irq = atoi(ent->d_name);
-        if (irq <= 0) {
-            continue;
-        }
-        if (set->count >= EC_IRQ_MAX_VECTORS) {
-            break;
-        }
-        /* Insert in ascending order (directory order is arbitrary) */
-        for (i = 0; i < set->count && set->irq[i] < irq; i++);
-        for (j = set->count; j > i; j--) {
-            set->irq[j] = set->irq[j - 1];
-        }
-        set->irq[i] = irq;
-        set->count++;
+        irq_set_insert(set, atoi(ent->d_name));
     }
     closedir(dir);
 
@@ -110,9 +151,71 @@ static int find_msix_irqs(const char *iface, ec_irq_set_t *set)
 
 /****************************************************************************/
 
+int ec_irq_scan_proc_interrupts(const char *path, const char *name_a,
+                                const char *name_b, ec_irq_set_t *set)
+{
+    FILE *f;
+    char line[512];
+    int before;
+
+    if (!path || !set || (!name_a && !name_b)) {
+        return -1;
+    }
+
+    f = fopen(path, "r");
+    if (!f) {
+        return -1;
+    }
+
+    before = set->count;
+    while (fgets(line, sizeof(line), f)) {
+        char *save, *tok, *p;
+        int irq;
+
+        /* Only rows introduced by an IRQ number are of interest --
+         * "  31:  12345 ...  GICv2 189 Level  fd580000.ethernet".
+         * The CPU header line and the IPI/Err/MIS summary rows carry
+         * non-numeric labels and fall through here. */
+        tok = strtok_r(line, " \t", &save);
+        if (!tok) {
+            continue;
+        }
+        for (p = tok; *p >= '0' && *p <= '9'; p++);
+        if (p == tok || p[0] != ':' || p[1] != '\0') {
+            continue;
+        }
+        irq = atoi(tok);
+        if (irq <= 0) {
+            continue;
+        }
+
+        /* Match any remaining token against the two names. Full-token
+         * comparison only: the per-CPU counters and the hwirq number
+         * are numeric and cannot collide, and a partial match ("eth0"
+         * inside "eth0-rx-0") must NOT hit -- those are MSI vectors,
+         * found via sysfs by the PCI paths. The comma in the separator
+         * set splits the action names of shared interrupts. */
+        while ((tok = strtok_r(NULL, " \t\n,", &save)) != NULL) {
+            if ((name_a && strcmp(tok, name_a) == 0) ||
+                (name_b && strcmp(tok, name_b) == 0)) {
+                irq_set_insert(set, irq);
+                break;
+            }
+        }
+    }
+    fclose(f);
+
+    return set->count > before ? set->count - before : -1;
+}
+
+/****************************************************************************/
+
 int ec_irq_discover(const char *iface, ec_irq_set_t *set)
 {
     char path[PATH_MAX];
+    char dev[PATH_MAX];
+    const char *dev_name = NULL;
+    ssize_t n;
     int irq;
 
     if (!iface || !set) {
@@ -132,6 +235,24 @@ int ec_irq_discover(const char *iface, ec_irq_set_t *set)
     if (irq > 0) {
         set->irq[0] = irq;
         set->count = 1;
+        return set->count;
+    }
+
+    /* Platform devices (SoC NICs -- e.g. bcmgenet on the Raspberry Pi 4)
+     * are not PCI: there is no msi_irqs/ directory and no device/irq
+     * attribute. Their interrupts do appear in /proc/interrupts, filed
+     * under the requesting driver's action name -- usually the OF node
+     * name the device symlink points at ("fd580000.ethernet"), sometimes
+     * the interface name itself. Match either. */
+    snprintf(path, sizeof(path), "/sys/class/net/%s/device", iface);
+    n = readlink(path, dev, sizeof(dev) - 1);
+    if (n > 0) {
+        dev[n] = '\0';
+        dev_name = strrchr(dev, '/');
+        dev_name = dev_name ? dev_name + 1 : dev;
+    }
+    if (ec_irq_scan_proc_interrupts("/proc/interrupts", dev_name,
+                                    iface, set) > 0) {
         return set->count;
     }
 

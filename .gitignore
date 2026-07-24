@@ -59,6 +59,7 @@ tests/*.log
 tests/*.trs
 tests/test_datagram
 tests/test_emerg_ring
+tests/test_irq_pin
 tests/test_pdo_print
 tests/test_shared
 tests/test_sim_scan
