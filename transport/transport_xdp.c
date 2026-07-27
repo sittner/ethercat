@@ -444,7 +444,13 @@ static int xdp_send(ec_transport_t *transport, size_t size)
 
     /* Trigger send - critical for immediate transmission in EtherCAT */
     ret = sendto(xsk_socket__fd(xdp->xsk), NULL, 0, MSG_DONTWAIT, NULL, 0);
-    if (ret < 0 && errno != ENOBUFS && errno != EAGAIN) {
+    if (ret < 0) {
+        /* In copy mode the kernel only transmits inside this syscall.
+         * EAGAIN/ENOBUFS mean the descriptor was NOT transmitted (driver
+         * busy, completion queue full, ...); it stays queued in the TX
+         * ring and goes out with the next cycle's kick.  Report the
+         * failure so it lands in the device tx_errors statistic instead
+         * of being silently absorbed as a mystery lost cycle. */
         return -errno;
     }
 
