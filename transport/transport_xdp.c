@@ -41,6 +41,7 @@
  * after net/if.h): ec_log for nonblocking logging from the cyclic
  * path. */
 #include "pal.h"
+#include <net/ethernet.h>
 #include <xdp/xsk.h>
 
 #include "pal_alloc.h"
@@ -96,6 +97,7 @@ typedef struct {
     uint64_t fq_refill_pending[FQ_REFILL_MAX]; /**< Frames awaiting FQ refill */
     uint32_t fq_refill_count;          /**< Number of pending refill frames */
     ec_irq_set_t irqs;                 /**< Cached NIC IRQs (count 0 = not discovered) */
+    uint64_t rx_foreign;               /**< Non-EtherCAT frames dropped on RX */
 } ec_transport_xdp_t;
 
 /****************************************************************************/
@@ -489,6 +491,32 @@ static void xdp_drain_deferred_refills(ec_transport_xdp_t *xdp)
 /****************************************************************************/
 
 /**
+ * Return a consumed RX frame to the fill queue (deferring if it is full).
+ */
+static void xdp_refill_fq(ec_transport_xdp_t *xdp, uint64_t addr)
+{
+    uint32_t idx_fq = 0;
+
+    /* Try to drain any previously deferred refills first */
+    xdp_drain_deferred_refills(xdp);
+
+    if (xsk_ring_prod__reserve(&xdp->fq, 1, &idx_fq) == 1) {
+        *xsk_ring_prod__fill_addr(&xdp->fq, idx_fq) = addr;
+        xsk_ring_prod__submit(&xdp->fq, 1);
+    } else {
+        /* FQ full — defer this frame for later refill */
+        if (xdp->fq_refill_count < FQ_REFILL_MAX) {
+            xdp->fq_refill_pending[xdp->fq_refill_count++] = addr;
+        } else {
+            /* Overflow — should not happen with proper sizing, last resort */
+            xsk_free_umem_frame(xdp, addr);
+        }
+    }
+}
+
+/****************************************************************************/
+
+/**
  * Receive frame (non-blocking).
  */
 /* TRUSTED: ring peek/release are lock-free and the optional wakeup
@@ -501,52 +529,67 @@ static int xdp_receive(ec_transport_t *transport, uint8_t *buffer, size_t max_si
 {
     ec_transport_xdp_t *xdp = transport->priv;
     uint32_t idx_rx = 0;
-    uint32_t idx_fq = 0;
     uint64_t addr;
     uint32_t len;
+    const uint8_t *frame;
     unsigned int rcvd;
-    int ret;
+    int result = 0;
 
     if (!xdp || !xdp->xsk) {
         return -ENODEV;
     }
 
-    /* Check for received packets */
-    rcvd = xsk_ring_cons__peek(&xdp->rx, 1, &idx_rx);
-    if (!rcvd) {
-        return 0;  /* No data available */
-    }
-
-    /* Get received packet */
-    addr = xsk_ring_cons__rx_desc(&xdp->rx, idx_rx)->addr;
-    len = xsk_ring_cons__rx_desc(&xdp->rx, idx_rx)->len;
-
-    if (len > max_size) {
-        len = max_size;
-    }
-
-    /* Copy data from UMEM */
-    memcpy(buffer, xsk_umem__get_data(xdp->umem_buffer, addr), len);
-
-    /* Release RX descriptor and refill */
-    xsk_ring_cons__release(&xdp->rx, 1);
-
-    /* Try to drain any previously deferred refills first */
-    xdp_drain_deferred_refills(xdp);
-
-    /* Refill fill queue with the frame we just consumed */
-    ret = xsk_ring_prod__reserve(&xdp->fq, 1, &idx_fq);
-    if (ret == 1) {
-        *xsk_ring_prod__fill_addr(&xdp->fq, idx_fq) = addr;
-        xsk_ring_prod__submit(&xdp->fq, 1);
-    } else {
-        /* FQ full — defer this frame for later refill */
-        if (xdp->fq_refill_count < FQ_REFILL_MAX) {
-            xdp->fq_refill_pending[xdp->fq_refill_count++] = addr;
-        } else {
-            /* Overflow — should not happen with proper sizing, last resort */
-            xsk_free_umem_frame(xdp, addr);
+    for (;;) {
+        /* Check for received packets */
+        rcvd = xsk_ring_cons__peek(&xdp->rx, 1, &idx_rx);
+        if (!rcvd) {
+            break;  /* No data available */
         }
+
+        /* Get received packet */
+        addr = xsk_ring_cons__rx_desc(&xdp->rx, idx_rx)->addr;
+        len = xsk_ring_cons__rx_desc(&xdp->rx, idx_rx)->len;
+        frame = xsk_umem__get_data(xdp->umem_buffer, addr);
+
+        /* The default XSK program redirects ALL traffic on the queue, so
+         * anything the kernel stack emits on this interface (IPv6 ND/MLD,
+         * LLDP, ...) travels around the slave ring and comes back here.
+         * Passing a non-EtherCAT frame up would be miscounted as a
+         * corrupted frame by the master, so filter on the ethertype like
+         * the raw transport's protocol-bound socket does. */
+        if (len < ETH_HLEN
+                || ((frame[12] << 8) | frame[13]) != EC_TRANSPORT_ETHERTYPE) {
+            xdp->rx_foreign++;
+            /* Log with exponential backoff (1st, 2nd, 4th, ... occurrence)
+             * so a stray-traffic misconfiguration is visible without
+             * flooding from the cyclic path. */
+            if ((xdp->rx_foreign & (xdp->rx_foreign - 1)) == 0) {
+                ec_log(EC_LOG_WARNING,
+                        "XDP: dropped foreign frame (ethertype 0x%02x%02x,"
+                        " %llu total) - non-EtherCAT traffic on the"
+                        " EtherCAT interface\n",
+                        len >= ETH_HLEN ? frame[12] : 0,
+                        len >= ETH_HLEN ? frame[13] : 0,
+                        (unsigned long long)xdp->rx_foreign);
+            }
+            xsk_ring_cons__release(&xdp->rx, 1);
+            xdp_refill_fq(xdp, addr);
+            continue;
+        }
+
+        if (len > max_size) {
+            len = max_size;
+        }
+
+        /* Copy data from UMEM */
+        memcpy(buffer, frame, len);
+
+        /* Release RX descriptor and refill */
+        xsk_ring_cons__release(&xdp->rx, 1);
+        xdp_refill_fq(xdp, addr);
+
+        result = (int)len;
+        break;
     }
 
     /* Wakeup kernel if needed (XDP_USE_NEED_WAKEUP) */
@@ -554,7 +597,7 @@ static int xdp_receive(ec_transport_t *transport, uint8_t *buffer, size_t max_si
         (void)recvfrom(xsk_socket__fd(xdp->xsk), NULL, 0, MSG_DONTWAIT, NULL, NULL);
     }
 
-    return (int)len;
+    return result;
 }
 ECRT_RT_TRUSTED_END
 
