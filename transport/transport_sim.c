@@ -322,6 +322,14 @@ static void sim_mbox_respond_type(sim_slave_t *slave, uint8_t type,
         return;
     }
 
+    /* The send mailbox holds one message: a slave cannot queue a second
+     * response until the master has read the first.  Dropping the new one
+     * rather than overwriting is what lets a stale response actually reach
+     * the next master, as it does on real hardware. */
+    if (slave->regs[0x080D] & 0x08) {
+        return;
+    }
+
     sim_wr16(m, len); /* mailbox service data length */
     memcpy(m + 2, slave->regs + 0x0010, 2); /* station address */
     m[4] = 0x00; /* channel & priority */
@@ -1525,6 +1533,40 @@ unsigned long sim_bus_al_status_brd_count(sim_bus_t *bus)
     n = bus->al_status_brds;
     pthread_mutex_unlock(&bus->lock);
     return n;
+}
+
+int sim_bus_mbox_preload(sim_bus_t *bus, unsigned int pos, uint8_t type,
+        const void *payload, uint16_t len)
+{
+    sim_slave_t *slave;
+
+    if (pos >= bus->nslaves) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&bus->lock);
+    slave = &bus->slaves[pos];
+    if (!slave->mbox_in_len) {
+        pthread_mutex_unlock(&bus->lock);
+        return -1;
+    }
+    sim_mbox_respond_type(slave, type, payload, len);
+    pthread_mutex_unlock(&bus->lock);
+    return 0;
+}
+
+int sim_bus_mbox_full(sim_bus_t *bus, unsigned int pos)
+{
+    int full;
+
+    if (pos >= bus->nslaves) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&bus->lock);
+    full = (bus->slaves[pos].regs[0x080D] & 0x08) ? 1 : 0;
+    pthread_mutex_unlock(&bus->lock);
+    return full;
 }
 
 int sim_bus_od_set(sim_bus_t *bus, unsigned int pos, uint16_t index,

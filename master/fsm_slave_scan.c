@@ -44,6 +44,7 @@ void ec_fsm_slave_scan_enter_datalink(ec_fsm_slave_scan_t *);
 void ec_fsm_slave_scan_enter_regalias(ec_fsm_slave_scan_t *);
 #endif
 void ec_fsm_slave_scan_enter_preop(ec_fsm_slave_scan_t *);
+void ec_fsm_slave_scan_enter_mbox_drain(ec_fsm_slave_scan_t *);
 void ec_fsm_slave_scan_enter_pdos(ec_fsm_slave_scan_t *);
 
 /****************************************************************************/
@@ -65,6 +66,8 @@ void ec_fsm_slave_scan_state_regalias(ec_fsm_slave_scan_t *);
 #endif
 void ec_fsm_slave_scan_state_preop(ec_fsm_slave_scan_t *);
 void ec_fsm_slave_scan_state_sync(ec_fsm_slave_scan_t *);
+void ec_fsm_slave_scan_state_mbox_drain_check(ec_fsm_slave_scan_t *);
+void ec_fsm_slave_scan_state_mbox_drain_fetch(ec_fsm_slave_scan_t *);
 void ec_fsm_slave_scan_state_pdos(ec_fsm_slave_scan_t *);
 
 void ec_fsm_slave_scan_state_end(ec_fsm_slave_scan_t *);
@@ -112,6 +115,7 @@ void ec_fsm_slave_scan_start(
         )
 {
     fsm->slave = slave;
+    fsm->mbox_drain_count = 0;
     fsm->state = ec_fsm_slave_scan_state_start;
 }
 
@@ -973,7 +977,7 @@ void ec_fsm_slave_scan_state_preop(
         return;
     }
 
-    ec_fsm_slave_scan_enter_pdos(fsm);
+    ec_fsm_slave_scan_enter_mbox_drain(fsm);
 }
 
 /****************************************************************************/
@@ -1041,7 +1045,126 @@ void ec_fsm_slave_scan_state_sync(
             slave->configured_tx_mailbox_offset,
             slave->configured_tx_mailbox_size);
 
-    ec_fsm_slave_scan_enter_pdos(fsm);
+    ec_fsm_slave_scan_enter_mbox_drain(fsm);
+}
+
+/****************************************************************************/
+
+/** Maximum number of stale mailbox responses discarded before a scan.
+ *
+ * A mailbox holds one response at a time, so a small bound suffices; it only
+ * has to cover a slave that refills the mailbox from a queue.  Exceeding it
+ * means something keeps writing, which is reported rather than looped on.
+ */
+#define EC_SCAN_MBOX_DRAIN_MAX 8
+
+/** Enter slave scan state MBOX DRAIN.
+ *
+ * The slave may still hold an unread response in its send mailbox — left by a
+ * previous master instance that exited mid-transfer, or by any other master
+ * that touched this bus.  Reading it during the PDO scan below would pair the
+ * stale response with the scan's own upload request ("received upload response
+ * for wrong SDO"), so discard whatever is queued first.
+ */
+void ec_fsm_slave_scan_enter_mbox_drain(
+        ec_fsm_slave_scan_t *fsm /**< slave state machine */
+        )
+{
+    ec_slave_t *slave = fsm->slave;
+
+    if (!slave->sii.mailbox_protocols
+            || !slave->configured_tx_mailbox_size) {
+        // no mailbox to drain
+        ec_fsm_slave_scan_enter_pdos(fsm);
+        return;
+    }
+
+    fsm->mbox_drain_count = EC_SCAN_MBOX_DRAIN_MAX;
+    ec_slave_mbox_prepare_check(slave, fsm->datagram); // can not fail
+    fsm->retries = EC_FSM_RETRIES;
+    fsm->state = ec_fsm_slave_scan_state_mbox_drain_check;
+}
+
+/****************************************************************************/
+
+/** Slave scan state: MBOX DRAIN CHECK.
+ *
+ * Tests whether the send mailbox still holds data.
+ */
+void ec_fsm_slave_scan_state_mbox_drain_check(
+        ec_fsm_slave_scan_t *fsm /**< slave state machine */
+        )
+{
+    ec_datagram_t *datagram = fsm->datagram;
+    ec_slave_t *slave = fsm->slave;
+
+    if (datagram->state == EC_DATAGRAM_TIMED_OUT && fsm->retries--) {
+        return;
+    }
+
+    /* The drain is best effort: it must never fail a scan that would
+     * otherwise succeed, so any problem here just skips ahead. */
+    if (datagram->state != EC_DATAGRAM_RECEIVED
+            || datagram->working_counter != 1) {
+        EC_SLAVE_DBG(slave, 1, "Failed to check the mailbox before"
+                " scanning PDOs; continuing.\n");
+        ec_fsm_slave_scan_enter_pdos(fsm);
+        return;
+    }
+
+    if (!ec_slave_mbox_check(datagram)) {
+        // mailbox empty — nothing stale to discard
+        ec_fsm_slave_scan_enter_pdos(fsm);
+        return;
+    }
+
+    if (!fsm->mbox_drain_count) {
+        EC_SLAVE_WARN(slave, "Mailbox still not empty after discarding"
+                " %u stale response(s); scanning PDOs anyway.\n",
+                EC_SCAN_MBOX_DRAIN_MAX);
+        ec_fsm_slave_scan_enter_pdos(fsm);
+        return;
+    }
+    fsm->mbox_drain_count--;
+
+    ec_slave_mbox_prepare_fetch(slave, datagram); // can not fail
+    fsm->retries = EC_FSM_RETRIES;
+    fsm->state = ec_fsm_slave_scan_state_mbox_drain_fetch;
+}
+
+/****************************************************************************/
+
+/** Slave scan state: MBOX DRAIN FETCH.
+ *
+ * Discards one queued mailbox response, then checks for the next one.
+ */
+void ec_fsm_slave_scan_state_mbox_drain_fetch(
+        ec_fsm_slave_scan_t *fsm /**< slave state machine */
+        )
+{
+    ec_datagram_t *datagram = fsm->datagram;
+    ec_slave_t *slave = fsm->slave;
+
+    if (datagram->state == EC_DATAGRAM_TIMED_OUT && fsm->retries--) {
+        return;
+    }
+
+    if (datagram->state != EC_DATAGRAM_RECEIVED
+            || datagram->working_counter != 1) {
+        EC_SLAVE_DBG(slave, 1, "Failed to read the stale mailbox response;"
+                " continuing.\n");
+        ec_fsm_slave_scan_enter_pdos(fsm);
+        return;
+    }
+
+    EC_SLAVE_DBG(slave, 1, "Discarded a stale mailbox response"
+            " (type 0x%02X) left over from a previous master.\n",
+            EC_READ_U8(datagram->data + 5) & 0x0F);
+
+    // the slave may have queued more than one response
+    ec_slave_mbox_prepare_check(slave, datagram); // can not fail
+    fsm->retries = EC_FSM_RETRIES;
+    fsm->state = ec_fsm_slave_scan_state_mbox_drain_check;
 }
 
 /****************************************************************************/

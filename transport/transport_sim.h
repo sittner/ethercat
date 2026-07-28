@@ -103,6 +103,18 @@ unsigned long sim_bus_al_status_brd_count(sim_bus_t *bus);
  * link" instead of wall-clock sleeps. */
 unsigned long sim_bus_link_polls(sim_bus_t *bus);
 
+/** Place a response in slave \a pos's send mailbox and raise the
+ * "mailbox full" flag, as a slave would after answering a request.
+ * Lets a test simulate what a master that exited mid-transfer leaves
+ * behind: a queued response nobody read.  \a type is the mailbox
+ * protocol (3 = CoE).  Returns 0 on success. */
+int sim_bus_mbox_preload(sim_bus_t *bus, unsigned int pos, uint8_t type,
+        const void *payload, uint16_t len);
+
+/** Whether slave \a pos's send mailbox still holds an unread response
+ * (SM1 "mailbox full" status), or -1 for an invalid position. */
+int sim_bus_mbox_full(sim_bus_t *bus, unsigned int pos);
+
 /** Create or update an object-dictionary entry of slave \a pos (CoE
  * slaves only; entries serve SDO uploads and accept downloads).
  * Returns 0 on success. */
