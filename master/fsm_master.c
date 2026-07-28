@@ -68,7 +68,6 @@ void ec_fsm_master_state_dc_read_offset(ec_fsm_master_t *);
 void ec_fsm_master_state_dc_write_offset(ec_fsm_master_t *);
 void ec_fsm_master_state_assign_sii(ec_fsm_master_t *);
 void ec_fsm_master_state_write_sii(ec_fsm_master_t *);
-void ec_fsm_master_state_sdo_dictionary(ec_fsm_master_t *);
 void ec_fsm_master_state_sdo_request(ec_fsm_master_t *);
 void ec_fsm_master_state_soe_request(ec_fsm_master_t *);
 
@@ -228,6 +227,16 @@ static int ec_fsm_master_fill_config_slot(
         if ((slave->current_state != slave->requested_state
                     || slave->force_config) && !slave->error_flag
                 && !ec_fsm_master_slave_in_slot(fsm, slave)) {
+
+            /* The slave's own FSM may be in the middle of a mailbox transfer
+             * (an application request or a background dictionary fetch).
+             * Configuration uses the same mailbox, so defer this slave until
+             * its FSM is idle again; the other slaves are unaffected. */
+            if (ec_fsm_slave_is_busy(&slave->fsm)) {
+                EC_SLAVE_DBG(slave, 1, "Deferring configuration:"
+                        " slave FSM is busy.\n");
+                continue;
+            }
 
             if (master->debug_level) {
                 char old_state[EC_STATE_STRING_SIZE],
@@ -814,33 +823,14 @@ void ec_fsm_master_action_idle(
         ec_fsm_slave_set_ready(&slave->fsm);
     }
 
-    // check, if slaves have an SDO dictionary to read out.
-    for (slave = master->slaves;
-            slave < master->slaves + master->slave_count;
-            slave++) {
-        if (!(slave->sii.mailbox_protocols & EC_MBOX_COE)
-                || (slave->sii.has_general
-                    && !slave->sii.coe_details.enable_sdo_info)
-                || slave->sdo_dictionary_fetched
-                || slave->current_state == EC_SLAVE_STATE_INIT
-                || slave->current_state == EC_SLAVE_STATE_UNKNOWN
-                || ec_current_time() - slave->time_preop <
-                        ec_ms_to_time(EC_WAIT_SDO_DICT * 1000)
-                ) continue;
-
-        EC_SLAVE_DBG(slave, 1, "Fetching SDO dictionary.\n");
-
-        slave->sdo_dictionary_fetched = 1;
-
-        // start fetching SDO dictionary
-        fsm->idle = 0;
-        fsm->slave = slave;
-        fsm->state = ec_fsm_master_state_sdo_dictionary;
-        ec_fsm_coe_dictionary(&fsm->fsm_coe, slave);
-        ec_fsm_coe_exec(&fsm->fsm_coe, fsm->datagram); // execute immediately
-        fsm->datagram->device_index = fsm->slave->device_index;
-        return;
-    }
+    /* Reaching this action means no slave needs configuration, so the slave
+     * FSMs may now fetch SDO dictionaries in the background (see
+     * ec_fsm_slave_action_process_dict()).  A dictionary fetch is a long
+     * sequence of mailbox transfers; running it here would block the master
+     * FSM -- and with it the AL status broadcast, the per-slave state poll
+     * and slave configuration -- for its entire duration.  The permission is
+     * withdrawn again in ec_fsm_master_enter_configure_slaves(). */
+    master->allow_sdo_dict = 1;
 
     // check for pending SII write operations.
     if (ec_fsm_master_action_process_sii(fsm)) {
@@ -1162,6 +1152,12 @@ void ec_fsm_master_enter_configure_slaves(
     ec_fsm_slave_config_slot_t *slot;
     unsigned int i;
     int started = 0;
+
+    /* Withdraw the background dictionary permission for this cycle.  It is
+     * granted again by ec_fsm_master_action_idle(), which is only reached
+     * when no slave needs configuration -- so a dictionary fetch can never
+     * be started while configuration is pending. */
+    master->allow_sdo_dict = 0;
 
     // Handle config_changed: restart from write_system_times
     if (master->config_changed) {
@@ -1579,41 +1575,6 @@ void ec_fsm_master_state_write_sii(
     // check for another SII write request
     if (ec_fsm_master_action_process_sii(fsm))
         return; // processing another request
-
-    ec_fsm_master_restart(fsm);
-}
-
-/****************************************************************************/
-
-/** Master state: SDO DICTIONARY.
- */
-void ec_fsm_master_state_sdo_dictionary(
-        ec_fsm_master_t *fsm /**< Master state machine. */
-        )
-{
-    ec_slave_t *slave = fsm->slave;
-    ec_master_t *master = fsm->master;
-
-    if (ec_fsm_coe_exec(&fsm->fsm_coe, fsm->datagram)) {
-        return;
-    }
-
-    if (!ec_fsm_coe_success(&fsm->fsm_coe)) {
-        ec_fsm_master_restart(fsm);
-        return;
-    }
-
-    // SDO dictionary fetching finished
-
-    if (master->debug_level) {
-        unsigned int sdo_count, entry_count;
-        ec_slave_sdo_dict_info(slave, &sdo_count, &entry_count);
-        EC_SLAVE_DBG(slave, 1, "Fetched %u SDOs and %u entries.\n",
-               sdo_count, entry_count);
-    }
-
-    // attach pdo names from dictionary
-    ec_slave_attach_pdo_names(slave);
 
     ec_fsm_master_restart(fsm);
 }

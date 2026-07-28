@@ -92,6 +92,12 @@ uint8_t *sim_bus_slave_regs(sim_bus_t *bus, unsigned int pos);
 /** Number of frames processed by the bus so far. */
 unsigned long sim_bus_frame_count(sim_bus_t *bus);
 
+/** Number of broadcast reads of the AL status register (0x0130) the
+ * master has issued so far — the master FSM's bus-state poll.  Lets
+ * tests assert that bus-state monitoring keeps running while a long
+ * mailbox transfer (e.g. an SDO dictionary fetch) is in progress. */
+unsigned long sim_bus_al_status_brd_count(sim_bus_t *bus);
+
 /** Number of link-state polls (transport get_link calls) so far —
  * lets tests synchronize on "the master is running and watching the
  * link" instead of wall-clock sleeps. */

@@ -178,6 +178,8 @@ int ec_master_init(ec_master_t *master, /**< EtherCAT master */
     ec_sem_init(&master->config_sem, 1);
     ec_wq_init(&master->config_queue);
 
+    master->allow_sdo_dict = 0;
+
     INIT_LIST_HEAD(&master->datagram_queue);
     master->datagram_index = 0;
 

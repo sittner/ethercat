@@ -48,6 +48,8 @@ void ec_fsm_slave_state_soe_request(ec_fsm_slave_t *, ec_datagram_t *);
 int ec_fsm_slave_action_process_eoe(ec_fsm_slave_t *, ec_datagram_t *);
 void ec_fsm_slave_state_eoe_request(ec_fsm_slave_t *, ec_datagram_t *);
 #endif
+int ec_fsm_slave_action_process_dict(ec_fsm_slave_t *, ec_datagram_t *);
+void ec_fsm_slave_state_dict_request(ec_fsm_slave_t *, ec_datagram_t *);
 
 /****************************************************************************/
 
@@ -180,6 +182,23 @@ int ec_fsm_slave_is_ready(
     return fsm->state == ec_fsm_slave_state_ready;
 }
 
+/****************************************************************************/
+
+/** Returns, if the FSM is currently processing a request.
+ *
+ * A busy FSM owns the slave's mailbox until it finishes, so nothing else
+ * (slave configuration in particular) may talk to that mailbox meanwhile.
+ *
+ * \return Non-zero if busy.
+ */
+int ec_fsm_slave_is_busy(
+        const ec_fsm_slave_t *fsm /**< Slave state machine. */
+        )
+{
+    return fsm->state != ec_fsm_slave_state_idle
+        && fsm->state != ec_fsm_slave_state_ready;
+}
+
 /*****************************************************************************
  * Slave state machine
  ****************************************************************************/
@@ -229,6 +248,13 @@ void ec_fsm_slave_state_ready(
         return;
     }
 #endif
+
+    /* Lowest priority: fetch the SDO dictionary in the background. It is a
+     * long series of mailbox transfers, so it must never take precedence
+     * over an application request. */
+    if (ec_fsm_slave_action_process_dict(fsm, datagram)) {
+        return;
+    }
 }
 
 /****************************************************************************/
@@ -682,3 +708,89 @@ void ec_fsm_slave_state_eoe_request(
 
 /****************************************************************************/
 #endif
+
+/****************************************************************************/
+
+/** Check if the slave's SDO dictionary has to be fetched and start it.
+ *
+ * The dictionary is read out in the background, on the slave's own FSM, so
+ * that the master FSM keeps its AL status broadcast, its per-slave state
+ * poll and slave configuration running while the transfer is in progress --
+ * for a large dictionary that takes tens of seconds.
+ *
+ * The master FSM grants \a allow_sdo_dict only once no slave needs
+ * configuration any more, so dictionaries never compete with configuration.
+ *
+ * \return non-zero, if a dictionary fetch was started.
+ */
+int ec_fsm_slave_action_process_dict(
+        ec_fsm_slave_t *fsm, /**< Slave state machine. */
+        ec_datagram_t *datagram /**< Datagram to use. */
+        )
+{
+    ec_slave_t *slave = fsm->slave;
+
+    if (!slave->master->allow_sdo_dict) {
+        return 0;
+    }
+
+    // check, if the slave has an SDO dictionary to read out.
+    if (!(slave->sii.mailbox_protocols & EC_MBOX_COE)
+            || (slave->sii.has_general
+                && !slave->sii.coe_details.enable_sdo_info)
+            || slave->sdo_dictionary_fetched
+            || slave->current_state == EC_SLAVE_STATE_INIT
+            || slave->current_state == EC_SLAVE_STATE_UNKNOWN
+            || ec_current_time() - slave->time_preop <
+                    ec_ms_to_time(EC_WAIT_SDO_DICT * 1000)
+            ) {
+        return 0;
+    }
+
+    EC_SLAVE_DBG(slave, 1, "Fetching SDO dictionary.\n");
+
+    slave->sdo_dictionary_fetched = 1;
+
+    // start fetching SDO dictionary
+    fsm->state = ec_fsm_slave_state_dict_request;
+    ec_fsm_coe_dictionary(&fsm->fsm_coe, slave);
+    ec_fsm_coe_exec(&fsm->fsm_coe, datagram); // execute immediately
+    return 1;
+}
+
+/****************************************************************************/
+
+/** Slave state: DICT_REQUEST.
+ */
+void ec_fsm_slave_state_dict_request(
+        ec_fsm_slave_t *fsm, /**< Slave state machine. */
+        ec_datagram_t *datagram /**< Datagram to use. */
+        )
+{
+    ec_slave_t *slave = fsm->slave;
+    ec_master_t *master = slave->master;
+
+    if (ec_fsm_coe_exec(&fsm->fsm_coe, datagram)) {
+        return;
+    }
+
+    if (!ec_fsm_coe_success(&fsm->fsm_coe)) {
+        EC_SLAVE_ERR(slave, "Failed to fetch SDO dictionary.\n");
+        fsm->state = ec_fsm_slave_state_ready;
+        return;
+    }
+
+    // SDO dictionary fetching finished
+
+    if (master->debug_level) {
+        unsigned int sdo_count, entry_count;
+        ec_slave_sdo_dict_info(slave, &sdo_count, &entry_count);
+        EC_SLAVE_DBG(slave, 1, "Fetched %u SDOs and %u entries.\n",
+               sdo_count, entry_count);
+    }
+
+    // attach pdo names from dictionary
+    ec_slave_attach_pdo_names(slave);
+
+    fsm->state = ec_fsm_slave_state_ready;
+}

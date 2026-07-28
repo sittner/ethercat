@@ -106,6 +106,8 @@ struct sim_bus {
     int link_up;
     unsigned long link_polls; /**< get_link calls (see sim_bus_link_polls). */
     unsigned long frame_count;
+    unsigned long al_status_brds; /**< BRDs of the AL status register
+                                    (see sim_bus_al_status_brd_count). */
     pthread_mutex_t lock;
 
     struct {
@@ -878,6 +880,9 @@ static void sim_bus_process_datagram(sim_bus_t *bus, uint8_t cmd,
         case 0x08: /* BWR */
             {
                 int16_t pos = (int16_t) sim_rd16(addr);
+                if (cmd == 0x07 && offset == 0x0130) {
+                    bus->al_status_brds++;
+                }
                 for (i = 0; i < bus->nslaves; i++) {
                     wkc = (uint16_t) (wkc + sim_slave_process(
                             &bus->slaves[i], cmd, offset, data, len));
@@ -1508,6 +1513,16 @@ unsigned long sim_bus_frame_count(sim_bus_t *bus)
 
     pthread_mutex_lock(&bus->lock);
     n = bus->frame_count;
+    pthread_mutex_unlock(&bus->lock);
+    return n;
+}
+
+unsigned long sim_bus_al_status_brd_count(sim_bus_t *bus)
+{
+    unsigned long n;
+
+    pthread_mutex_lock(&bus->lock);
+    n = bus->al_status_brds;
     pthread_mutex_unlock(&bus->lock);
     return n;
 }
