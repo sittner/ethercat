@@ -239,6 +239,16 @@ struct ec_master {
     ec_wait_queue_t config_queue; /**< Queue for processes that wait for
                                       slave configuration. */
 
+    unsigned int allow_sdo_dict; /**< \a True, if the slave FSMs may fetch SDO
+                                   dictionaries in the background.  Granted by
+                                   the master FSM once no slave needs
+                                   configuration any more and withdrawn as soon
+                                   as configuration starts again, so
+                                   dictionaries never compete with slave
+                                   configuration.  Only touched by the master
+                                   FSM and the slave FSMs, both of which run
+                                   under \a master_sem. */
+
     struct list_head datagram_queue; /**< Datagram queue. */
     uint8_t datagram_index; /**< Current datagram index. */
 

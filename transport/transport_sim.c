@@ -106,6 +106,8 @@ struct sim_bus {
     int link_up;
     unsigned long link_polls; /**< get_link calls (see sim_bus_link_polls). */
     unsigned long frame_count;
+    unsigned long al_status_brds; /**< BRDs of the AL status register
+                                    (see sim_bus_al_status_brd_count). */
     pthread_mutex_t lock;
 
     struct {
@@ -317,6 +319,14 @@ static void sim_mbox_respond_type(sim_slave_t *slave, uint8_t type,
 
     if ((size_t) slave->mbox_in_phys + 6 + len > SIM_REG_SIZE
             || 6 + len > slave->mbox_in_len) {
+        return;
+    }
+
+    /* The send mailbox holds one message: a slave cannot queue a second
+     * response until the master has read the first.  Dropping the new one
+     * rather than overwriting is what lets a stale response actually reach
+     * the next master, as it does on real hardware. */
+    if (slave->regs[0x080D] & 0x08) {
         return;
     }
 
@@ -878,6 +888,9 @@ static void sim_bus_process_datagram(sim_bus_t *bus, uint8_t cmd,
         case 0x08: /* BWR */
             {
                 int16_t pos = (int16_t) sim_rd16(addr);
+                if (cmd == 0x07 && offset == 0x0130) {
+                    bus->al_status_brds++;
+                }
                 for (i = 0; i < bus->nslaves; i++) {
                     wkc = (uint16_t) (wkc + sim_slave_process(
                             &bus->slaves[i], cmd, offset, data, len));
@@ -1510,6 +1523,50 @@ unsigned long sim_bus_frame_count(sim_bus_t *bus)
     n = bus->frame_count;
     pthread_mutex_unlock(&bus->lock);
     return n;
+}
+
+unsigned long sim_bus_al_status_brd_count(sim_bus_t *bus)
+{
+    unsigned long n;
+
+    pthread_mutex_lock(&bus->lock);
+    n = bus->al_status_brds;
+    pthread_mutex_unlock(&bus->lock);
+    return n;
+}
+
+int sim_bus_mbox_preload(sim_bus_t *bus, unsigned int pos, uint8_t type,
+        const void *payload, uint16_t len)
+{
+    sim_slave_t *slave;
+
+    if (pos >= bus->nslaves) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&bus->lock);
+    slave = &bus->slaves[pos];
+    if (!slave->mbox_in_len) {
+        pthread_mutex_unlock(&bus->lock);
+        return -1;
+    }
+    sim_mbox_respond_type(slave, type, payload, len);
+    pthread_mutex_unlock(&bus->lock);
+    return 0;
+}
+
+int sim_bus_mbox_full(sim_bus_t *bus, unsigned int pos)
+{
+    int full;
+
+    if (pos >= bus->nslaves) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&bus->lock);
+    full = (bus->slaves[pos].regs[0x080D] & 0x08) ? 1 : 0;
+    pthread_mutex_unlock(&bus->lock);
+    return full;
 }
 
 int sim_bus_od_set(sim_bus_t *bus, unsigned int pos, uint16_t index,

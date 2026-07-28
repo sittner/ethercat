@@ -80,6 +80,13 @@ void ec_fsm_slave_clear(ec_fsm_slave_t *);
 int ec_fsm_slave_exec(ec_fsm_slave_t *, ec_datagram_t *);
 void ec_fsm_slave_set_ready(ec_fsm_slave_t *);
 int ec_fsm_slave_is_ready(const ec_fsm_slave_t *);
+int ec_fsm_slave_is_busy(const ec_fsm_slave_t *);
+
+/** Start a background SDO dictionary fetch, if the slave is due one.
+ *
+ * Called from ec_fsm_slave_state_ready() as its lowest-priority action;
+ * declared here so its guard can be exercised directly. */
+int ec_fsm_slave_action_process_dict(ec_fsm_slave_t *, ec_datagram_t *);
 
 /****************************************************************************/
 

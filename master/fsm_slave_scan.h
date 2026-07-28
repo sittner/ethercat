@@ -55,6 +55,8 @@ struct ec_fsm_slave_scan
 
     void (*state)(ec_fsm_slave_scan_t *); /**< State function. */
     uint16_t sii_offset; /**< SII offset in words. */
+    unsigned int mbox_drain_count; /**< Remaining stale mailbox responses to
+                                     discard before scanning PDOs. */
 
     ec_fsm_sii_t fsm_sii; /**< SII state machine. */
 };
