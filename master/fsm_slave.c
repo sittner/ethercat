@@ -734,13 +734,21 @@ int ec_fsm_slave_action_process_dict(
         return 0;
     }
 
-    // check, if the slave has an SDO dictionary to read out.
+    /* Check, if the slave has an SDO dictionary to read out.
+     *
+     * time_preop stays zero until this master has driven the slave into PREOP
+     * itself (ec_fsm_slave_config_state_boot_preop), and measuring the
+     * EC_WAIT_SDO_DICT settling time from zero makes that comparison
+     * trivially true.  Test it separately: a slave this master has not
+     * configured may still be under scan, and the scan uses the same
+     * mailbox. */
     if (!(slave->sii.mailbox_protocols & EC_MBOX_COE)
             || (slave->sii.has_general
                 && !slave->sii.coe_details.enable_sdo_info)
             || slave->sdo_dictionary_fetched
             || slave->current_state == EC_SLAVE_STATE_INIT
             || slave->current_state == EC_SLAVE_STATE_UNKNOWN
+            || !slave->time_preop
             || ec_current_time() - slave->time_preop <
                     ec_ms_to_time(EC_WAIT_SDO_DICT * 1000)
             ) {

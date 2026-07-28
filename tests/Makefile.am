@@ -35,6 +35,7 @@ AM_CPPFLAGS = \
 
 check_PROGRAMS = \
 	test_datagram \
+	test_dict_gate \
 	test_emerg_ring \
 	test_irq_pin \
 	test_pdo_print \
@@ -62,6 +63,7 @@ LDADD = $(top_builddir)/master/uspace/libethercat.la
 AM_LDFLAGS = -static
 
 test_datagram_SOURCES = test_datagram.c test.h
+test_dict_gate_SOURCES = test_dict_gate.c test.h
 test_emerg_ring_SOURCES = test_emerg_ring.c test.h
 test_irq_pin_SOURCES = test_irq_pin.c test.h
 test_pdo_print_SOURCES = test_pdo_print.c test.h

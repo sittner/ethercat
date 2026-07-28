@@ -58,6 +58,7 @@ tests/test-suite.log
 tests/*.log
 tests/*.trs
 tests/test_datagram
+tests/test_dict_gate
 tests/test_emerg_ring
 tests/test_irq_pin
 tests/test_pdo_print
