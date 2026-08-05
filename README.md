@@ -1,3 +1,8 @@
+> [!IMPORTANT]
+> **This repository is archived.** Development has moved to
+> **[@stratuMAK/ethercat](https://github.com/stratuMAK/ethercat)**.
+> Please head there for the latest sources, issues, and pull requests.
+
 This is the README file of the IgH EtherCAT Master.
 
 Contents:
